@@ -18,6 +18,10 @@ x-agent-os:
     - search    # L0
     - send      # L2 (默认需确认)
   permissions: []              # 或引用具体 action→L 级别
+  delegation:                  # Multi-Agent：被 Sub-agent 调用时声明
+    max_level: "L1"           # 委托给子的最高 L 级
+    inherit_parent: false      # 默认不继承父 Agent 权限
+    requires_scope: true       # 必须显式 scope
   verification: "V2"           # 期望验证等级
   memory_write: "governed"     # 走 memory-governance
   knowledge_write: "governed"  # 走 knowledge-governance
@@ -42,6 +46,10 @@ x-agent-os:
 3. **经验沉淀**走 memory/knowledge-governance，不裸写。
 4. **重复失败**上报 self-evolution candidate，不自改安全策略。
 5. 统一决策词汇表（见 DECISION-PROTOCOL.md）。
+6. **Multi-Agent 场景声明 delegation**：若业务 Skill 会被 Sub-agent 调用，须在
+   `x-agent-os` 块里声明上面的 `delegation`；未声明者默认**不继承父 Agent 权限**
+   （见 ACTION-PROTOCOL.md "Multi-Agent 权限委托"）。业务 Skill 不得因"被更高层 Agent 调用"
+   而自行提升 L 级，最终级别仍由 permission-security 判定。
 
 ## 4. 接入禁止项
 

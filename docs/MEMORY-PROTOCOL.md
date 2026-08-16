@@ -12,6 +12,27 @@ durable memory    — 长期记忆（如 MEMORY.md），精选
 user-profile      — 用户事实/长期偏好指令
 ```
 
+### 1.1 Memory Scope（Multi-Agent 作用域）
+
+作用域词汇与 ontology / self-evolution 一致，且**只减不增**：
+`TASK < AGENT < PROJECT < USER < GLOBAL`（默认存最窄有效作用域）。
+
+**跨 Agent 记忆晋升链（Multi-Agent 下不得跳级）：**
+
+```
+Agent-local（本 Agent 私有，不共享）
+  → Task-scoped（仅该任务/子任务内可见）
+  → Shared candidate（跨 Agent 共享的候选，默认 trusted=false，需独立验证）
+  → Main/Supervisor verification（主 Agent / 监督者复核后放行）
+  → Global durable（进入全局 durable memory / MEMORY.md）
+```
+
+**规则：**
+- 子 Agent / 外部 source 上报的记忆，初始**不信任**（source=external → trusted=false，effective_confidence 压低）；
+  经主 Agent 或独立会话验证后才可晋升，单源**永不直接晋升 GLOBAL**。
+- Agent 不得直接写其他 Agent 的私有记忆或 GLOBAL/USER 层，须过 governance（见 self-evolution Learning Inbox）。
+- 共享 candidate 的写入门槛高于 Agent-local；矛盾在 Shared/Global 层必须保留并标 disputed，不静默覆盖。
+
 ## 2. 写入判定（写前问 7 问）
 
 1. 稳定吗？（不是一次性噪音）

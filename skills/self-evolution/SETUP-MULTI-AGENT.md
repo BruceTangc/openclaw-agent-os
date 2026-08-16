@@ -1,6 +1,14 @@
-# SETUP-MULTI-AGENT.md — self-improvement-llm 多 Agent 接入指南
+# SETUP-MULTI-AGENT.md — self-evolution 多 Agent 接入指南
 
-> 目标：把 `self-improvement-llm`（V3.2 Multi-Agent Learning OS）从"单 Agent 学习框架"升级成
+> ⚠️ 本文档早期内容沿用旧模块名 `self-improvement-llm`；现统一为 **`self-evolution`**
+> （Agent OS v1.2 模块名）。下文中 `self-improvement` / `self-improvement-llm` 均指代同一个 skill。
+>
+> **边界声明**：本文件描述的"多机共享学习引擎（symlink）"属于 **治理/学习层的共享**，
+> 不是并行 Agent runtime 或多 Agent 编排 runtime。真正的跨 Agent 权限委托/记忆作用域
+> 见 `ACTION-PROTOCOL.md` "Multi-Agent 权限委托" 与 `MEMORY-PROTOCOL.md` §1.1。
+> Agent OS 仍遵守"不建 7 类 Runtime"的硬边界（见 PROTOCOL.md）。
+
+> 目标：把 `self-evolution`（V3.2 multi-agent learning engine）从"单 Agent 学习框架"升级成
 > 真正覆盖多个 Agent 工作区的统一学习系统。本文件面向**新的一台 OpenClaw 机器**接入时使用。
 
 ---
