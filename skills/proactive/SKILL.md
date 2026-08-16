@@ -1,8 +1,8 @@
 ---
 name: proactive
 description: 在 Heartbeat/Cron/Hook 或事件唤醒后判断是否有值得主动处理的事项，并在授权范围内采取行动或提醒。
-metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
-version: 1.2.0
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.3", "layer": "core" } }
+version: 1.3.0
 ---
 
 
@@ -44,7 +44,12 @@ version: 1.2.0
 
 ## Core Procedure
 
-本 Skill 只负责生命周期中的 **Decision（决策）** 节点：被唤醒后判断是否值得做。系统其余环节由其他 Skill / OpenClaw 承担，本 Skill 不自行跑完整生命周期。
+本 Skill 只负责生命周期中的 **Decision（决策）** 节点：被唤醒后判断是否值得做。
+**决策之后即交棒**——EXECUTE 由 orchestrator 编排执行、Permission Gate 由 permission-security 把关、
+验证由 verification-evaluation 承担，本 Skill 不自行跑完整生命周期。
+
+> **v1.3 边界**：Proactive 只处理「自主决策任务」（heartbeat/cron/hook/风险/机会/目标漂移/后续追踪）。
+> 用户直接指令（如"总结这个 PDF"）不经过本 Skill。
 
 1. **唤醒打点**：`state --op wake`（单实例锁，过近且无新 Signal → NO_ACTION）。
 2. **读状态**：State + Ontology + Queue + 最近失败（只读相关，不全量）。
@@ -55,17 +60,20 @@ version: 1.2.0
 7. **评分**：priority = value×urgency×confidence×novelty×goal_alignment×actionability ÷ (effort×risk×interruption)。
 8. **Decision**（统一词汇表）：IGNORE/OBSERVE/QUEUE/SUGGEST/PREPARE/EXECUTE/ASK/ESCALATE。
 9. **Autonomy Gate**：已授权?风险可接受?需确认?涉钱/外发/删除/权限/敏感/系统状态/超预算?
-10. **Permission Gate**：副作用前走 permission-security。
-11. **执行/入队**：Action Router 调用现有 Skill/Agent 或入 Queue。
-12. **Verification**：不把工具成功当任务成功。
-13. **记录 Outcome**：写 semantic state + candidate bump（更新注意力/队列，供下次唤醒参考）。
+10. **交棒（不自己执行）**：
+    - EXECUTE / PREPARE → 交 **orchestrator**（orchestration_request）编排执行；
+    - 执行路径上的 Permission Gate 由 permission-security 把关（L2+ 无授权阻断）；
+    - 执行结果验证由 verification-evaluation 承担（不把工具成功当任务成功）；
+    - 高风险动作默认 ASK（本模块不替用户做高风险决定）。
+11. **记录 Outcome**：写 semantic state + candidate bump（更新注意力/队列，供下次唤醒参考）。
 
 **State/Queue/Bus 边界定义**（防隐性 Runtime）：
 - **State** = Proactive 的**语义状态**（上次唤醒时点、注意力预算、目标对齐），不是执行运行时状态机。
 - **Queue** = **语义候选集合**（哪些事值得关注/入列），不是实际执行队列；实际调度由 OpenClaw Heartbeat/Cron/Task Flow 驱动。
 - **Bus/输入通道** = 复用 OpenClaw 的 event/input channel，Proactive 自己**不能成为事件总线**。
-14. **产出 Writeback/Evolution candidate**：识别应写入 Ontology/Memory 或应建议改进的点，产出 memory/knowledge/ontology/evolution 候选交给对应治理层，**不直接负责治理写入**；低频经验不打扰、不裸写。
-15. **无价值 → NO_ACTION**。
+12. **产出 Evolution candidate**：识别重复失败/重复纠正/能力缺口 → 产出 evolution candidate
+    交给 self-evolution 治理层，不直接改安全策略；低频经验不打扰、不裸写。
+13. **无价值 → NO_ACTION**。
 
 ## Decision Rules
 

@@ -8,7 +8,7 @@
 - [ ] **无并行 Runtime**：无自定义 Scheduler / Event Bus / Task Runtime / Memory Runtime / Context Engine / Agent Runtime / Permission Runtime。
 - [ ] **Trigger 边界**：Heartbeat/Cron/Hook/User Message 都是外部 Trigger；Proactive 是决策层不是定时器。
 - [ ] **OpenClaw 原生优先**：复用 agent loop / tool wiring / prompt assembly / session / skills，不重复造。
-- [ ] **统一执行链**：Intake → Context → Goal/Task → Decision → Permission → Action → Verification → Evaluation → Writeback → Evolution。
+- [ ] **统一执行链**：Mandatory（Context → Goal/Task → Permission → Action → Verification → Evaluation）+ Conditional（Proactive 仅自主任务、Orchestrator 仅 Full Path、Writeback 有条件）。
 - [ ] **统一决策词汇表**：IGNORE/OBSERVE/QUEUE/SUGGEST/PREPARE/EXECUTE/ASK/ESCALATE/DENY。
 - [ ] **统一权限分级**：L0-L4（permission-security 治理 Skill）。
   - 注意：不建立独立 permission Runtime；OpenClaw native policy / approval / sandbox 才是最终执行边界。

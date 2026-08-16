@@ -70,21 +70,36 @@ context-orchestration / verification-evaluation / permission-security）。
 - Agent OS 不建并行 runtime（无自定义 scheduler / event bus / memory runtime / task runtime / agent runtime / permission runtime）。
 - 所有 Trigger（Heartbeat / Cron / Hook / User Message）由 OpenClaw 提供；Agent OS 只负责"被叫醒后决定做什么"。
 
-### 统一执行链（所有任务必经）
+### 统一执行链（Mandatory 链 + Conditional 节点）
+
+> ⚠️ 不是"所有任务必经"全部节点。**Mandatory**（必经）保证底线；**Conditional**（按任务类型）
+> 避免过度官僚化。判定依据：任务类型 + Skill 的 Protocol Contract（见 SKILL-INTEGRATION.md）。
+
+**Mandatory（所有任务必经）**：
 
 ```
 Trigger (OpenClaw: user/heartbeat/cron/hook)
-  → Intake (摄入信号: id/subject/type/confidence/evidence)
   → Context Orchestration (最小必要上下文)
-  → Goal/Task semantics (task-manager)
-  → Decision (proactive)          ← 决策词汇表统一
+  → Goal/Task semantics (task-manager, 简单任务可最简化)
   → Permission Gate (permission-security)   ← L2+ 无授权必须阻断
   → OpenClaw Native Execution
   → Verification (verification-evaluation)  ← 工具成功 ≠ 任务成功
   → Evaluation
-  → Memory/Knowledge writeback (governance)
-  → Evolution candidate (self-evolution)    ← 仅限可授权变更
 ```
+
+**Conditional（按任务类型进入）**：
+
+- **Proactive Decision** → 仅自主决策任务（heartbeat/cron/hook/风险/机会/目标漂移）；**用户直接指令不经过**
+- **Intake** → 非用户直接指令时摄入信号
+- **Orchestrator** → 仅 Full Path（复杂/多步/多 Agent/有副作用）
+- **Memory/Knowledge writeback** → 有持久化价值才写；无价值 → NONE
+- **Evolution candidate** → 有证据的重复失败/重复纠正才触发
+
+**两种执行模式**：
+
+- **Fast Path**（简单/低风险/单能力）：`Trigger → Context → Direct Skill → Permission(如需要) → Execution → Verification`
+  - 只允许 L0-L1；涉及 L2+ 必须升级 Full Path 或至少过 Permission Gate
+- **Full Path**（复杂/自主/多步/有副作用）：`Trigger → Intake → Context → Goal/Task → Decision(如自主) → Orchestrator → Permission → Execution → Verification → Evaluation → Writeback(如需要) → Evolution(如证据)`
 
 ### 决策词汇表（唯一真值，不得自造）
 
@@ -127,12 +142,12 @@ DENY      — 拒绝（permission-security 输出）
 - **工具返回成功 ≠ 任务成功**。必须先检查实际结果/工件/状态/证据，再判定 PASS/PARTIAL/FAIL/UNKNOWN，才允许宣称完成。
 - V0 工具成功 / V1 输出格式 / V2 结果符合条件 / V3 独立验证 / V4 外部状态确认（**累计**，高等级须满足全部低等级）。
 - 资金、不可逆操作必须 V4。
-- **完成判定五条同时满足**：
+- **完成判定**（条件化）：
   1. 目标达成（evaluate）
   2. 验证通过（verify: evidence-backed）
   3. 权限合规（permission: gate passed）
-  4. 副作用已记录（audit）
-  5. 有意义的经验已走治理（memory/knowledge writeback）
+  4. 副作用已记录（audit）——**硬性**：有实际副作用（外发/资金/删除/生产变更）必须记录；无副作用自然满足
+  5. 有持久化价值时才要求 memory/knowledge writeback（**条件性**）：有价值→走 governance；无价值（如"1+1"）→ NONE，不阻塞完成
   只满足部分 = PARTIAL，不是 COMPLETED。
 
 ### 失败处理循环
