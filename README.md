@@ -26,7 +26,8 @@ Governance, decision and workflow policy layer around OpenClaw's native runtime.
 
 ```
 Trigger (user / heartbeat / automation / hook)
- -> Context Orchestration
+  -> Intake (signal ingestion)
+  -> Context Orchestration
  -> Goal / Task semantics
  -> Proactive Decision
  -> Orchestrator
@@ -76,6 +77,9 @@ OpenClaw Tools / Sub-agents / Skills / Runtime
 | [VERIFICATION-PROTOCOL.md](docs/VERIFICATION-PROTOCOL.md) | V0-V4 验证分级、PASS/PARTIAL/FAIL/UNKNOWN |
 | [MEMORY-PROTOCOL.md](docs/MEMORY-PROTOCOL.md) | 写入判定、晋升路径、矛盾保留 |
 | [EVOLUTION-PROTOCOL.md](docs/EVOLUTION-PROTOCOL.md) | 进化证据、授权边界、禁止自行修改安全规则 |
+| [SKILL-INTEGRATION.md](docs/SKILL-INTEGRATION.md) | 业务 Skill 接入协议（x-agent-os 声明块） |
+| [HEARTBEAT-CRON-POLICY.md](docs/HEARTBEAT-CRON-POLICY.md) | Trigger 边界；Proactive 是决策层不是定时器 |
+| [PROTOCOL-CHECKLIST.md](docs/PROTOCOL-CHECKLIST.md) | 逐文件审计清单 |
 
 ## Design guardrails
 

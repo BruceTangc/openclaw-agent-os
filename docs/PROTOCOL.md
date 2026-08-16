@@ -36,13 +36,15 @@ Cron / Heartbeat / Hook / User Message / Background Tasks 都是**外部 Trigger
 ## 3. 统一执行链（所有任务必经）
 
 ```
-Context Orchestration
-  → Decision (proactive)
-  → Task semantics (task-manager)
-  → Decomposition/Delegation (orchestrator)
+Trigger (OpenClaw: user/heartbeat/cron/hook)
+  → Intake (摄入信号: id / subject / type / confidence / evidence…)
+  → Context Orchestration (最小必要上下文)
+  → Goal / Task semantics (task-manager)
+  → Decision (proactive)   ← 决策词汇表统一
   → Permission Gate (permission-security)   ← L2+ 无授权必须阻断
   → OpenClaw Native Execution
   → Verification (verification-evaluation)  ← 工具成功 ≠ 任务成功
+  → Evaluation
   → Memory/Knowledge writeback (governance)
   → Evolution candidate (self-evolution)    ← 仅限可授权变更
 ```
@@ -91,6 +93,12 @@ x-agent-os:
 | [VERIFICATION-PROTOCOL.md](VERIFICATION-PROTOCOL.md) | V0-V4 验证分级、证据要求、PASS/PARTIAL/FAIL/UNKNOWN |
 | [MEMORY-PROTOCOL.md](MEMORY-PROTOCOL.md) | 写入选判据、晋升路径、优先级、矛盾保留 |
 | [EVOLUTION-PROTOCOL.md](EVOLUTION-PROTOCOL.md) | 进化证据、循环、授权边界、禁止项 |
+| [SKILL-INTEGRATION.md](SKILL-INTEGRATION.md) | 业务 Skill 接入协议（x-agent-os 声明块、4层分类） |
+| [HEARTBEAT-CRON-POLICY.md](HEARTBEAT-CRON-POLICY.md) | Trigger 边界：Heartbeat/Cron/Hook 只是触发，Proactive 是决策层 |
+| [PROTOCOL-CHECKLIST.md](PROTOCOL-CHECKLIST.md) | 逐文件审计清单（防跑偏） |
+| [SKILL-INTEGRATION.md](SKILL-INTEGRATION.md) | 业务 Skill 接入协议（x-agent-os 声明块、4层分类） |
+| [HEARTBEAT-CRON-POLICY.md](HEARTBEAT-CRON-POLICY.md) | Trigger 边界：Heartbeat/Cron/Hook 只是触发，Proactive 是决策层 |
+| [PROTOCOL-CHECKLIST.md](PROTOCOL-CHECKLIST.md) | 逐文件审计清单（防跑偏） |
 
 ## 7. 完成判定
 
