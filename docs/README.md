@@ -16,6 +16,9 @@ This package provides the governance, decision and workflow layer around OpenCla
 ## Design rule
 OpenClaw native runtime first. These Skills must not create parallel runtimes for memory, context, tasks, scheduling, events, agents or permissions.
 
+## AGENTS.md 参考模板
+新机器 / 新工作区装完 Agent OS 后，复制 [AGENTS-TEMPLATE.md](AGENTS-TEMPLATE.md) 为你的 `AGENTS.md`，按需删改即可让 Main Agent 正确加载 Agent OS 行为规范。
+
 ## Modules
 proactive
 memory-governance
