@@ -10,7 +10,7 @@ version: 1.2.0
 
 ## Purpose
 
-把可复用知识整理为**带来源、新鲜度、不确定性的持久声明（claim）**，并治理其生命周期。与 memory-governance 区别：Memory = 经验/事件；Knowledge = 可复用的「关于世界的声明」（subject/claim/evidence…）。OpenClaw 拥有知识库存储，本模块只做治理。
+把可复用知识整理为**带来源、新鲜度、不确定性的持久声明（claim）**，并治理其生命周期。与 memory-governance 区别：Memory = 经验/事件；Knowledge = 可复用的「关于世界的声明」（subject/claim/evidence…）。物理持久化使用 OpenClaw native memory/workspace 设施或已安装的 knowledge provider/plugin，本模块只做治理（不把 Agent OS 的 Knowledge 抽象说成 OpenClaw 原生 Knowledge Runtime）。
 
 ## Scope
 

@@ -58,7 +58,12 @@ version: 1.2.0
 10. **Permission Gate**：副作用前走 permission-security。
 11. **执行/入队**：Action Router 调用现有 Skill/Agent 或入 Queue。
 12. **Verification**：不把工具成功当任务成功。
-13. **记录 Outcome**：bus + state bump。
+13. **记录 Outcome**：写 semantic state + candidate bump（更新注意力/队列，供下次唤醒参考）。
+
+**State/Queue/Bus 边界定义**（防隐性 Runtime）：
+- **State** = Proactive 的**语义状态**（上次唤醒时点、注意力预算、目标对齐），不是执行运行时状态机。
+- **Queue** = **语义候选集合**（哪些事值得关注/入列），不是实际执行队列；实际调度由 OpenClaw Heartbeat/Cron/Task Flow 驱动。
+- **Bus/输入通道** = 复用 OpenClaw 的 event/input channel，Proactive 自己**不能成为事件总线**。
 14. **Writeback / Evolution**：更新 Ontology/Memory，长期改进→Evolution Candidate。
 15. **无价值 → NO_ACTION**。
 

@@ -18,7 +18,7 @@ version: 1.2.0
 - 任务拆解（DAG）+ 依赖 / 并行 / 条件 / 循环
 - 能力匹配 + Agent/Skill 路由
 - 权限门 + 风险门 + 资源预算
-- 执行、监控、重试、重新规划、checkpoint、fallback
+- 执行计划控制 / 执行状态协调 / 重试策略 / 重新规划 / checkpoint / fallback
 - 结果验证 + 合成（围绕用户目标）
 - 反馈（Memory/Ontology/Self-Evolution）
 

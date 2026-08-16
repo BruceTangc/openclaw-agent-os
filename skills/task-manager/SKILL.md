@@ -138,7 +138,7 @@ task:
 
 ## Failure Handling
 
-temporary/network→retry；rate_limit→backoff；invalid_input/logic_error→replan；permission→ask；unknown→escalate。max_retries=2，不无限重试。崩溃恢复：扫 RUNNING→查 lock→查 checkpoint→查副作用→resume/retry/wait/fail，不简单全 FAILED。
+temporary/network→retry；rate_limit→backoff；invalid_input/logic_error→replan；permission→ask；unknown→escalate。max_retries=2，不无限重试。崩溃恢复（降级为「恢复建议」）：扫 RUNNING → 查 lock → 查 checkpoint → 查副作用 → 生成 **恢复 suggestion**（resume/retry/wait/fail），交给 OpenClaw / Orchestrator 执行；本 skill 不自行承担 Crash Recovery Engine / 任务恢复运行时。
 
 ## Memory / Knowledge Writeback
 
