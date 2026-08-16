@@ -283,8 +283,15 @@ def save_draft(candidate):
     return skill_md_path, True
 
 
-def approve_draft(name):
-    """Approve a drafted skill and move it to skills/ directory."""
+def approve_draft(name, confirmed=False):
+    """Approve a drafted skill and move it to skills/ directory.
+
+    Agent OS 边界（v1.2 安全审计修复）：安装新 Skill 属于中影响动作（L2），
+    必须显式确认（confirmed=True / --yes）才执行，避免 --approve 一条命令静默安装。
+    """
+    if not confirmed:
+        print(f"⚠️ 安装 Skill 需显式确认：--approve {name} --yes（安装是 L2 动作，遵守 permission-security）")
+        return False
     draft_dir = os.path.join(DRAFTS_DIR, name)
     if not os.path.isdir(draft_dir):
         print(f"❌ Draft '{name}' not found in {DRAFTS_DIR}")
@@ -501,6 +508,7 @@ def main():
     parser.add_argument("--status", action="store_true", help="Show skillgen stats")
     parser.add_argument("--min-recurrence", type=int, default=3, help="Min recurrence to qualify (default: 3)")
     parser.add_argument("--days", type=int, default=30, help="Lookback window in days (default: 30)")
+    parser.add_argument("--yes", action="store_true", help="Confirm skill install (L2 action, required for --approve)")
 
     args = parser.parse_args()
 
@@ -513,7 +521,7 @@ def main():
     elif args.list:
         cmd_list(args)
     elif args.approve:
-        approve_draft(args.approve)
+        approve_draft(args.approve, confirmed=args.yes)
     elif args.status:
         cmd_status(args)
     else:

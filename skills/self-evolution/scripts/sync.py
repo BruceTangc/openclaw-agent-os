@@ -67,44 +67,62 @@ def export_data(output_path=None):
     return output_path
 
 def import_data(zip_path, overwrite=False):
-    """Import self-improvement data from a zip file."""
+    """Import self-improvement data from a zip file.
+
+    安全修复（v1.2）：校验 zip 内路径，阻止 ../ 路径穿越写出工作区。
+    """
     if not os.path.exists(zip_path):
         print(f"❌ File not found: {zip_path}")
         return False
-    
+
+    # 归一化工作区绝对路径，用于穿越校验
+    ws_abs = os.path.abspath(WORKSPACE_DIR)
+
     with zipfile.ZipFile(zip_path, 'r') as zf:
         # Check what's in the archive
         files = zf.namelist()
         print(f"Archive contains {len(files)} files:")
-        
+
         # Group by type
         memory_files = [f for f in files if f.startswith("memory/")]
         print(f"  Memory files: {len(memory_files)}")
-        
+
         # Import files
         imported = 0
         skipped = 0
-        
+        blocked = 0
+
         for file_path in files:
-            target_path = os.path.join(WORKSPACE_DIR, file_path)
-            
+            # 路径穿越防护：拒绝绝对路径 / .. 逃逸 / zip slip
+            norm = os.path.normpath(file_path)
+            if os.path.isabs(norm) or norm.startswith(".."):
+                blocked += 1
+                print(f"  ⛔ 阻止路径穿越: {file_path}")
+                continue
+            target_path = os.path.join(WORKSPACE_DIR, norm)
+            # 二次确认：解析后仍在工作区内
+            if not os.path.abspath(target_path).startswith(ws_abs):
+                blocked += 1
+                print(f"  ⛔ 阻止越界写出: {file_path}")
+                continue
+
             # Skip if exists and not overwriting
             if os.path.exists(target_path) and not overwrite:
                 skipped += 1
                 continue
-            
+
             # Create directory if needed
             os.makedirs(os.path.dirname(target_path), exist_ok=True)
-            
+
             # Extract file
             with zf.open(file_path) as source:
                 with open(target_path, 'wb') as target:
                     target.write(source.read())
-            
+
             imported += 1
             print(f"  Imported: {file_path}")
-    
-    print(f"\n✅ Import complete: {imported} files imported, {skipped} skipped")
+
+    print(f"\n✅ Import complete: {imported} imported, {skipped} skipped, {blocked} blocked")
     return True
 
 def sync_status():

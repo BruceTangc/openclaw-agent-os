@@ -1017,13 +1017,22 @@ def find_patterns_ready(trail, min_recurrence=2, min_sessions=2):
 
 def execute_promotion(trail, pattern_key, count, entry):
     """Actually promote a pattern by modifying the target file and recording a change for verification."""
-    # 记忆污染防护 ④：低信任来源（external）不自动提升，需人工确认
+    # 记忆污染防护 ①：低信任来源（external）不自动提升，需人工确认
     if not entry.get("trusted", True):
         print(f"   ⛔ 低信任来源 [{entry.get('source')}]，跳过自动提升（需人工确认）：{entry.get('summary','')[:50]}")
         return None
     target = suggest_promotion(entry)
     summary = entry.get("summary", "")
     target_path = os.path.join(WORKSPACE, target)
+
+    # 记忆污染防护 ⑤（脚本级安全审计修复）：安全/人格文件绝不自动写入，必须人工确认。
+    # 只允许 MEMORY.md / TOOLS.md 自动积累；AGENTS.md(Red Lines) / SOUL.md(Boundaries) 是安全红线，
+    # 必须先产出 proposal 给人批，绝不自动落盘（Agent OS v1.2 self-evolution 边界：绝不自改权限/安全/人格）。
+    if target in ("AGENTS.md", "SOUL.md"):
+        print(f"   ⛔ 安全文件 [{target}] 不自动写入（需人工确认）：{summary[:50]}")
+        entry["status"] = "requires_review"
+        save_trail(trail)
+        return None
 
     # Build the content to append
     now = datetime.now()
