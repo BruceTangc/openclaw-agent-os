@@ -1,0 +1,6 @@
+{
+  "name": "memory-governance",
+  "version": "1.1.0",
+  "description": "内存治理策略层（Agent OS v1.1）。决定什么该成为持久记忆：稳定/有用/确定/可溯源/非冗余；晋升路径 observation→candidate→validate→promote→review；用户事实>已验证外部事实>Agent推断。OpenClaw 拥有存储/索引/召回，本模块只提供治理政策。",
+  "author": "brucetangc"
+}

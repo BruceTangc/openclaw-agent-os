@@ -1,0 +1,6 @@
+{
+  "name": "permission-security",
+  "version": "1.1.0",
+  "description": "权限安全策略层（Agent OS v1.1）。L0 Observe/L1 Prepare/L2 External/L3 High/L4 Prohibited 风险分级；默认 L0自动/L1可逆自动/L2确认/L3显式审批/L4拒绝；位于 OpenClaw 原生 policy/exec/sandbox/approval 之上，never weaken native controls。配套脚本 scripts/permission.py 提供 --classify/--check 确定性接口。",
+  "author": "brucetangc"
+}

@@ -1,0 +1,28 @@
+---
+name: verification-evaluation
+version: 1.1.0
+description: 验证与评估策略层（Agent OS v1.1）。区分工具成功与任务成功：verify(执行/工件/数据/范围/证据/安全) + evaluate(目标/正确性/完整性/质量)；状态 PASS/PARTIAL/FAIL/UNKNOWN；失败→修复→预算内重试→升级。
+---
+
+# OpenClaw Skill
+## Compatibility baseline: OpenClaw 2026.7.1-2
+
+# Verification and Evaluation
+
+Purpose: prove task success and assess quality.
+
+## Verify
+execution, artifact/state, data, scope, evidence, safety.
+
+## Evaluate
+goal attainment, correctness, completeness, quality, efficiency, constraints, usefulness.
+
+## States
+PASS / PARTIAL / FAIL / UNKNOWN
+
+## Loop
+Plan -> execute -> inspect -> verify -> evaluate -> repair/retry or complete.
+
+For failure: diagnose -> repair -> retry within budget -> re-verify -> escalate.
+
+Never say done merely because a tool call returned successfully. External side effects require evidence.
