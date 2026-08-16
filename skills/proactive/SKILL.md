@@ -47,26 +47,25 @@ version: 1.2.0
 本 Skill 只负责生命周期中的 **Decision（决策）** 节点：被唤醒后判断是否值得做。系统其余环节由其他 Skill / OpenClaw 承担，本 Skill 不自行跑完整生命周期。
 
 1. **唤醒打点**：`state --op wake`（单实例锁，过近且无新 Signal → NO_ACTION）。
-2. **读检查源**：按 OpenClaw heartbeat prompt，读工作区 `HEARTBEAT.md`（每轮该检查什么）+ `proactive-registry.yaml`（当前启用的主动关注项），只筛 `enabled: true` 且本轮条件满足的项目；不因项目存在就全部执行。
-3. **读状态**：State + Ontology + Queue + 最近失败（只读相关，不全量）。
-4. **Intake**：摄入新 Signal（`signal --json`）。
-5. **Cheap Filter**：重复?已处理?过期?低价值?无行动空间?超出关注范围?普通信息?噪音? → 直接 IGNORE。
-6. **Context Enrichment**：高价值 Signal 读相关目标/任务/历史/关系/最近事件。
-7. **判断类型**：Risk / Opportunity / Goal Drift / Follow-up / Anomaly。
-8. **评分**：priority = value×urgency×confidence×novelty×goal_alignment×actionability ÷ (effort×risk×interruption)。
-9. **Decision**（统一词汇表）：IGNORE/OBSERVE/QUEUE/SUGGEST/PREPARE/EXECUTE/ASK/ESCALATE。
-10. **Autonomy Gate**：已授权?风险可接受?需确认?涉钱/外发/删除/权限/敏感/系统状态/超预算?
-11. **Permission Gate**：副作用前走 permission-security。
-12. **执行/入队**：Action Router 调用现有 Skill/Agent 或入 Queue。
-13. **Verification**：不把工具成功当任务成功。
-14. **记录 Outcome**：写 semantic state + candidate bump（更新注意力/队列，供下次唤醒参考）。
+2. **读状态**：State + Ontology + Queue + 最近失败（只读相关，不全量）。
+3. **Intake**：摄入新 Signal（`signal --json`）。
+4. **Cheap Filter**：重复?已处理?过期?低价值?无行动空间?超出关注范围?普通信息?噪音? → 直接 IGNORE。
+5. **Context Enrichment**：高价值 Signal 读相关目标/任务/历史/关系/最近事件。
+6. **判断类型**：Risk / Opportunity / Goal Drift / Follow-up / Anomaly。
+7. **评分**：priority = value×urgency×confidence×novelty×goal_alignment×actionability ÷ (effort×risk×interruption)。
+8. **Decision**（统一词汇表）：IGNORE/OBSERVE/QUEUE/SUGGEST/PREPARE/EXECUTE/ASK/ESCALATE。
+9. **Autonomy Gate**：已授权?风险可接受?需确认?涉钱/外发/删除/权限/敏感/系统状态/超预算?
+10. **Permission Gate**：副作用前走 permission-security。
+11. **执行/入队**：Action Router 调用现有 Skill/Agent 或入 Queue。
+12. **Verification**：不把工具成功当任务成功。
+13. **记录 Outcome**：写 semantic state + candidate bump（更新注意力/队列，供下次唤醒参考）。
 
 **State/Queue/Bus 边界定义**（防隐性 Runtime）：
 - **State** = Proactive 的**语义状态**（上次唤醒时点、注意力预算、目标对齐），不是执行运行时状态机。
 - **Queue** = **语义候选集合**（哪些事值得关注/入列），不是实际执行队列；实际调度由 OpenClaw Heartbeat/Cron/Task Flow 驱动。
 - **Bus/输入通道** = 复用 OpenClaw 的 event/input channel，Proactive 自己**不能成为事件总线**。
-15. **产出 Writeback/Evolution candidate**：识别应写入 Ontology/Memory 或应建议改进的点，产出 memory/knowledge/ontology/evolution 候选交给对应治理层，**不直接负责治理写入**；低频经验不打扰、不裸写。
-16. **无价值 → NO_ACTION**。
+14. **产出 Writeback/Evolution candidate**：识别应写入 Ontology/Memory 或应建议改进的点，产出 memory/knowledge/ontology/evolution 候选交给对应治理层，**不直接负责治理写入**；低频经验不打扰、不裸写。
+15. **无价值 → NO_ACTION**。
 
 ## Decision Rules
 
