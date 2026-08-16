@@ -37,7 +37,7 @@ x-agent-os:
 
 ## 3. 接入必做项
 
-1. **副作用动作前**调 Permission Gate（`permission.py check` 或 orchestrator route `--action`）。
+1. **副作用动作前**做权限判断（permission-security 治理 Skill，并遵守 OpenClaw native policy/approval）。
 2. **后果性工作完成前**提供验证证据（artifact/状态/外部确认）。
 3. **经验沉淀**走 memory/knowledge-governance，不裸写。
 4. **重复失败**上报 self-evolution candidate，不自改安全策略。

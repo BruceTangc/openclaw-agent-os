@@ -4,7 +4,7 @@
 
 ## 1. 动作分级（L0-L4，唯一真值）
 
-与 `skills/permission-security/scripts/permission.py` 一致：
+与 `permission-security` 治理 Skill 一致：
 
 | 级别 | 含义 | 示例动作 | 默认决策 |
 |:--|:--|:--|:--|
@@ -18,15 +18,12 @@
 
 **位置：** orchestrator route 分发前 / 任何外部副作用执行前。
 
+通过 `permission-security` 治理 Skill 做级别判断，并遵守 OpenClaw native policy / approval / sandbox（最终执行边界，不建立独立 Permission Runtime）：
+
 ```
-permission.py check --json '{
-  "action": "send",
-  "resource_type": "message",
-  "external_side_effect": "EXTERNAL",
-  "scope": {...},
-  "authorized": false
-}'
-→ { "decision": "ask", "level": "L2", "requires_approval": true }
+判断输入 (permission-security):
+  action: "send", resource_type: "message", external_side_effect: "EXTERNAL"...
+→ { "level": "L2", "requires_approval": true, "decision": "ask" }
 ```
 
 - L2+ 无授权 → `blocked`，不得分发执行。

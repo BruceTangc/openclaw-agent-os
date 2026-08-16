@@ -10,7 +10,8 @@
 - [ ] **OpenClaw 原生优先**：复用 agent loop / tool wiring / prompt assembly / session / skills，不重复造。
 - [ ] **统一执行链**：Intake → Context → Goal/Task → Decision → Permission → Action → Verification → Evaluation → Writeback → Evolution。
 - [ ] **统一决策词汇表**：IGNORE/OBSERVE/QUEUE/SUGGEST/PREPARE/EXECUTE/ASK/ESCALATE/DENY。
-- [ ] **统一权限分级**：L0-L4（permission.py）。
+- [ ] **统一权限分级**：L0-L4（permission-security 治理 Skill）。
+  - 注意：不建立独立 permission Runtime；OpenClaw native policy / approval / sandbox 才是最终执行边界。
 
 ## 2. 单 Skill 检查
 

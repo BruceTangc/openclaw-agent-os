@@ -57,7 +57,7 @@ Trigger (OpenClaw: user/heartbeat/cron/hook)
 x-agent-os:
   protocol_version: "1.2"
   trigger: "user|heartbeat|cron|hook"        # Trigger 由外部/OpenClaw 提供
-  permissions:                               # L0-L4 声明 (permission.py --classify)
+  permissions:                               # L0-L4 声明 (permission-security)
     - action: "read"      # L0
     - action: "send"      # L2 (默认需确认)
     - action: "delete"    # L3 (默认需审批)
@@ -67,7 +67,7 @@ x-agent-os:
 ```
 
 **必须做的：**
-- 副作用动作前调用 Permission Gate（`permission.py check` 或 orchestrator route `--action`）。
+- 副作用动作前做权限判断（permission-security 治理 Skill，遵守 OpenClaw native policy/approval）。
 - 后果性工作结束声明"完成"前，提供验证证据（artifact、状态、外部确认）。
 - 经验沉淀走 memory/knowledge-governance，不直接裸写。
 - 重复失败走 self-evolution candidate，不自改安全策略。
@@ -93,9 +93,6 @@ x-agent-os:
 | [VERIFICATION-PROTOCOL.md](VERIFICATION-PROTOCOL.md) | V0-V4 验证分级、证据要求、PASS/PARTIAL/FAIL/UNKNOWN |
 | [MEMORY-PROTOCOL.md](MEMORY-PROTOCOL.md) | 写入选判据、晋升路径、优先级、矛盾保留 |
 | [EVOLUTION-PROTOCOL.md](EVOLUTION-PROTOCOL.md) | 进化证据、循环、授权边界、禁止项 |
-| [SKILL-INTEGRATION.md](SKILL-INTEGRATION.md) | 业务 Skill 接入协议（x-agent-os 声明块、4层分类） |
-| [HEARTBEAT-CRON-POLICY.md](HEARTBEAT-CRON-POLICY.md) | Trigger 边界：Heartbeat/Cron/Hook 只是触发，Proactive 是决策层 |
-| [PROTOCOL-CHECKLIST.md](PROTOCOL-CHECKLIST.md) | 逐文件审计清单（防跑偏） |
 | [SKILL-INTEGRATION.md](SKILL-INTEGRATION.md) | 业务 Skill 接入协议（x-agent-os 声明块、4层分类） |
 | [HEARTBEAT-CRON-POLICY.md](HEARTBEAT-CRON-POLICY.md) | Trigger 边界：Heartbeat/Cron/Hook 只是触发，Proactive 是决策层 |
 | [PROTOCOL-CHECKLIST.md](PROTOCOL-CHECKLIST.md) | 逐文件审计清单（防跑偏） |
