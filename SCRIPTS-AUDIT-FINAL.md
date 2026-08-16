@@ -34,3 +34,12 @@ self-evolution/SKILL.md 声明的 4 条铁律（只做发现→提改进→验�
 **可以正式冻结。**
 
 （本文件与 DEEP-AUDIT.md 共同构成 Agent OS v1.2 的完整验收存档。）
+
+## 配置层审计（补充，2026-08-16 11:57）
+
+- **11 个 `_meta.json`**：name 全部与目录对齐，version 统一 `1.2.0` ✅
+- **11 个 SKILL.md frontmatter**：`name` 与目录一致，`description` <160 字符 ✅
+- **x-agent-os 声明全库一致**：`protocol_version: "1.2"` + `layer: "core"`（11/11）✅
+
+**配置层通过。** 至此 scripts/ + 配置 + schemas/ + tests/ 四层全部审计完成，
+Agent OS v1.2 满足最终冻结条件。
