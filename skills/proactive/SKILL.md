@@ -47,6 +47,7 @@ version: 1.2.0
 本 Skill 只负责生命周期中的 **Decision（决策）** 节点：被唤醒后判断是否值得做。系统其余环节由其他 Skill / OpenClaw 承担，本 Skill 不自行跑完整生命周期。
 
 1. **唤醒打点**：`state --op wake`（单实例锁，过近且无新 Signal → NO_ACTION）。
+2. **读检查源**：按 OpenClaw heartbeat prompt，读工作区 `HEARTBEAT.md`（每轮该检查什么）+ `proactive-registry.yaml`（当前启用的主动关注项），只筛 `enabled: true` 且本轮条件满足的项目；不因项目存在就全部执行。
 2. **读状态**：State + Ontology + Queue + 最近失败（只读相关，不全量）。
 3. **Intake**：摄入新 Signal（`signal --json`）。
 4. **Cheap Filter**：重复?已处理?过期?低价值?无行动空间?超出关注范围?普通信息?噪音? → 直接 IGNORE。

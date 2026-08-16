@@ -83,6 +83,7 @@ OpenClaw Tools / Sub-agents / Skills / Runtime
 | [SKILL-INTEGRATION.md](docs/SKILL-INTEGRATION.md) | 业务 Skill 接入协议（x-agent-os 声明块） |
 | [HEARTBEAT-CRON-POLICY.md](docs/HEARTBEAT-CRON-POLICY.md) | Trigger 边界；Proactive 是决策层不是定时器 |
 | [PROTOCOL-CHECKLIST.md](docs/PROTOCOL-CHECKLIST.md) | 逐文件审计清单 |
+| [templates/](templates/) | 通用主动模板：HEARTBEAT.md + proactive-registry.yaml（让 Proactive 知道每轮检查什么） |
 
 ## Design guardrails
 
