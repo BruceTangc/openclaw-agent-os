@@ -1,6 +1,9 @@
-# OpenClaw Agent OS v1.1
+# OpenClaw Agent OS v1.2
 
 Governance, decision and workflow policy layer around OpenClaw's native runtime.
+
+> 官方协议：见 [docs/PROTOCOL.md](docs/PROTOCOL.md)（统一行为协议）。
+> 冻结存档：见 [FINALIZE-REPORT.md](FINALIZE-REPORT.md)、[DEEP-AUDIT.md](DEEP-AUDIT.md)、[SCRIPTS-AUDIT-FINAL.md](SCRIPTS-AUDIT-FINAL.md)。
 
 > **Design rule:** OpenClaw native runtime first. These skills must **not** create
 > parallel runtimes for memory, context, tasks, scheduling, events, agents or permissions.

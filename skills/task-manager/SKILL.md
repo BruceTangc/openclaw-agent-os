@@ -53,7 +53,7 @@ task:
   project_id: null
   parent_task_id: null
   type: ["research"]
-  status: "inbox"
+  status: "INBOX"
   priority: { level: "P0|P1|P2|P3|P4", score: 0 }
   owner: { type: "user|agent|skill", id: null }
   assignee: { type: "agent|skill|user", id: null }
