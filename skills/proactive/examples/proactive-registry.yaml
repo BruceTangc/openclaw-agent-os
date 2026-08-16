@@ -1,0 +1,85 @@
+# Proactive Registry — 主动关注项清单
+# 告诉 Proactive "系统目前主动关心哪些东西"。这不是 Scheduler，只是给模型读的候选关注源。
+# 周期性确点任务用 cron；状态变化用 Event；这里是"唤醒后该关注什么"。
+
+version: 1
+
+proactive:
+  - id: user-commitments
+    name: 用户承诺
+    enabled: true
+    priority: critical
+    trigger:
+      type: heartbeat
+    check:
+      - followup_required
+      - due_soon
+      - waiting_confirmation
+
+  - id: active-tasks
+    name: 当前任务
+    enabled: true
+    priority: high
+    trigger:
+      type: heartbeat
+    check:
+      - in_progress
+      - failed_or_interrupted
+      - blocked
+
+  - id: subagent-results
+    name: 子 Agent 结果
+    enabled: true
+    priority: high
+    trigger:
+      type: heartbeat
+    check:
+      - completed
+      - failed
+      - blocked
+
+  - id: failed-work
+    name: 失败 / 异常
+    enabled: true
+    priority: high
+    trigger:
+      type: heartbeat
+    check:
+      - recent_failure
+      - repeated_failure
+      - blocked
+      - obvious_risk
+
+  # ---- 业务主动关注项（以后按需增加，启用时填 type 与具体 check）----
+  # 示例：
+  # - id: singbox-subscription
+  #   name: singbox 订阅状态
+  #   enabled: false        # 想启用改成 true
+  #   priority: high
+  #   trigger:
+  #     type: heartbeat     # 或 event / cron
+  #   check:
+  #     - subscription_failed
+  #     - new_proxy_link_needed
+  #
+  # - id: machining-opportunities
+  #   name: 机械加工报价机会
+  #   enabled: false
+  #   priority: normal
+  #   trigger:
+  #     type: heartbeat
+  #   check:
+  #     - new_inquiry
+  #     - quotient_needs_followup
+  #
+  # - id: a-share-watchlist
+  #   name: A股/自选异常
+  #   enabled: false
+  #   priority: high
+  #   trigger:
+  #     type: cron            # 交易时段更合适用 cron
+  #     schedule: "*/30 9-15 * * 1-5"
+  #   check:
+  #     - position_anomaly
+  #     - earnings_risk
+  #     - big_move
