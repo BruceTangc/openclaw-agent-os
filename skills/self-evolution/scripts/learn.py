@@ -1466,8 +1466,8 @@ def show_status(trail):
     ready = find_patterns_ready(trail)
     if ready:
         print(f"\n🚀 Patterns ready for promotion:")
-        for r in ready:
-            print(f"   • [{r.get('id','?')}] {r.get('summary','')[:60]} → {suggest_promotion(r)}")
+        for pk, count, entry in ready:
+            print(f"   • [{entry.get('id','?')}] {entry.get('summary','')[:60]} → {suggest_promotion(entry)}")
 
 
 def aggregate_bus_events(trail, lock=True):
