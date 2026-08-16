@@ -61,7 +61,7 @@ version: 1.2.0
    - 冗余吗？（重复则跳过或合并）
    - 允许存吗？（Secret/敏感不存）
    - 会过期吗？（易过期 → daily 层，不进 durable）
-3. **分层决策**：判定写入 session / daily / durable / user-profile 哪一层。
+3. **分层决策**：判定写入 session / daily / durable / user-profile 哪一层。（**注**：这是 Agent OS 的**语义分类**，不是 OpenClaw 的四个物理 memory store；物理持久化统一走 OpenClaw native memory 设施，本分类只决定内容的语义归属与生命周期。）
 4. **晋升判定**（见 Decision Rules）。
 5. **矛盾检查**：与现有条目冲突时保留、标注，不静默覆盖。
 6. **写后检查**：可溯源？重复？敏感？需回写 ontology/knowledge？
@@ -70,6 +70,8 @@ version: 1.2.0
 ## Decision Rules
 
 **写入判定核心**：只有「稳定 ∧ 有用 ∧ 确定 ∧ 可溯源 ∧ 非冗余 ∧ 允许存」才持久化；否则留在 session 或丢弃。
+
+**显式指令优先（高优先级入口）**：用户明确要求记住/删除，优先于普通启发式——例如「记住以后所有报价都要含利润率」。即使只出现一次、稳定度尚未跨会话确认，也进入 candidate / user-profile（`Explicit remember/delete > normal promotion heuristic`）。
 
 **分层表**：
 
