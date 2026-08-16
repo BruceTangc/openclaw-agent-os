@@ -1,15 +1,5 @@
 {
   "name": "proactive",
-  "version": "1.1.0",
-  "description": "[Agent OS v1.1] OpenClaw 主动智能中枢 (Agent OS v1.1) (V1.1)。负责主动感知、信号筛选、机会发现、优先级判断、任务规划、低风险自主执行、结果验证、主动提醒与反馈学习。调用已有 Skill/Agent 完成行动，不重复实现具体能力。Cron 只负责唤醒，不负责决定做什么。",
-  "author": "brucetangc",
-  "homepage": "https://github.com/BruceTangc/tts-openclaw-skills-public",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/BruceTangc/tts-openclaw-skills-public.git",
-    "directory": "proactive"
-  },
-  "dependencies": {
-    "python": ">=3.8"
-  }
+  "version": "1.2.0",
+  "description": "主动智能中枢（Agent OS v1.2 核心模块）。主动感知、信号筛选、机会/风险/目标偏移发现、优先级判断、低风险自主执行、结果验证、反馈学习。Cron/Heartbeat 只唤醒，Proactive 决定是否值得做。"
 }

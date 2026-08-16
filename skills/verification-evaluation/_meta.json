@@ -1,6 +1,5 @@
 {
   "name": "verification-evaluation",
-  "version": "1.1.0",
-  "description": "验证与评估策略层（Agent OS v1.1）。区分工具成功与任务成功：verify(执行/工件/数据/范围/证据/安全) + evaluate(目标/正确性/完整性/质量)；状态 PASS/PARTIAL/FAIL/UNKNOWN；失败→修复→预算内重试→升级。",
-  "author": "brucetangc"
+  "version": "1.2.0",
+  "description": "验证与评估策略层（Agent OS v1.2 核心模块）。区分工具成功与任务成功；V0-V4 分级；PASS/PARTIAL/FAIL/UNKNOWN；失败→修复→重试→升级。"
 }

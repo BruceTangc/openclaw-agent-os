@@ -1,15 +1,5 @@
 {
   "name": "task-manager",
-  "version": "1.1.0",
-  "description": "[Agent OS v1.1] OpenClaw Agent Task Operating System (V1.1)。统一管理用户任务、Agent任务、Proactive产生的任务和Workflow任务，负责任务生命周期、优先级、依赖、分解、分配、状态、等待、阻塞、重试、超期、Follow-up、去重、Checkpoint、验证、归档、指标，并与 Proactive、Orchestrator、Ontology、Memory、Self-Evolution 协同。不是普通 Todo Skill。",
-  "author": "brucetangc",
-  "homepage": "https://github.com/BruceTangc/tts-openclaw-skills-public",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/BruceTangc/tts-openclaw-skills-public.git",
-    "directory": "task-manager"
-  },
-  "dependencies": {
-    "python": ">=3.8"
-  }
+  "version": "1.2.0",
+  "description": "任务操作系统（Agent OS v1.2 核心模块）。统一管理任务生命周期、优先级、依赖、状态、Follow-up、去重、Checkpoint、指标；管「任务是什么与状态」，Orchestrator 管执行。"
 }

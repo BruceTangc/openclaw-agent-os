@@ -1,6 +1,5 @@
 {
   "name": "ontology",
-  "version": "1.1.0",
-  "description": "Agent OS v1.1 Production 模块（含本地实现）",
-  "author": "brucetangc"
+  "version": "1.2.0",
+  "description": "Ontology 语义知识层（Agent OS v1.2 核心模块）。受控实体/关系/状态语义建模，别名缓存、遍历守卫、schema 校验、影响分析，与 self-evolution 双向对接。"
 }

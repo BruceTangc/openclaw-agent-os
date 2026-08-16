@@ -1,15 +1,5 @@
 {
   "name": "orchestrator",
-  "version": "1.1.0",
-  "description": "[Agent OS v1.1] OpenClaw 总调度中枢 (V1.0)。负责理解目标、拆解复杂任务、能力匹配、Agent/Skill 路由、依赖图、并行/串行执行、上下文交接、权限检查、资源预算、失败重试、重新规划、结果验证、结果合成和执行反馈。与 Proactive 配合：Proactive 决定是否值得做，Orchestrator 决定怎么做、谁来做、按什么顺序做。不重复实现具体业务能力。",
-  "author": "brucetangc",
-  "homepage": "https://github.com/BruceTangc/tts-openclaw-skills-public",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/BruceTangc/tts-openclaw-skills-public.git",
-    "directory": "orchestrator"
-  },
-  "dependencies": {
-    "python": ">=3.8"
-  }
+  "version": "1.2.0",
+  "description": "总调度中枢（Agent OS v1.2 核心模块）。理解目标、拆解任务、能力匹配、路由、依赖图、权限/风险门、执行、重试、重新规划、结果合成。Proactive 决定是否值得做，Orchestrator 决定怎么做。"
 }
