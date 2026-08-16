@@ -175,7 +175,7 @@ x-agent-os:
 | [ACTION-PROTOCOL.md](ACTION-PROTOCOL.md) | 动作分级 L0-L4、Permission Gate、幂等 |
 | [VERIFICATION-PROTOCOL.md](VERIFICATION-PROTOCOL.md) | V0-V4 验证分级、证据要求、PASS/PARTIAL/FAIL/UNKNOWN |
 | [MEMORY-PROTOCOL.md](MEMORY-PROTOCOL.md) | 写入选判据、晋升路径、优先级、矛盾保留 |
-| [EVOLUTION-PROTOCOL.md](EVOLUTION-PROTOCOL.md) | 进化证据、G1-G6 最小单位、多级审批流 |
+| [EVOLUTION-PROTOCOL.md](EVOLUTION-PROTOCOL.md) | Evidence→Candidate 进料边界、6 类触发器、G1-G6 最小单位、多级审批流（evidence-driven, not schedule-driven） |
 | [SKILL-INTEGRATION.md](SKILL-INTEGRATION.md) | 业务 Skill 接入协议（x-agent-os 声明块、Protocol Contract、4层分类） |
 | [HEARTBEAT-CRON-POLICY.md](HEARTBEAT-CRON-POLICY.md) | Trigger 边界：Heartbeat/Cron/Hook 只是触发，Proactive 是决策层 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | v1.3 执行模型图（Fast/Full Path 分流、失败闭环、Evolution 独立循环） |

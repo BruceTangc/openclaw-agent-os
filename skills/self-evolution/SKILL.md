@@ -1,8 +1,8 @@
 ---
 name: self-evolution
 description: 受控发现重复问题、提出并验证改进、请求批准后应用；绝不自行改权限/安全/Runtime。经验沉淀时触发。
-metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
-version: 1.2.0
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.3", "layer": "core" } }
+version: 1.3.0
 ---
 
 
@@ -38,11 +38,15 @@ version: 1.2.0
 
 ## When to Activate
 
-- 任务收尾 / 踩坑 / 成功后记录经验
-- Global Learning Cycle（learn.py --cycle，每日低频）
+- 收到 **Evolution Candidate**（来自 verification / evaluation / proactive / 用户反馈）——**主触发**
+- Evidence 巡检（learn.py --cycle）：低频扫描近期失败/纠正/低效，**只负责发现 Candidate，不直接触发修改**
+  （evolution is evidence-driven, not schedule-driven——巡检不是定时进化）
 - 验证到期、晋升检查、遗忘检查、矛盾检测
 - 需要生成 Skill 改进提案 / 决策记忆 / 降级 / 回滚
 - 多 Agent 场景：各 Agent 上报 Learning Ledger，Global Cycle 聚合
+
+> **进料边界（v1.3）**：本 Skill 只消费 **Evolution Candidate**，不直接接受任意 Evidence。
+> 原始 Evidence（一次失败/纠正/观测）必须先过 Classification，判定“有进化价值”才成为 Candidate。
 
 ## Inputs
 
@@ -52,8 +56,12 @@ version: 1.2.0
 
 ## Core Procedure
 
-本 Skill 只负责生命周期末尾的 **Evolution（进化）** 节点：受控地发现问题。系统其余节点由其他 Skill 承担，本 Skill 不跑完整 loop。
+本 Skill 只负责生命周期末尾的 **Evolution（进化）** 节点：受控地判断“是否值得改变系统、改变什么”。
+系统其余节点由其他 Skill 承担，本 Skill 不跑完整 loop。
 
+0. **Gate（进料判定）**：只接受 Evolution Candidate；原始 Evidence 先分类——
+   有进化价值（重复失败/重复纠正/稳定新需求/流程低效/系统性漏洞/用户明确要求）→ 进；
+   一次性/噪音/无复用价值 → 拒（不触发修改）。
 1. **Obtain（捕获）**：收经验（含中间态），先入 candidate，不当作真理。
 2. **Detect（检测）**：correction/error/success/intermediate/feature/knowledge_gap。
 3. **Classify（分类）**：user_preference / user_constraint / project_fact / project_decision / agent_knowledge / tool_knowledge / workflow / behavior_rule / universal_principle / skill_improvement / temporary_context / intermediate_state / noise。
@@ -68,7 +76,9 @@ version: 1.2.0
 
 ## Decision Rules
 
-**允许的进化证据**：已验证失败、重复用户纠正、重复评估弱点、反复低效、稳定新需求。**单次未验证失败不得触发修改**。
+**进料（v1.3）**：只接受 Evolution Candidate；Evidence 必须先过 Classification（见 Core Procedure Gate）。
+
+**允许的进化证据**：已验证失败、重复用户纠正、重复评估弱点、反复低效、稳定新需求、Verification 系统性漏洞、用户明确要求改进。**单次未验证失败不得触发修改**。
 
 **允许修改目标**：Skill 指令、工作流、评估标准、检索优先级、安全配置的**建议**（仅建议）。
 

@@ -128,6 +128,9 @@ Context → Decision → Action → Verification → Evaluation → Writeback
 ```
 
 - 触发条件：已验证失败（≥2 可复现）、重复用户纠正、重复评估弱点、反复低效、稳定新需求。
+- **进料边界**：只接受 Evolution Candidate，不直接接受任意 Evidence——原始 Evidence 必须先过
+  Classification 判定“有进化价值”（一次性纠正/噪音 → 拒）。
+  **Evolution is evidence-driven, not schedule-driven**：Heartbeat/Proactive 只负责发现 Evidence，不直接触发进化。
 - 最小单位 G1-G6：G1 指令措辞 → G2 示例模板 → G3 工作流 → G4 评估标准 → G5 协议 → G6 安全/权限/Runtime。
 - 审批：G1-G2 走授权策略；G3-G6 进 review queue；G5-G6 必须人工显式批准（详见 EVOLUTION-PROTOCOL.md）。
 - 边界：安全规则永不自行修改；不为提高完成率削弱安全。

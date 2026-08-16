@@ -1,23 +1,71 @@
 # Evolution Protocol
 
-> Agent OS v1.2 Core Protocol 之一。受控的、有证据的自我改进循环。边界：安全规则永不自行修改。
+> Agent OS v1.3 Core Protocol 之一。受控的、有证据的自我改进循环。边界：安全规则永不自行修改。
+>
+> **核心原则：Evolution is evidence-driven, not schedule-driven.**
+> 不是"每天 3 点进化"，也不是"每完成一个任务就进化"；
+> 而是 `Evidence → Candidate → Evolution`。Heartbeat/Cron 只是**发现 Evidence 的触发器**，
+> 不是 Evolution 本身的触发条件。
 
-## 1. 进化候选的产生来源（Candidate Sources）
+## 1. 进料边界（Evidence → Candidate，关键）
 
-候选不是凭空出现的，必须来自以下渠道之一（按优先级）：
+**Evolution 只接受 Evolution Candidate，不直接接受任意 Evidence。**
 
-| 来源 | 说明 | 示例 |
+```
+Evidence (来自 Verification / Evaluation / Proactive / User Feedback / 观测)
+  → Evidence Classification (判断: 有进化价值吗?)
+       ├─ NO  → 结束 (一次性纠正/噪音/无复用价值, 不触发)
+       └─ YES → Evolution Candidate
+                   → Evolution (判断: 是否值得改变系统, 改变什么)
+```
+
+- **Evidence** = 原始事实：一次失败、一次纠正、一个观测。
+- **Candidate** = 经过分类、判定"有进化价值"的 Evidence。
+- 未分类的 Evidence 不得直接触发修改——防止 evolution 变成"看到什么都想改系统"。
+
+## 2. Evolution Candidate 触发器（6 类）
+
+| # | 触发器 | 说明 | 示例 |
+|:--|:--|:--|:--|
+| ① | 重复失败 | 同类任务重复 FAIL / PARTIAL（≥2 且可复现） | 连续 3 次总结 PDF 漏表格 |
+| ② | 重复纠正 | 用户/Agent 多次修正同一问题 | 两次纠正"不要用表格" |
+| ③ | 稳定新需求 | 持续、稳定的新行为要求 | 跨 ≥2 个任务都要"转 PDF" |
+| ④ | 流程低效 | 同一任务长期存在重复劳动 | 每次都要手动补上下文 |
+| ⑤ | Verification 暴露系统性漏洞 | 某 Skill/Procedure 经常无法通过验证 | 报价单常缺材料利用率检查 |
+| ⑥ | 用户明确要求改进 | "以后都这样做"/"记住这个流程"/"加入你的方法" | 用户明确指定新规则 |
+
+**禁止的来源**：单次偶发失败、无证据的主观感觉、为提高完成率而造的"改进"。
+
+## 3. 触发者分工（谁发现问题，谁决定改变）
+
+| 角色 | 职责 | 输出 |
 |:--|:--|:--|
-| 已验证失败 | 有证据、非单次偶发的失败（重复 ≥2 且可复现） | 同一任务连续 3 次超时 |
-| 重复的用户纠正 | 用户对同类输出纠正 ≥2 次 | 两次纠正"不要用表格" |
-| 重复的评估弱点 | evaluation 反复标记同一维度不合格 | 多次 PARTIAL 均因"缺证据" |
-| 反复出现的低效 | 同一流程反复绕路/多步 | 每次都要手动补上下文 |
-| 稳定出现的新需求 | 跨 ≥2 个任务出现的同类需求 | 多次需要"把报告转 PDF" |
-| 性能瓶颈（可选） | 可量化的延迟/token 异常 | proactive 决策 p95 超 2s |
+| Verification / Evaluation | 任务执行中发现失败/弱点 | Evidence |
+| Proactive / Heartbeat | 检查长期 Evidence（近期失败/频繁纠正/流程重复） | Evidence → Candidate |
+| 用户反馈 | "你每次报价都漏材料利用率" | Evidence → Candidate |
+| **Evolution** | 判断"是否值得改变系统、应该改变什么" | Candidate → Proposal / Apply |
 
-**禁止的候选来源**：单次偶发失败、无证据的主观感觉、为提高完成率而造的"改进"。
+**边界**：
+- Heartbeat **不直接执行 evolution**；正确路径是 `Heartbeat → Proactive → 检查长期 Evidence → 产生 Candidate → Evolution`。
+- Proactive 只负责**发现**，Evolution 只负责**判断**——二者通过 Candidate 交接，不越界。
 
-## 2. 进化的最小单位（Change Granularity）
+## 4. Candidate 的修改目标分类（Classify）
+
+Candidate 进入 Evolution 后，先分类"改什么"：
+
+```
+preference       → 用户偏好 (USER)
+memory           → 经验记忆 (memory-governance)
+knowledge        → 可复用声明 (knowledge-governance)
+ontology         → 语义关系 (ontology)
+skill procedure  → Skill 工作流/指令 (G1-G3)
+AGENTS/protocol  → 行为规范/协议 (G5)
+tooling          → 工具/脚本改进 (G3)
+```
+
+分类决定走哪条治理路径与审批级别（见 §5）。
+
+## 5. 进化的最小单位（Change Granularity）
 
 进化按"影响面从小到大"分级，**每次只改最小单位**，禁止一次改多个维度：
 
@@ -35,7 +83,7 @@
 - 高一级的修改包含低一级的全部影响面（如改 G4 评估标准需连带 G1-G3 的回归检查）。
 - 无法归入以上级别的变更 → 默认按最高级别处理。
 
-## 3. 审批流（Approval Flow）
+## 6. 审批流（Approval Flow）
 
 按变更级别分两级审批，**不是单节点**：
 
@@ -60,7 +108,7 @@ G3-G6（工作流 / 评估 / 协议 / 安全）
 - 被拒的候选保留记录（含拒绝原因），不静默丢弃。
 - 紧急修复（如安全漏洞）可走快速通道，但事后必须补完整审批记录。
 
-## 4. 循环
+## 7. 循环
 
 ```
 Observe → Verify → Diagnose → Propose → Test → Evaluate → Approve → Apply → Regression check
@@ -68,7 +116,7 @@ Observe → Verify → Diagnose → Propose → Test → Evaluate → Approve �
 
 每一步都必须有证据；单次未验证失败**不得**触发修改。
 
-## 5. 允许修改的目标
+## 8. 允许修改的目标
 
 - Skill 指令（G1-G2）
 - 示例/模板（G2）
@@ -77,7 +125,7 @@ Observe → Verify → Diagnose → Propose → Test → Evaluate → Approve �
 - 检索优先级（G2-G3）
 - 安全配置的**建议**（仅建议，不自动生效，G5-G6 需人工）
 
-## 6. 禁止自行修改（必须人工审批）
+## 9. 禁止自行修改（必须人工审批）
 
 以下任何变更都需要显式的人工批准（除非已有授权策略）：
 
@@ -92,7 +140,7 @@ Observe → Verify → Diagnose → Propose → Test → Evaluate → Approve �
 > 绝不为"提高完成率"而削弱安全。
 > 绝不因"减少上下文"而删除有用知识。
 
-## 7. 不允许的行为
+## 10. 不允许的行为
 
 - 单次失败 → 立即自我修改
 - 削弱安全以换取完成
@@ -100,8 +148,10 @@ Observe → Verify → Diagnose → Propose → Test → Evaluate → Approve �
 - 绕过 Permission Gate 做"修复"
 - 自动批准自己的变更
 - 一次进化同时改多个 G 级别（跳级）
+- 用未分类的 Evidence 直接触发修改（必须先过 Candidate 判定）
+- 把 Heartbeat/定时唤醒当作 Evolution 触发条件（evidence-driven, not schedule-driven）
 
-## 8. 输出
+## 11. 输出
 
 - 变更候选必须有：问题、证据、提议变更、预期影响、回归检查、G 级别、审批路径。
 - 高影响变更（G3+）进入 review queue（人工）；低风险指令改进（G1-G2）可走已有授权策略。
