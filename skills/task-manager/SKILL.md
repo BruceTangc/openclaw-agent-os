@@ -19,6 +19,8 @@ version: 1.2.0
 - 优先级 P0–P4 / 截止 / 依赖 / Parent-Child / Owner-Assignee
 - Waiting/Blocked/Retry/Follow-up/超期/停滞检测
 - Checkpoint / 幂等 / 崩溃恢复 / 归档 / 指标
+  （注：以上三项 Task Manager 只做**检测 + 状态判断 + 策略生成**；真正的重新执行/recovery/重试由 OpenClaw
+  Background Tasks / Task Flow / Orchestrator 落地，本 skill 不自行恢复任务。）
 - 联动 Proactive/Orchestrator/Ontology/Memory/Self-Evolution
 
 ## Non-Goals

@@ -64,7 +64,7 @@ version: 1.2.0
 - **State** = Proactive 的**语义状态**（上次唤醒时点、注意力预算、目标对齐），不是执行运行时状态机。
 - **Queue** = **语义候选集合**（哪些事值得关注/入列），不是实际执行队列；实际调度由 OpenClaw Heartbeat/Cron/Task Flow 驱动。
 - **Bus/输入通道** = 复用 OpenClaw 的 event/input channel，Proactive 自己**不能成为事件总线**。
-14. **Writeback / Evolution**：更新 Ontology/Memory，长期改进→Evolution Candidate。
+14. **产出 Writeback/Evolution candidate**：识别应写入 Ontology/Memory 或应建议改进的点，产出 memory/knowledge/ontology/evolution 候选交给对应治理层，**不直接负责治理写入**；低频经验不打扰、不裸写。
 15. **无价值 → NO_ACTION**。
 
 ## Decision Rules

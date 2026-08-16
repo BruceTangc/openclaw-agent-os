@@ -22,6 +22,10 @@ version: 1.2.0
 - 来源优先级与事实/推断区分
 - 矛盾处理、去重、过期清理、敏感信息拦截
 
+**Multi-Agent 边界**：Agent-local memory（某 Agent 私有）≠ user-profile（用户事实/全局偏好）；
+子 Agent/Worker 不得因“知道一个用户偏好”就直接写 USER/GLOBAL 层用户偏好，
+须经由主 Agent/监督者或 governance 验证（见本 SKILL Memory/Knowledge Writeback 与 MEMORY-PROTOCOL §1.1）。
+
 ## Non-Goals
 
 - 不实现存储、索引、向量召回（OpenClaw 拥有）
