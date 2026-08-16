@@ -1,11 +1,10 @@
 ---
 name: knowledge-governance
-description: 知识治理策略层（Agent OS v1.2 核心模块）。管理可复用知识为带来源/新鲜度/不确定性的持久声明（subject/claim/evidence/confidence/freshness/validity/status）；矛盾保留不静默覆盖；历史标记 obsolete/disputed。OpenClaw 拥有知识库存储，本模块只提供治理政策，不建知识 runtime。在知识沉淀、声明提取、矛盾处理、知识过时清理时触发。
+description: 把可复用知识治理为带来源/新鲜度/置信度的持久声明，处理矛盾保留与历史标记。知识录入或冲突时触发。
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
 version: 1.2.0
-x-agent-os:
-  protocol_version: "1.2"
-  layer: "core"
 ---
+
 
 # Knowledge Governance
 
@@ -47,7 +46,7 @@ x-agent-os:
 
 ## Core Procedure
 
-统一执行链：Trigger → Intake → Context → Goal/Task → Decision → Permission → Action → Verification → Evaluation → Writeback → Evolution
+本 Skill 只负责生命周期中的 **Writeback（知识写入）** 节点：把可复用知识治理为持久声明。物理持久化用 OpenClaw memory/插件。
 
 1. **Intake**：来源 + 原始信息 + 提取出的声明。
 2. **Extract/Normalize**：落地为 subject/claim/evidence 结构。

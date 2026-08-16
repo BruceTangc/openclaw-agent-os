@@ -1,11 +1,10 @@
 ---
 name: proactive
-description: 主动智能中枢（Agent OS v1.2 核心模块）。负责主动感知、信号筛选、机会/风险/目标偏移发现、优先级判断、任务规划、低风险自主执行、结果验证、主动提醒与反馈学习。调用已有 Skill/Agent 完成行动，不重复实现具体能力。Cron/Heartbeat/Hook 只负责唤醒，Proactive 负责被唤醒后决定「是否值得做、做什么」。在 Heartbeat/Cron/Hook/事件唤醒后触发。
+description: 在 Heartbeat/Cron/Hook 或事件唤醒后判断是否有值得主动处理的事项，并在授权范围内采取行动或提醒。
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
 version: 1.2.0
-x-agent-os:
-  protocol_version: "1.2"
-  layer: "core"
 ---
+
 
 # Proactive
 
@@ -45,7 +44,7 @@ x-agent-os:
 
 ## Core Procedure
 
-统一执行链：Trigger → Intake → Context → Goal/Task → Decision → Permission → Action → Verification → Evaluation → Writeback → Evolution
+本 Skill 只负责生命周期中的 **Decision（决策）** 节点：被唤醒后判断是否值得做。系统其余环节由其他 Skill / OpenClaw 承担，本 Skill 不自行跑完整生命周期。
 
 1. **唤醒打点**：`state --op wake`（单实例锁，过近且无新 Signal → NO_ACTION）。
 2. **读状态**：State + Ontology + Queue + 最近失败（只读相关，不全量）。

@@ -1,11 +1,10 @@
 ---
 name: summarize
-description: 通用信息压缩与结构化提取（Agent OS v1.2 核心模块）。把大文本/网页/PDF/会话/研究压成有用信息：提取事实、声明、决策、行动项、风险、实体，产出 memory/ontology/self-evolution 候选。不替代 Context Engine，不直接改下游系统。在总结/压缩/行动项提取/研究综合/Agent 交接时触发。
+description: 把大段/杂讯材料压缩为决策可用的信息，保留事实/数字/日期，区分事实与推断。总结文本/网页/研究时触发。
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
 version: 1.2.0
-x-agent-os:
-  protocol_version: "1.2"
-  layer: "core"
 ---
+
 
 # Summarize
 
@@ -46,7 +45,7 @@ x-agent-os:
 
 ## Core Procedure
 
-统一执行链：Trigger → Intake → Context → Goal/Task → Decision → Permission → Action → Verification → Evaluation → Writeback → Evolution
+本 Skill 只负责生命周期中的 **Context 预处理** 节点：把材料压缩为决策可用信息。属于辅助能力，不属于主生命周期必跑环节。
 
 1. **内容提取**：提取正文，清洗导航/广告/页脚噪音。
 2. **结构识别 + 语义分块**：按章节/标题/段落边界；硬切需 10–15% overlap。

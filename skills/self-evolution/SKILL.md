@@ -1,11 +1,10 @@
 ---
 name: self-evolution
-description: 多 Agent 学习操作系统（Agent OS v1.2 核心模块）。集中式经验捕获（含中间态）、共享/项目/Agent 记忆、Agent Registry、Learning Bus、基于置信度+证据衰减的学习、决策记忆、带双向反馈的 Skill 进化、验证、矛盾检测与解决、降级、遗忘、治理与回滚。只做 发现问题→提出改进→验证→请求批准→应用；绝不自改权限/安全/凭证/外部副作用/Runtime。在经验沉淀、学习循环、Skill 改进、矛盾处理时触发。
+description: 受控发现重复问题、提出并验证改进、请求批准后应用；绝不自行改权限/安全/Runtime。经验沉淀时触发。
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
 version: 1.2.0
-x-agent-os:
-  protocol_version: "1.2"
-  layer: "core"
 ---
+
 
 # Self-Evolution
 
@@ -21,7 +20,7 @@ x-agent-os:
 - 学习分类 + 作用域（TASK/AGENT/PROJECT/USER/GLOBAL，默认最窄）
 - 置信度 + 证据/时间衰减
 - 矛盾检测与解决、降级（demotion）、遗忘（forgetting）
-- Agent Registry + Learning Bus（受控跨 Agent 学习）
+- Agent Registry + Learning Inbox（受控跨 Agent 学习）
 - Skill 进化（双向反馈）+ 决策记忆
 - 治理（auto-apply / proposal / approval）+ 验证 + 回滚
 
@@ -43,17 +42,17 @@ x-agent-os:
 - Global Learning Cycle（learn.py --cycle，每日低频）
 - 验证到期、晋升检查、遗忘检查、矛盾检测
 - 需要生成 Skill 改进提案 / 决策记忆 / 降级 / 回滚
-- 多 Agent 场景：各 Agent 上报 Central Bus，Global Cycle 聚合
+- 多 Agent 场景：各 Agent 上报 Learning Ledger，Global Cycle 聚合
 
 ## Inputs
 
 - 经验事件（correction/error/success/intermediate_state/feature_request/knowledge_gap）
 - 来源 agent、scope、confidence、evidence
-- 已有 learning trail、Agent Registry、Central Bus pending 事件
+- 已有 learning trail、Agent Registry、Learning Ledger pending 事件
 
 ## Core Procedure
 
-统一执行链：Trigger → Intake → Context → Goal/Task → Decision → Permission → Action → Verification → Evaluation → Writeback → Evolution
+本 Skill 只负责生命周期末尾的 **Evolution（进化）** 节点：受控地发现问题。系统其余节点由其他 Skill 承担，本 Skill 不跑完整 loop。
 
 1. **Obtain（捕获）**：收经验（含中间态），先入 candidate，不当作真理。
 2. **Detect（检测）**：correction/error/success/intermediate/feature/knowledge_gap。
@@ -120,7 +119,7 @@ x-agent-os:
 
 ## Self-Evolution Feedback
 
-本模块是进化层本身：双向反馈——Skill 执行结果反哺学习置信度/重分类；学习变化触发 Skill 复用/改进/合并/新建决策。矛盾/降级通过 Learning Bus 反向通知相关 Agent。
+本模块是进化层本身：双向反馈——Skill 执行结果反哺学习置信度/重分类；学习变化触发 Skill 复用/改进/合并/新建决策。矛盾/降级通过 Learning Inbox 反向通知相关 Agent。
 
 ## Safety / Anti-Loop
 

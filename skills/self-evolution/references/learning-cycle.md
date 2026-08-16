@@ -5,7 +5,7 @@
 ## 1. 十阶段
 
 ```text
-🔌 Phase 0  Aggregate Learning Bus   聚合中央总线事件（drain → trail）
+🔌 Phase 0  Aggregate Learning Inbox   聚合中央总线事件（drain → trail）
 📁 Phase 1  Memory scan              扫描 memory 文件
 ✅ Phase 2  Verification check       待验证项检查
 🚀 Phase 3  Pattern promotion        pattern 晋升检查
@@ -18,7 +18,7 @@
 📝 Phase 10 Session summary          会话总结
 ```
 
-## 2. Phase 0：Learning Bus Drain
+## 2. Phase 0：Learning Inbox Drain
 
 读 `memory/agents/bus.json` pending 事件 → 去重（topic+content 比对 trail）→ 写 trail（source=external 初始不信任）→ 标记 resolved → 更新 bus.stats。
 

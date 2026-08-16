@@ -1,11 +1,10 @@
 ---
 name: context-orchestration
-description: 上下文编排策略层（Agent OS v1.2 核心模块）。为任务选择最小有用信息：任务类型→所需实体→记忆/知识/本体检索→去噪→紧凑上下文包。不替代 OpenClaw Context Engine。在任务开始、上下文超预算、多来源信息需要去噪组装时触发。
+description: 为任务选择最小有用的上下文（记忆/知识/Ontology/文件/工具结果），不就地加工或推断。构建任务上下文时触发。
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
 version: 1.2.0
-x-agent-os:
-  protocol_version: "1.2"
-  layer: "core"
 ---
+
 
 # Context Orchestration
 
@@ -48,7 +47,7 @@ x-agent-os:
 
 ## Core Procedure
 
-统一执行链：Trigger → Intake → Context → Goal/Task → Decision → Permission → Action → Verification → Evaluation → Writeback → Evolution
+本 Skill 只负责生命周期中的 **Context（上下文）** 节点：选最小有用信息。不加工成结论，不替代 OpenClaw Context Engine。
 
 1. **识别任务与成功标准**：明确要解决什么、怎么算完成。
 2. **识别所需实体**：涉及哪些人/项目/任务/工具/概念/关系。

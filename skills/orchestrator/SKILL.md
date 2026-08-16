@@ -1,11 +1,10 @@
 ---
 name: orchestrator
-description: 总调度中枢（Agent OS v1.2 核心模块）。负责理解目标、拆解复杂任务、能力匹配、Agent/Skill 路由、依赖图、并行/串行执行、上下文交接、权限/风险门、资源预算、失败重试、重新规划、结果验证、结果合成与执行反馈。与 Proactive 配合：Proactive 决定「是否值得做」，Orchestrator 决定「怎么做、谁来做、按什么顺序」。在任务执行、拆解、路由、结果合成时触发。
+description: 决定任务如何分解、按什么顺序、由谁执行并生成执行计划；执行走 OpenClaw 原生。拆分或路由任务时触发。
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
 version: 1.2.0
-x-agent-os:
-  protocol_version: "1.2"
-  layer: "core"
 ---
+
 
 # Orchestrator
 
@@ -57,7 +56,7 @@ orchestration_request:
 
 ## Core Procedure
 
-统一执行链：Trigger → Intake → Context → Goal/Task → Decision → Permission → Action → Verification → Evaluation → Writeback → Evolution
+本 Skill 只负责生命周期中的 **Decision→Action 之间的编排** 节点：决定怎么拆、谁做、什么顺序。实际执行走 OpenClaw 原生。
 
 1. **意图理解**：识别 Goal/Scope/Constraints/期望输出/Deadline/优先级/风险/成功条件。
 2. **Goal 建模**：目标不清晰 → ASK（不猜重大目标）。

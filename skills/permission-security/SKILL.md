@@ -1,11 +1,10 @@
 ---
 name: permission-security
-description: 权限安全策略层（Agent OS v1.2 核心模块）。L0 Observe/L1 Prepare/L2 External/L3 High/L4 Prohibited 风险分级；默认 L0 自动 / L1 可逆自动 / L2 确认 / L3 显式审批 / L4 拒绝。位于 OpenClaw 原生 policy/exec/sandbox/approval 之上，never weaken native controls。配套脚本 scripts/permission.py 提供 --classify/--check 确定性接口。在任何副作用动作（发送/写入/删除/资金/权限变更）执行前触发。
+description: 对动作做 L0-L4 风险分级与授权建议；最终由 OpenClaw 原生 policy/approval 执行。任何副作用动作前触发。
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
 version: 1.2.0
-x-agent-os:
-  protocol_version: "1.2"
-  layer: "core"
 ---
+
 
 # Permission Security
 
@@ -46,7 +45,7 @@ x-agent-os:
 
 ## Core Procedure
 
-统一执行链：Trigger → Intake → Context → Goal/Task → Decision → Permission → Action → Verification → Evaluation → Writeback → Evolution
+本 Skill 只负责生命周期中的 **Permission（授权）** 节点：做风险分级与建议。最终由 OpenClaw native policy/approval 执行。
 
 1. **分级 classify**：对动作判定 L0–L4。
 2. **默认策略**：L0 auto（原生允许即放行）；L1 auto（可逆且在 scope 内）；L2 确认；L3 显式审批 + 目标/scope 验证；L4 deny。

@@ -1,11 +1,10 @@
 ---
 name: verification-evaluation
-description: 验证与评估策略层（Agent OS v1.2 核心模块）。区分工具成功与任务成功：verify（执行/工件/数据/范围/证据/安全）+ evaluate（目标/正确性/完整性/质量）；状态 PASS/PARTIAL/FAIL/UNKNOWN；失败→修复→预算内重试→升级。V0-V4 验证分级。在宣称「完成」、验证结果、评估质量、失败处理时触发。
+description: 区分工具成功与任务成功，按 V0-V4 验证并给出 PASS/PARTIAL/FAIL/UNKNOWN。任务完成后或失败修复时触发。
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
 version: 1.2.0
-x-agent-os:
-  protocol_version: "1.2"
-  layer: "core"
 ---
+
 
 # Verification & Evaluation
 
@@ -48,7 +47,7 @@ x-agent-os:
 
 ## Core Procedure
 
-统一执行链：Trigger → Intake → Context → Goal/Task → Decision → Permission → Action → Verification → Evaluation → Writeback → Evolution
+本 Skill 只负责生命周期中的 **Verification/Evaluation** 节点：区分工具成功与任务成功。不自行执行后续 Writeback/Evolution。
 
 1. **核心区分**：`tool success ≠ task success`。
 2. **Verify**：检查执行/工件/数据/范围/证据/安全六维度。

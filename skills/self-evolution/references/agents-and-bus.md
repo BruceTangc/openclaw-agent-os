@@ -1,6 +1,6 @@
-# Self-Evolution Agent 与 Learning Bus 参考
+# Self-Evolution Agent 与 Learning Inbox 参考
 
-> Agent Registry、Learning Bus、跨 Agent 学习、Global Learning Cycle 的多 Agent 部分。
+> Agent Registry、Learning Inbox、跨 Agent 学习、Global Learning Cycle 的多 Agent 部分。
 
 ## 1. Agent Registry
 
@@ -32,7 +32,7 @@ PROPOSED → CREATED → ACTIVE → SUSPENDED → DEPRECATED → ARCHIVED
 
 过时 Agent：保留决策 + 有用学习 + 标记 Skill + 转移已验证项目知识 + 归档私有记忆 + 仅确认后删重复能力。不静默删历史。
 
-## 4. Learning Bus（受控跨 Agent 通信）
+## 4. Learning Inbox（受控跨 Agent 通信）
 
 Agent 上报事件（learning_candidate/correction/error/success/intermediate_state/decision/skill_candidate/verification_result/contradiction/promotion_request/demotion_request/demotion_notification/rollback_request/agent_created/agent_updated/agent_deprecated）。
 

@@ -1,11 +1,10 @@
 ---
 name: memory-governance
-description: 内存治理策略层（Agent OS v1.2 核心模块）。决定什么该成为持久记忆以及如何分层/晋升/清理：稳定、有用、确定、可溯源、非冗余；晋升路径 observation→candidate→validate→promote→review；优先级 用户事实>已验证外部事实>Agent推断。OpenClaw 拥有存储/索引/召回，本模块只提供治理政策，不建内存 runtime。在与持久记忆写入、会话收尾、复盘沉淀相关的场景触发。
+description: 决定什么该写进持久记忆、如何分层/晋升/清理；存储与召回由 OpenClaw 原生 memory 承担。记忆写入或复盘时触发。
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
 version: 1.2.0
-x-agent-os:
-  protocol_version: "1.2"
-  layer: "core"
 ---
+
 
 # Memory Governance
 
@@ -51,7 +50,7 @@ x-agent-os:
 
 ## Core Procedure
 
-统一执行链：Trigger → Intake → Context → Goal/Task → Decision → Permission → Action → Verification → Evaluation → Writeback → Evolution
+本 Skill 只负责生命周期中的 **Writeback（记忆写入）** 节点：判定写什么、怎么分层晋升。存储/召回由 OpenClaw 原生 memory 承担。
 
 1. **Intake**：确认信息片段 + 来源 + 时间 + 类型（事实/推断/偏好/事件）。
 2. **写入判定（7 问）**，逐项 YES 才考虑持久化：

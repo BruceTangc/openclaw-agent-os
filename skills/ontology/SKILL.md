@@ -1,11 +1,10 @@
 ---
 name: ontology
-description: Ontology 语义知识层（Agent OS v1.2 核心模块）。提供受控的实体/关系/状态语义建模（Agents/Projects/Skills/Memories/Learnings/Decisions/Tasks/Tools/Resources），含别名缓存、遍历守卫、级联状态提案、schema 校验、影响分析，与 self-evolution 双向对接。不替代 Memory/Learning/Skill/Project State。在实体建模、关系解析、影响分析、别名解析时触发。
+description: 维护实体/关系/属性的语义索引（含别名/状态/来源/置信度）供检索与一致性；不替代 OpenClaw runtime。语义建模时触发。
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
 version: 1.2.0
-x-agent-os:
-  protocol_version: "1.2"
-  layer: "core"
 ---
+
 
 # Ontology
 
@@ -50,7 +49,7 @@ x-agent-os:
 
 ## Core Procedure
 
-统一执行链：Trigger → Intake → Context → Goal/Task → Decision → Permission → Action → Verification → Evaluation → Writeback → Evolution
+本 Skill 只负责生命周期中的 **Context/Writeback 辅助** 节点：维护实体/关系语义索引供检索。不替代 OpenClaw runtime。
 
 1. **解析别名**：创建实体前先解析别名，避免重复实体。
 2. **建实体/关系**：走 scripts/ontology.py 的 create-entity / relate。

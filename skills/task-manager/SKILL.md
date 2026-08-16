@@ -1,11 +1,10 @@
 ---
 name: task-manager
-description: 任务操作系统（Agent OS v1.2 核心模块）。统一管理用户/Agent/Proactive/Workflow 任务：生命周期、优先级、依赖、分解、分配、状态、等待、阻塞、重试、超期、Follow-up、去重、Checkpoint、验证、归档、指标。与 Proactive、Orchestrator、Ontology、Memory、Self-Evolution 协同。管「任务是什么及其状态」，Orchestrator 管「怎么执行」。不是普通 Todo Skill。在任务创建、状态流转、跟进、复盘时触发。
+description: 管理任务语义状态与生命周期（创建/依赖/优先级/状态流转），不建执行队列或调度器。创建或更新任务时触发。
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
 version: 1.2.0
-x-agent-os:
-  protocol_version: "1.2"
-  layer: "core"
 ---
+
 
 # Task Manager
 
@@ -75,14 +74,14 @@ task:
 
 ## Core Procedure
 
-统一执行链：Trigger → Intake → Context → Goal/Task → Decision → Permission → Action → Verification → Evaluation → Writeback → Evolution
+本 Skill 只负责生命周期中的 **Goal/Task（任务语义）** 节点：管理任务的状态与语义。不建执行队列/调度器；执行走 OpenClaw 原生。
 
 1. **接收任务**（user/proactive/orchestrator/workflow/event/agent/system）。
 2. **Normalize**：统一成标准 task 结构。
 3. **Deduplicate**：request_id/source_id/goal_id/标题/语义相似/活跃任务 → 有则 MERGE。
 4. **优先级重算**：不盲信 priority_hint；P0 紧急关键 / P1 高 / P2 正常 / P3 低 / P4 backlog。
 5. **关联 goal/project + 依赖检查**。
-6. **入 Ready Queue**（READY + 依赖满足 + 权限 + 未暂停 + 预算）。
+6. **标记为可执行就绪**（READY + 依赖满足 + 权限 + 未暂停 + 预算）——这是**语义状态集合**，不是实际执行队列；实际调度由 OpenClaw 原生 Task Flow / Orchestrator 执行。
 7. **交 Orchestrator**（get_ready_tasks → execution_request）。
 8. **收结果回写**（result-to-task：状态机中转）。**完成须满足 success_conditions + verification**，不因 Agent 说「完成」就完成。
 9. **Waiting/Blocked/超期 → Follow-up**，外部发送过 Permission Gate。

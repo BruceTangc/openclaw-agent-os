@@ -1,5 +1,5 @@
 {
   "name": "self-evolution",
   "version": "1.2.0",
-  "description": "多 Agent 学习操作系统（Agent OS v1.2 核心模块）。集中式经验捕获、作用域记忆、Learning Bus、置信度+证据衰减、Skill 进化、治理与回滚。只做发现问题→提出改进→验证→请求批准→应用，绝不自改权限/安全/凭证/Runtime。"
+  "description": "多 Agent 学习操作系统（Agent OS v1.2 核心模块）。集中式经验捕获、作用域记忆、Learning Inbox、置信度+证据衰减、Skill 进化、治理与回滚。只做发现问题→提出改进→验证→请求批准→应用，绝不自改权限/安全/凭证/Runtime。"
 }
