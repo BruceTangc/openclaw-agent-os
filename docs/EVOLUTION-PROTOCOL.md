@@ -41,13 +41,15 @@ Evidence (来自 Verification / Evaluation / Proactive / User Feedback / 观测)
 | 角色 | 职责 | 输出 |
 |:--|:--|:--|
 | Verification / Evaluation | 任务执行中发现失败/弱点 | Evidence |
-| Proactive / Heartbeat | 检查长期 Evidence（近期失败/频繁纠正/流程重复） | Evidence → Candidate |
-| 用户反馈 | "你每次报价都漏材料利用率" | Evidence → Candidate |
-| **Evolution** | 判断"是否值得改变系统、应该改变什么" | Candidate → Proposal / Apply |
+| Proactive / Heartbeat / learn.py 巡检 | **Discover + Classify**：扫描长期 Evidence，判定进化价值 | **Evolution Candidate** |
+| 用户反馈 | “你每次报价都漏材料利用率” | Evidence（由 Classification 判定） |
+| **Evolution** | **Judge + Propose + Apply**：判断“是否值得改变系统、应该改变什么” | Candidate → Proposal / Apply |
 
 **边界**：
 - Heartbeat **不直接执行 evolution**；正确路径是 `Heartbeat → Proactive → 检查长期 Evidence → 产生 Candidate → Evolution`。
-- Proactive 只负责**发现**，Evolution 只负责**判断**——二者通过 Candidate 交接，不越界。
+- **Proactive / 巡检 可以执行 Evidence Classification，但不能执行 Evolution Judgment**——
+  分类（Discover + Classify）是 Proactive 的职责，判断改不改/改什么（Judge + Propose + Apply）是 Evolution 的职责。
+- 二者通过 Candidate 交接，不越界。
 
 ## 4. Candidate 的修改目标分类（Classify）
 

@@ -39,7 +39,8 @@ version: 1.3.0
 ## When to Activate
 
 - 收到 **Evolution Candidate**（来自 verification / evaluation / proactive / 用户反馈）——**主触发**
-- Evidence 巡检（learn.py --cycle）：低频扫描近期失败/纠正/低效，**只负责发现 Candidate，不直接触发修改**
+- Evidence 巡检（learn.py --cycle）：低频扫描近期失败/纠正/低效，
+  **Discover + Classify → 产出 Candidate**（巡检可以做分类，但不能做 Evolution Judgment）
   （evolution is evidence-driven, not schedule-driven——巡检不是定时进化）
 - 验证到期、晋升检查、遗忘检查、矛盾检测
 - 需要生成 Skill 改进提案 / 决策记忆 / 降级 / 回滚
