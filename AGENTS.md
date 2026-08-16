@@ -80,8 +80,8 @@ context-orchestration / verification-evaluation / permission-security）。
 ```
 Trigger (OpenClaw: user/heartbeat/cron/hook)
   → Context Orchestration (最小必要上下文)
-  → Goal/Task semantics (task-manager, 简单任务可最简化)
-  → Permission Gate (permission-security)   ← L2+ 无授权必须阻断
+  → Goal/Task Semantics (目标+成功条件；Task Manager 状态机仅 Full Path)
+  → Permission Gate (permission-security)   ← 永远存在, L0/L1 自动 ALLOW
   → OpenClaw Native Execution
   → Verification (verification-evaluation)  ← 工具成功 ≠ 任务成功
   → Evaluation
@@ -97,9 +97,10 @@ Trigger (OpenClaw: user/heartbeat/cron/hook)
 
 **两种执行模式**：
 
-- **Fast Path**（简单/低风险/单能力）：`Trigger → Context → Direct Skill → Permission(如需要) → Execution → Verification`
-  - 只允许 L0-L1；涉及 L2+ 必须升级 Full Path 或至少过 Permission Gate
+- **Fast Path**（简单/低风险/单能力）：`Trigger → Context → Goal/Task Semantics → Direct Skill → Permission Gate → Execution → Verification`
+  - **Permission Gate 永远存在**：L0/L1 自动 ALLOW（无额外交互），L2+ 自动升级 ASK/policy/Full Path
 - **Full Path**（复杂/自主/多步/有副作用）：`Trigger → Intake → Context → Goal/Task → Decision(如自主) → Orchestrator → Permission → Execution → Verification → Evaluation → Writeback(如需要) → Evolution(如证据)`
+- **Execution Record**：Full Path / 涉及 L2+ 的任务结束时生成协议执行证明（见 SKILL-INTEGRATION.md）
 
 ### 决策词汇表（唯一真值，不得自造）
 

@@ -59,11 +59,26 @@ x-agent-os:
 | `requires.writeback` | required/conditional | 是否必经记忆/知识治理（默认 conditional） |
 
 **判定规则：**
-- 用户直接指令 + `entry_mode: fast` + 仅 L0-L1 → Fast Path：Context → Direct Skill → Permission(如需要) → Execution → Verification。
+- 用户直接指令 + `entry_mode: fast` + 仅 L0-L1 → Fast Path：Context → Direct Skill → Permission Gate → Execution → Verification（Gate 永远存在，L0/L1 自动 ALLOW）。
 - 自主任务（heartbeat/cron/hook/风险/机会）→ 必经 `decision: required`（proactive）。
 - 任何动作涉及 L2+ → 无论 fast/full，`permission: true` 生效，必须过 Permission Gate；
   Fast Path 不得借"简化"跳过权限。
 - 后果性工作（外发/资金/删除/生产变更）→ `verification: true` 硬性，必须提供证据。
+
+## 1.2 Protocol Execution Record（执行证明，v1.3）
+
+> **Protocol Contract 决定“应该经过什么”；Execution Record 证明“实际经过了什么”。**
+
+- 每个 Full Path 任务 / 涉及 L2+ 的 Fast Path 任务，结束时生成一份轻量
+  **Execution Record**（见 [schemas/execution-record.md](schemas/execution-record.md)）：
+  path、steps（context/goal_task/permission/execution/verification/evaluation/writeback/evolution
+  各节点的 status + result）、evidence、audit。
+- **status 三态**：`completed`（真实经过）/ `skipped`（按 Contract 条件性跳过，带 note）/ `conditional`。
+  某节点没做不能标 completed——这是审计点，不是装饰。
+- 这是语义记录，不是 Runtime：OpenClaw 仍拥有执行/调度/审批；记录只回答
+  “这次行为是否符合 Agent OS Protocol”，可随任务结果输出或存 memory。
+- 目的：把系统从 **Protocol-aware Agent** 提升为 **Protocol-observable Agent**——
+  以后能直接回答“这次报价为什么完成了？”（Path/Context/Permission/Verification/Evidence…）。
 
 ## 2. 4 层分类（业务 Skill 属于哪层）
 

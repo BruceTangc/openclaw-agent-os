@@ -6,6 +6,7 @@ OPERATIONS.md
 README.md
 schemas/decision.md
 schemas/evidence.md
+schemas/execution-record.md
 schemas/state.md
 schemas/task.md
 skills/context-orchestration/SKILL.md

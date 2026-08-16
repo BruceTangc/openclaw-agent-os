@@ -23,6 +23,9 @@
 
 ## 3. 任务执行链检查
 
+- [ ] **Fast/Full Path**：简单任务 Fast Path（Direct Skill），复杂任务 Full Path（Orchestrator）；不无谓 DAG。
+- [ ] **Execution Record**：Full Path / L2+ 任务结束生成协议执行证明（见 schemas/execution-record.md）。
+
 ```
 Intake      — 信号被正确摄入（id/subject/type/confidence…）
 Context     — 只取最小必要上下文（context-orchestration）

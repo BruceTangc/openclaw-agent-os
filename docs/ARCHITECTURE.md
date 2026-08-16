@@ -51,17 +51,20 @@ WRITEBACK IF    FAILURE LOOP
    │            ├─ 修复 → 回到 Orchestrator 重调度 (闭环)
    │            └─ 连续失败≥3 / 超预算 → ESCALATE (人工)
    ▼                ▼
- EVOLUTION  ◄───────┘ (仅限可授权变更)
+EXECUTION      EVOLUTION  ◄───────┘ (仅限可授权变更)
+ RECORD
+ (Full Path / L2+ 任务生成协议执行证明,
+  见 schemas/execution-record.md)
 ```
 
 ## 2. 两类路径定义
 
 **Fast Path**（简单 / 低风险 / 单能力任务）
 ```
-Trigger → Context → Direct Skill → Permission(如需要) → Execution → Verification
+Trigger → Context → Goal/Task Semantics → Direct Skill → Permission Gate → Execution → Verification
 ```
 - 适用：总结、搜索、查资料、简单计算、查询状态、文件整理、单次 API 调用。
-- 约束：只允许 L0-L1；涉及 L2+ 必须升级 Full Path 或至少过 Permission Gate。
+- 约束：**Permission Gate 永远存在**——L0/L1 自动 ALLOW（无额外交互），L2+ 自动升级 ASK/policy/Full Path。
 - 不需要：proactive 决策、task-manager 完整状态机、orchestrator DAG、强制 writeback。
 
 **Full Path**（复杂 / 自主 / 多步骤 / 有副作用任务）
@@ -73,9 +76,10 @@ Trigger → Intake → Context → Goal/Task → Decision(如自主) → Orchest
 
 ## 3. Mandatory 链与 Conditional 节点
 
-- **Mandatory（所有任务必经）**：Context → Permission Gate → Execution → Verification → Evaluation。
+- **Mandatory（所有任务必经）**：Context → Goal/Task Semantics → Permission Gate → Execution → Verification → Evaluation。
 - **Conditional（按任务类型进入）**：
   - Intake / Proactive Decision：仅自主决策任务（heartbeat/cron/hook/风险/机会/目标漂移）。
+  - Task Manager 状态机：仅 Full Path / 长任务（Goal/Task Semantics 本身 Mandatory）。
   - Orchestrator：仅 Full Path。
   - Writeback：有持久化价值才写；无价值 → NONE。
   - Evolution：有证据的重复失败/重复纠正才触发。

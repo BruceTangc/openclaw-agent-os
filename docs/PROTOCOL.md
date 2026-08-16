@@ -10,6 +10,11 @@
 > - 完成判定改为**条件化 writeback**（高风险任务副作用记录仍为硬性）；
 > - Proactive 收窄为**自主决策任务**的决策层，用户直接指令不经过它。
 > - 与 v1.2 向后兼容：skill 的 `x-agent-os.protocol_version` 声明 1.2 仍有效。
+>
+> **v1.3.1 收口**（2026-08-17）：
+> - **术语统一**：`Goal/Task Semantics` = Mandatory（目标+成功条件）；`Task Manager State Machine` = Conditional（仅 Full Path）。
+> - **Permission Gate 永远存在**：L0/L1 自动 ALLOW（无额外交互），不是"无需 Permission"；Permission ≠ Ask User。
+> - **新增 Protocol Execution Record**（schemas/execution-record.md）：Contract 决定"应该经过什么"，Execution Record 证明"实际经过了什么"——从 Protocol-aware 到 Protocol-observable。
 
 ## 1. 定位
 
@@ -48,11 +53,15 @@ Cron / Heartbeat / Hook / User Message / Background Tasks 都是**外部 Trigger
 
 ### 3.1 Mandatory 链（所有任务必经）
 
+> **术语统一（v1.3.1）**：`Goal/Task Semantics`（目标/任务语义）是 **Mandatory**——所有任务都要明确
+> “目标是什么、成功条件是什么”；`Task Manager State Machine`（完整状态机）是 **Conditional**——
+> 仅 Full Path / 长任务才需要。二者不是一回事。
+
 ```
 Trigger (OpenClaw: user / heartbeat / cron / hook)
   → Context Orchestration (最小必要上下文)
-  → Goal / Task semantics (task-manager)      ← 简单任务可最简化
-  → Permission Gate (permission-security)     ← L2+ 无授权必须阻断
+  → Goal / Task Semantics (目标+成功条件；Task Manager 状态机仅 Full Path)
+  → Permission Gate (permission-security)     ← 永远存在，L0/L1 自动 ALLOW
   → OpenClaw Native Execution
   → Verification (verification-evaluation)    ← 工具成功 ≠ 任务成功
   → Evaluation
@@ -63,6 +72,7 @@ Trigger (OpenClaw: user / heartbeat / cron / hook)
 | 节点 | 何时进入 | 说明 |
 |:--|:--|:--|
 | Intake | 非用户直接指令（heartbeat/cron/hook/事件） | 摄入信号 id/subject/type/confidence/evidence |
+| **Task Manager 状态机** | 仅 Full Path / 长任务 / 多步任务 | 简单任务只保留 **Goal/Task Semantics**（语义，必经），不需要完整状态机 |
 | **Proactive Decision** | **仅自主决策任务**：heartbeat/cron/hook/风险/机会/目标漂移/后续追踪 | 用户直接指令**不经过** |
 | Orchestrator | 仅 Full Path（复杂/多步/多 Agent/有副作用） | Fast Path 直调 Skill，不建 DAG |
 | Memory/Knowledge writeback | 有持久化价值时 | 无价值 → NONE，不硬性 |
@@ -73,12 +83,12 @@ Trigger (OpenClaw: user / heartbeat / cron / hook)
 **Fast Path（简单、低风险、单能力任务）**
 
 ```
-Trigger → Context → Direct Skill → Permission（如需要）→ Execution → Verification
+Trigger → Context → Goal/Task Semantics → Direct Skill → Permission Gate → Execution → Verification
 ```
 
 - 适用：总结、搜索、查资料、简单计算、查询状态、文件整理、单次 API 调用等。
-- 规则：**Fast Path 只允许 L0-L1 动作**；一旦涉及 L2+（外发/资金/删除/生产变更），
-  **必须升级 Full Path 或至少过 Permission Gate**，不得借"简化"绕开权限。
+- 规则：**Permission Gate 永远存在，不是“无需 Permission”**——L0/L1 自动 ALLOW（不产生额外交互），
+  但 Gate 本身不跳过；一旦动作涉及 L2+（外发/资金/删除/生产变更），自动升级为 ASK / policy / Full Path。
 - 不需要：proactive 决策、task-manager 完整状态机、orchestrator DAG、强制 writeback。
 
 **Full Path（复杂、自主、多步骤、有副作用任务）**
@@ -93,6 +103,24 @@ Trigger → Intake → Context → Goal/Task → Decision(如自主) → Orchest
 - 需要：完整生命周期 + 编排 + 权限门 + 验证 + 治理。
 
 **判定原则**：能 Fast 不 Full；但风险升级时 Fast 必须升级 Full（No-Overengineering + 权限底线）。
+
+### 3.4 统一 Permission Gate（永远存在）
+
+> **Permission ≠ Ask User**。Permission Gate 是统一门，低风险只是**自动通过**，不是“无需调用”。
+
+```
+Permission Gate (permission-security, 所有路径必经)
+  ├─ L0 → ALLOW (自动, 无交互)
+  ├─ L1 → ALLOW (自动, 可逆且在 scope 内)
+  ├─ L2 → ASK / policy (确认或已授权策略)
+  ├─ L3 → ASK / escalate (显式审批 + scope 验证)
+  └─ L4 → DENY (默认拒绝, fail-closed)
+  → OpenClaw Native Policy / Approval / Sandbox (最终执行边界)
+```
+
+- Gate 永远在：L0/L1 只是快速通过，不产生额外对话，但节点存在。
+- Fast Path 不得以“简化”为由声称“无需权限判断”。
+- 分类器不可用 → 高风险默认拒绝（fail-closed），不默认放行。
 
 ## 4. 业务 Skill 接入协议
 
