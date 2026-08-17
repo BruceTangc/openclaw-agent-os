@@ -64,16 +64,16 @@ version: 1.3.0
   （evolution is evidence-driven, not schedule-driven——巡检不是定时进化）
 - 验证到期、晋升检查、遗忘检查、矛盾检测
 - 需要生成 Skill 改进提案 / 决策记忆 / 降级 / 回滚
-- 多 Agent 场景：各 Agent 上报 Learning Ledger，Global Cycle 聚合
+- 多 Agent 场景：各 Agent 上报 Operational Evidence（learning trail 事件），Global Cycle 聚合
 
 > **进料边界（v1.3）**：本 Skill 只消费 **Evolution Candidate**，不直接接受任意 Evidence。
 > 原始 Evidence（一次失败/纠正/观测）必须先过 Classification，判定“有进化价值”才成为 Candidate。
 
 ## Inputs
 
-- 经验事件（correction/error/success/intermediate_state/feature_request/knowledge_gap）
+- Raw Observation / Evidence（correction/error/success/intermediate_state/feature_request/knowledge_gap，含来源分类）
 - 来源 agent、scope、confidence、evidence
-- 已有 learning trail、Agent Registry、Learning Ledger pending 事件
+- 已有 learning trail、Agent Registry、Operational Evidence pending 事件
 
 ## Core Procedure
 

@@ -23,6 +23,23 @@ Evidence (来自 Verification / Evaluation / Proactive / User Feedback / 观测)
 - **Candidate** = 经过分类、判定"有进化价值"的 Evidence。
 - 未分类的 Evidence 不得直接触发修改——防止 evolution 变成"看到什么都想改系统"。
 
+### Evidence Sources（统一术语，v1.3.1）
+
+所有进入进料边界的原始观测统一归为 **Evidence**，按来源分 5 类：
+
+```
+Evidence
+├── Verification Evidence       （验证失败/漏洞）
+├── Evaluation Evidence         （质量评判弱项）
+├── User Feedback Evidence      （用户纠正/明确要求）
+├── Proactive Observation       （巡检/心跳发现的长期模式）
+└── Operational Evidence        （运营日志/learning trail/多 Agent 上报）
+```
+
+统一链路：`Raw Observation → Evidence → Classification → Candidate`。
+任何来源（verification / evaluation / proactive / 用户反馈 / 观测 / 多 Agent 事件）在本文档一律称 **Evidence**；
+不再使用 learning ledger / experience event / 原始观测等平行词。
+
 ## 2. Evolution Candidate 触发器（6 类）
 
 | # | 触发器 | 说明 | 示例 |

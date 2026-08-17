@@ -31,10 +31,10 @@
 | `verification-evaluation` | new | Prove task success vs. tool success; PASS/PARTIAL/FAIL/UNKNOWN |
 | `permission-security` | new | L0-L4 risk/authority policy above native policy/approval |
 
-## Architecture
+## Architecture（Execution Model = 实际执行链）
 
-> v1.3：不是单线执行链，而是 **Fast Path / Full Path 分流**。
-> 简单任务不过度官僚化；复杂/自主/有副作用任务走完整链路。
+> 粒度标注：本图是**实际执行链**（actual execution chain），含 Goal/Task、Fast/Full 分流。
+> 对比：下方 Control Plane 是**概念分层图**（conceptual layer map，仅表达分层归属，不含执行细节）。
 
 ```
                     Trigger (OpenClaw 提供: user / heartbeat / cron / hook / background)
@@ -81,7 +81,10 @@
 Task Manager **State Machine**（READY/RUNNING/BLOCKED/DONE）仅 Full Path / 长任务才用，简单任务不建任务对象。
 
 
-## Control Plane (v1.3 Core Protocol)
+## Control Plane（概念分层图 = conceptual layer map）
+
+> 粒度标注：本图是**概念分层图**，只表达 Control Plane 分层与归属，不展开执行细节
+> （Goal/Task、Fast/Full 分流等执行细节见上方 Execution Model 图）。
 
 ```
 OpenClaw Native Runtime (owner: OpenClaw)
