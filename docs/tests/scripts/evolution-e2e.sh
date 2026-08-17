@@ -12,7 +12,7 @@
 set -u
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 LEARN="$REPO_DIR/skills/self-evolution/scripts/learn.py"
-E2E_WS="${E2E_WS:-/tmp/agent-os-e2e-ws}"
+E2E_WS="${E2E_WS:-/tmp/agent-os-e2e-ws-$$}"
 export E2E_WS
 export OPENCLAW_WORKSPACE="$E2E_WS"
 
