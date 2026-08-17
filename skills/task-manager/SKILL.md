@@ -36,6 +36,23 @@ version: 1.3.0
 
 ## When to Activate
 
+触发方式分两类（Agent OS 不自建 Scheduler，定时触发一律用 OpenClaw 原生 Trigger）：
+
+| 触发方式 | 何时发生 | 载体 |
+|:--|:--|:--|
+| ① 任务操作事件 | 创建/修改/分配/暂停/恢复/取消/重试/完成/归档 | 事件驱动，随任务流自然发生，**无需定时配置** |
+| ② 扫描（overdue/stale/blocked/waiting/goal_drift） | 定期检查任务健康度 → 信号反馈 Proactive | **需外部 Trigger**：heartbeat 或 cron 定时驱动 `task_manager.py scan` / `link.py scan-to-proactive` |
+| ③ 每日/每周任务复盘 | 低频统计与复盘（metrics） | cron 定时触发（如每日 21:00 或每周一 09:00） |
+
+**②③ 配置示例（OpenClaw cron，低频）：**
+
+```yaml
+# 每日 21:00：任务扫描 + 复盘（低频，避免高频扫描制造噪音）
+0 21 * * *  cd <workspace> && python3 skills/task-manager/scripts/task_manager.py scan && python3 skills/task-manager/scripts/link.py scan-to-proactive --min-level P1
+```
+
+> 扫描只产信号，不直接打扰用户——overdue/stale 等交 Proactive 决策后按价值/紧急度 ≤ 预算行动。
+
 - 创建/修改/分配/暂停/恢复/取消/重试/完成/归档任务
 - 扫描超期/停滞/阻塞/等待/目标偏移
 - 每日/每周任务复盘
