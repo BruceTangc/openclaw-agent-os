@@ -58,6 +58,14 @@
   - 验证：`openclaw cron list` 无复盘任务；TOOLS.md/MEMORY.md 无"必须推送复盘"残留
   - 状态：completed
 
+- **exec-20260817-002**：学习系统健康检查（2026-08-17 09:07 实跑）
+  - trace：`exec-20260817-002`（无 evidence，无 candidate——纯状态检查任务）
+  - Execution：`python3 skills/self-evolution/scripts/learn.py --status`
+  - Verification：trail JSON 可解析 / entries=23 / changes=1 / verified_ok=0 / reverted=3 → **VERIFY PASS**
+  - Evaluation：completed（非失败模式，无新 candidate）
+  - Writeback：`memory/2026-08-17.md`「09:07 - 真实 E2E 首次实跑」
+  - 状态：completed
+
 ---
 
 ## 4. 前半段完整实跑计划（下一个可执行任务）
