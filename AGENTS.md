@@ -116,6 +116,15 @@ ESCALATE  — 升级（连续失败/超预算/权限不足/高风险）
 DENY      — 拒绝（permission-security 输出）
 ```
 
+**Release Gate 结论词汇（repository-reviewer 输出，唯一真值）**：
+
+```
+BLOCKED                 — 存在 P0 问题（安全/破坏性），禁止 commit/push
+CHANGES_REQUIRED        — 存在 P1 问题或 Declared ≠ Actual，禁止 push，修完重审
+APPROVED_WITH_WARNINGS  — 仅 P2 建议，可 push
+APPROVED                — 所有 Gate 通过，可 push（仍需用户最终确认）
+```
+
 ### 权限分级与 Permission Gate（摘要，详见 ACTION-PROTOCOL.md）
 
 | 级别 | 含义 | 示例 | 默认 |
@@ -231,6 +240,9 @@ Orchestrator / Task Manager 常用命令较长，**不在 AGENTS.md 展开**，�
 - **APPROVED 仍需用户确认**：审核负责"有没有问题"，用户负责"要不要执行"；最终 push 必须用户明确确认。
 - **Gate Mode 默认**：APPROVED 后由本 Agent（Main Agent）执行 commit/push；不启用 Release Authority（Reviewer 直接推送为高级模式，运行稳定后再评估）。
 - Reviewer 为只读 Agent（deny write/edit/apply_patch），无法自行修改文件，天然保证"审核与修复分离"。
+
+> **bootstrap 例外（RVW-003，一次性）**：引入本规则的提交 66c0e16 自身在启用审核前推送（规则自举的鸡生蛋问题）。
+> 自 66c0e16 起严格生效：此后任何 commit/push 必须先经 repository-reviewer 审核。
 
 ## External vs Internal
 

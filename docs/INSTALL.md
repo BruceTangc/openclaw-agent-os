@@ -26,6 +26,7 @@ Agent OS 的治理/决策/协议全靠 AGENTS.md 注入行为约束；不装它 
 ```bash
 cp AGENTS.md  <你的-openclaw-workspace>/
 # 如已存在 AGENTS.md：先备份，再把本仓库 AGENTS.md 的「Agent OS 核心协议」段合并进去
+# 注：AGENTS.md 含「Release Gate」硬规则（Commit/Push 前必经 repository-reviewer 审核），勿删
 ```
 
 ### Step 4 — 重载 / 重启

@@ -220,6 +220,18 @@ Orchestrator / Task Manager 常用命令较长，**不在 AGENTS.md 展开**，�
   权限/安全/凭证/外部副作用/Runtime 变更 → 必须人工审批；单次未验证失败不触发修改；
   绝不为"提高完成率"削弱安全，不自动批准自己的变更（详见 EVOLUTION-PROTOCOL.md）。
 
+## 🧐 Release Gate（Commit/Push 前强制，v1.3.1 硬规则）
+
+> 与独立审核 Agent **repository-reviewer** 对接的硬接入规则。
+> 本机 Agent 向任何 GitHub 仓库提交/推送前，必须经过 repository-reviewer 审核。
+
+- **Commit/Push 前必经 repository-reviewer**：任何 `git commit` / `git push` / `gh pr create` / `gh release create` 之前，必须请求 repository-reviewer 走 10 Gate 审核（R1 Change Scope → R10 Release Readiness），拿到 Release Gate 结论（BLOCKED / CHANGES_REQUIRED / APPROVED_WITH_WARNINGS / APPROVED）。
+- **BLOCKED / CHANGES_REQUIRED → 禁止推送**：先按 findings 修复（Reviewer ≠ Fixer，修复由本 Agent 或用户完成），再重新审核。
+- **Review 后 Working Tree 一旦变化必须重新审核**：Reviewer 的结论基于 Snapshot（review_id + tree_hash）；快照后任何文件变化 = INVALIDATED，必须重新走完整审核，不做"应该只是小修改"的假设。
+- **APPROVED 仍需用户确认**：审核负责"有没有问题"，用户负责"要不要执行"；最终 push 必须用户明确确认。
+- **Gate Mode 默认**：APPROVED 后由本 Agent（Main Agent）执行 commit/push；不启用 Release Authority（Reviewer 直接推送为高级模式，运行稳定后再评估）。
+- Reviewer 为只读 Agent（deny write/edit/apply_patch），无法自行修改文件，天然保证"审核与修复分离"。
+
 ## External vs Internal
 
 **可自由做**：读文件、探索、整理、学习；搜网页、查日历；在工作区内干活。
