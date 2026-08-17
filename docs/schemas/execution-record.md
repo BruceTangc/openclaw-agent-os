@@ -61,8 +61,18 @@ steps:
   writeback:
     status: "none"            # none | memory | knowledge | ontology
   evolution:
-    status: "none"            # none | candidate
+    status: "none"            # none | candidate | applied | blocked
     candidate_id: null
+    # 轻量 trace 链（P2）：回答“这次行为改变从哪来、到哪去”
+    # 不建 trace runtime，只做关联：exec → evidence → candidate → proposal → change → regression
+    trace:
+      execution_id: "exec_xxx"     # 本次任务执行 id
+      evidence_id: null             # 触发 Evidence（如 LRN-xxx / ERR-xxx）
+      candidate_id: null            # Candidate id（若已晋升）
+      proposal_id: null             # Proposal 序号/id
+      change_id: null               # change-YYYYMMDD-xxx
+      regression_id: null           # 回归测试标识（如 T4）
+      regression_result: null       # PASS | PARTIAL | FAIL | UNKNOWN
 
 audit:
   operation_id: "op_xxx"      # 副作用操作的幂等 id
