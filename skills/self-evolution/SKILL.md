@@ -38,6 +38,26 @@ version: 1.3.0
 
 ## When to Activate
 
+本 Skill 有三种触发方式，载体不同（Agent OS 不自建 Scheduler，定时触发一律用 OpenClaw 原生 Trigger）：
+
+| 触发方式 | 何时发生 | 载体 |
+|:--|:--|:--|
+| ① Candidate 事件（**主触发**） | verification / evaluation / proactive / 用户反馈产出 Evolution Candidate | 事件驱动，随任务流自然发生，**无需定时配置** |
+| ② Evidence 巡检（`learn.py --cycle`） | 低频扫描近期失败/纠正/低效 → Discover + Classify 产出 Candidate | **需外部 Trigger**：OpenClaw cron 或 heartbeat 定时驱动（见下方示例） |
+| ③ 到期验证 / 晋升检查（`--verify` / `--propose`） | 检查验证到期、晋升候选、矛盾、遗忘 | heartbeat 巡检携带（见 HEARTBEAT.md「学习系统巡检」段） |
+
+**② Evidence 巡检配置示例（OpenClaw cron，低频）：**
+
+```yaml
+# 每天 03:00 跑一次完整学习循环（10 Phase）
+# cron 触发 → learn.py --cycle：只做 Discover+Classify 产出 Candidate，不做 Judgment
+0 3 * * *  cd <workspace> && python3 skills/self-evolution/scripts/learn.py --cycle
+```
+
+> 频率建议：巡检低频（每日 1 次或每 6-12h），避免高频扫描制造噪音。
+> 巡检只是定时扫描，**产出 Candidate 不代表会 Apply**——晋升仍走 `--propose` + 审批门，
+> 确保 evolution 是 evidence-driven 而不是 schedule-driven。
+
 - 收到 **Evolution Candidate**（来自 verification / evaluation / proactive / 用户反馈）——**主触发**
 - Evidence 巡检（learn.py --cycle）：低频扫描近期失败/纠正/低效，
   **Discover + Classify → 产出 Candidate**（巡检可以做分类，但不能做 Evolution Judgment）
