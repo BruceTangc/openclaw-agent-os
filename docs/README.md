@@ -13,6 +13,17 @@ This package provides the governance, decision and workflow layer around OpenCla
 4. Enable/verify Skills according to your OpenClaw installation.
 5. Run the smoke tests in `tests/`.
 
+## What Agent OS is / isn't
+
+Agent OS **is**:
+- OpenClaw 上层的治理 / 协议 / 验证 / 受控进化层
+- 让 Agent 从「会调用 Skill」变成「有治理、会验证、能长期学习」
+- 11 个 Core Skill 的协作框架 + Execution Record 审计
+
+Agent OS **is not**:
+- 不是 Agent Runtime / Scheduler / Memory Database / Task Runtime
+- 不建并行执行引擎；OpenClaw 仍是唯一的执行者
+
 ## Design rule
 OpenClaw native runtime first. These Skills must not create parallel runtimes for memory, context, tasks, scheduling, events, agents or permissions.
 

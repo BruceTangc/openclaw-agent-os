@@ -39,6 +39,15 @@ Execution Record 不是 scheduler / event bus / task runtime，不参与调度�
 ## Schema
 
 ```yaml
+# v1.3.1: execution 顶层元数据（P1-1）
+# 回答"这次执行是谁、什么时候、什么触发的"——多 Agent 场景必备。
+execution:
+  id: "exec_xxx"              # 唯一执行 id（exec-YYYYMMDD-xxx）
+  actor: "agent-main"         # 执行者（agent-main / agent-research / agent-trader / ...）
+  trigger: "user"             # 触发来源（user / heartbeat / cron / hook / proactive）
+  started_at: "2026-08-17T10:00:00+08:00"
+  ended_at: "2026-08-17T10:02:30+08:00"
+
 protocol:
   version: "1.3"
   path: "full"                # fast | full

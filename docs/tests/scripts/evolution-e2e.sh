@@ -49,7 +49,7 @@ python3 "$LEARN" --log best_practice "报价完成前必须检查材料利用率
 if bash "$E2E_WS/quote_check.sh" "$E2E_WS" >/dev/null 2>&1; then
   bad "T3 pre-apply should still FAIL"
 else
-  ok "T3 FAIL as expected -> threshold reached (2+ occurrences, 3 sessions)"
+  ok "T3 FAIL as expected -> threshold reached (3+ occurrences, 3 sessions)"
 fi
 
 step "4. Discover + Classify -> Candidate -> Propose (Judge)"

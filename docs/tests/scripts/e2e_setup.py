@@ -8,9 +8,10 @@ Creates a throwaway workspace with a seeded learning trail simulating:
 The real third failure (T3) is logged by the actual learn.py CLI in
 evolution-e2e.sh, which then triggers promotion -> apply -> regression.
 
-Reason for seeding history: pattern promotion requires >=2 occurrences
-across >=2 sessions, so a realistic E2E must span days; the two past
-sessions are seeded, today's occurrence is a real CLI log.
+Reason for seeding history: pattern promotion requires >=3 occurrences
+across >=2 sessions (v1.3.1 threshold), so a realistic E2E must span
+days; two past sessions are seeded with rc=2 each, today's real CLI log
+pushes total to >=3 triggering promotion.
 
 Not touching the production trail: E2E_WS/memory/.learning-trail.json
 is a separate file (OPENCLAW_WORKSPACE is pointed at E2E_WS).
@@ -44,6 +45,7 @@ def entry(eid, category, pk, summary, logged, rc, dates):
         "scope": "AGENT",
         "trusted": True,
         "pattern_key": pk,
+        # v1.3.1: seed rc=2 so real T3 log pushes total to >=3
         "recurrence_count": rc,
         "seen_dates": dates,
         "first_seen": dates[0],
@@ -62,7 +64,7 @@ trail = {
             "quote-material-utilization-correction",
             "报价流程漏检材料利用率（重复失败，模式已确认）",
             "2026-08-16",
-            1,
+            2,
             ["2026-08-15", "2026-08-16"],
         ),
         # Pattern B: best_practice + tooling -> TOOLS.md target -> auto apply
@@ -72,7 +74,7 @@ trail = {
             "quote-material-utilization-check",
             "报价完成前必须检查材料利用率",
             "2026-08-16",
-            1,
+            2,
             ["2026-08-15", "2026-08-16"],
         ),
     ],

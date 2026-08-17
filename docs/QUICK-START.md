@@ -11,9 +11,11 @@ openclaw --version
 
 # 2. 复制 11 个 Core Skills（用你实际的 skills 目录）
 cp -r skills/*  <你的-skills-目录>/
+# ⚠️ 若目标目录已有同名 Skill，先备份再覆盖（见 INSTALL.md 升级说明）
 
 # 3. 安装 AGENTS.md（关键：协议的注入载体）
 cp AGENTS.md  <你的-openclaw-workspace>/
+# ⚠️ 若已有 AGENTS.md，勿直接覆盖——先备份，再合并 Agent OS 协议段
 
 openclaw gateway restart
 ```
@@ -61,10 +63,11 @@ openclaw config get agents.defaults.heartbeat.every   # 应已配置（如 10m�
 构造一次可复现的重复失败（如让一个检查脚本两次漏同一项），然后：
 ```bash
 python3 skills/self-evolution/scripts/learn.py --log error "..." --pattern-key "demo-xxx"
-python3 skills/self-evolution/scripts/learn.py --propose   # 跨 ≥2 session 后出现 candidate
+python3 skills/self-evolution/scripts/learn.py --propose   # recurrence ≥3 ∧ sessions ≥2 后出现 candidate
 python3 skills/self-evolution/scripts/learn.py --status    # trail 产生条目
 ```
-预期：单次失败 → 不会晋升（安全阀）；≥2 次跨 session → 出现 candidate，走审批。
+预期：单次失败 → 不会晋升（安全阀）；≥3 次 recurrence 且跨 ≥2 session → 出现 candidate，走审批。
+> 安全阀：recurrence < 3 或 sessions < 2 均不晋升（详见 self-evolution/SKILL.md）。
 > 完整 E2E：`docs/tests/scripts/evolution-e2e.sh`（PASS=5 FAIL=0）。
 
 ---

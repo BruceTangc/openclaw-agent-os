@@ -975,8 +975,11 @@ def auto_revert_failed(trail, max_retries=2):
     return reverted
 
 
-def find_patterns_ready(trail, min_recurrence=2, min_sessions=2):
-    """Find patterns with Recurrence-Count >= min_recurrence across min_sessions.
+def find_patterns_ready(trail, min_recurrence=3, min_sessions=2):
+    """Find patterns with recurrence_count >= min_recurrence across >= min_sessions distinct dates.
+
+    v1.3.1: default raised to min_recurrence=3 (was 2) to match SKILL.md contract:
+    recurrence >= 3 AND sessions >= 2 AND no active contradiction.
     Excludes patterns where all entries are already resolved or promoted."""
     ready = []
     entries = trail.get("entries", [])
