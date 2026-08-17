@@ -1,8 +1,8 @@
 ---
 name: context-orchestration
 description: 为任务选择最小有用的上下文（记忆/知识/Ontology/文件/工具结果），不就地加工或推断。构建任务上下文时触发。
-metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
-version: 1.2.0
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.3", "layer": "core" } }
+version: 1.3.0
 ---
 
 

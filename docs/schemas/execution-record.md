@@ -23,6 +23,19 @@ Execution Record 不是 scheduler / event bus / task runtime，不参与调度�
 - Fast Path 中涉及 L2+ 动作的任务（权限门被触发过）。
 - 用户/审计要求时（"这次报价为什么完成了？"）。
 
+## 谁创建（v1.3 强制，防止有的任务有 record、有的没有）
+
+| 场景 | 责任方 | 规则 |
+|:--|:--|:--|
+| Full Path 任务 | 执行该任务的 Agent（或 Orchestrator 编排者） | **MUST** produce Execution Record |
+| L2+ 动作（Fast 或 Full） | 执行动作的 Agent | **MUST** produce Execution Record |
+| Evolution Apply（任何 change） | self-evolution / 执行 Apply 的 Agent | **MUST** produce Execution Record |
+| Fast Path L0/L1 | 执行 Agent | **MAY** omit（无副作用低风险不产生噪音） |
+
+> 不允许“Skill 自己决定要不要、Orchestrator 认为 Verification 会记、Verification 以为 Skill 记”。
+> 归属明确：**谁执行，谁创建**；Evolution Apply 由进化路径单独强制。
+> 创建时机：任务结束时（或高风险动作前后），作为可审计快照随结果输出或存 memory。
+
 ## Schema
 
 ```yaml

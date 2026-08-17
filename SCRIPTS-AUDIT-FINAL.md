@@ -1,6 +1,6 @@
 # Self-Evolution Scripts Audit — Final
 
-> 对 `skills/self-evolution/scripts/` 的专项审计定格（Agent OS v1.2 最终验收）。
+> 历史存档（Agent OS v1.2 专项审计，当前版本 v1.3）。对 `skills/self-evolution/scripts/` 的审计定格。
 > 目的：确认代码没有偷偷做 SKILL.md 明确禁止的事——尤其 ChatGPT 点名的
 > skillgen.py / agents.py 是否"生成候选 ≠ 自动修改/运行"，learn.py 是否越权改安全文件。
 

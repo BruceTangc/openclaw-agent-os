@@ -1,5 +1,7 @@
 # OpenClaw Agent OS v1.3 (Freeze)
 
+让 OpenClaw 从“会调用 Skill”变成“有治理、会验证、能长期学习的 Agent”。
+
 > **v1.3 Freeze（2026-08-17）**：Core Protocol / Fast-Full Path / Proactive / Permission /
 > Verification / Memory-Knowledge-Ontology / Evolution / Heartbeat 已冻结，不再新增 Core Skill。
 > 后续只做三件事：协议文字收敛、Execution Record 追溯、Long-running 验证。
@@ -55,17 +57,20 @@
                            Permission Gate（永远存在; L0/L1 自动 ALLOW）
                                    │
                                    ▼
-                          OpenClaw Native Execution
-                                   │
-                                   ▼
-                           Verification（tool success ≠ task success）
-                                   │
-                                   ▼
+                          OpenClaw Native Execution ───────┐
+                                   │                        │
+                                   ▼                        │
+                           Verification                  Execution Record
+                                   │                    （旁路审计层：谁执行谁创建；
+                                   ▼                      Full Path/L2+/Evolution Apply MUST）
                             Evaluation → Writeback?(条件) → Evidence
                                    │
                                    ▼
                         Evolution Candidate（有证据才触发）
 ```
+
+> Execution Record 不是 Runtime、不是 Skill 节点，而是 **Protocol observability layer**（旁路审计线）：
+> 挂在 Execution 旁，回答“这次行为是否符合 Agent OS Protocol、从哪来到哪去”。
 
 **两个闭环**：
 1. **主任务闭环**：Trigger → Context → Goal/Task → (Fast|Full) → Permission → Execution → Verification → Evaluation → Writeback
@@ -141,23 +146,41 @@ OpenClaw Tools / Sub-agents / Skills / Runtime
 - agent runtime
 - parallel permission enforcement runtime
 
-## Install
+## Install（5 分钟）
 
-1. Back up existing same-named skills.
-2. Copy each directory under `skills/` into your OpenClaw skills directory.
-3. Read `docs/INSTALL.md`.
-4. Run the smoke tests in `docs/tests/`.
+```bash
+# 1. 确认 OpenClaw
+openclaw --version         # ≥ 2026.7.1-2
+
+# 2. 复制 11 个 Core Skills 到你的 skills 目录
+cp -r skills/*  <你的-skills-目录>/
+
+# 3. 安装 AGENTS.md（协议的注入载体，勿跳过）
+cp AGENTS.md  <你的-openclaw-workspace>/
+
+# 4. 重启
+openclaw gateway restart
+
+# 5. 验证 11 个 Skill ready
+openclaw skills list | grep -c "✓ ready"        # ≥ 11
+```
+
+> 详细安装 + 三级等级（Basic/Active/Full）见 [docs/INSTALL.md](docs/INSTALL.md)；
+> 装完跑 5 项验收（装对了吗/协议生效了吗/权限生效了吗/主动生效了吗/进化生效了吗）
+> 见 [docs/QUICK-START.md](docs/QUICK-START.md)。
 
 Target baseline: OpenClaw 2026.7.1-2.
 
 ## Docs
 
-- `docs/ARCHITECTURE.md`
-- `docs/INSTALL.md`
+- `docs/ARCHITECTURE.md` — v1.3 执行模型图（Fast/Full 分流 + 失败闭环）
+- `docs/INSTALL.md` — 安装（5 步 + Basic/Active/Full 三级）
+- `docs/QUICK-START.md` — 5 分钟安装 + 安装后 5 项验收
+- `docs/SKILL-MAP.md` — 11 Skill 协作总图 + 责任表（新用户先看这个）
 - `docs/COMPATIBILITY.md`
 - `docs/OPERATIONS.md`
-- `docs/schemas/` — decision / evidence / state / task models
-- `docs/tests/` — smoke test cases
+- `docs/schemas/` — decision / evidence / execution-record / state / task models
+- `docs/tests/` — smoke test cases + evolution-e2e + agent-session-e2e + long-running
 
 ## License
 

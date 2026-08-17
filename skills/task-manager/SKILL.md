@@ -1,8 +1,8 @@
 ---
 name: task-manager
 description: 管理任务语义状态与生命周期（创建/依赖/优先级/状态流转），不建执行队列或调度器。创建或更新任务时触发。
-metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
-version: 1.2.0
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.3", "layer": "core" } }
+version: 1.3.0
 ---
 
 

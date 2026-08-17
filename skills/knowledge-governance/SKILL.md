@@ -1,8 +1,8 @@
 ---
 name: knowledge-governance
 description: 把可复用知识治理为带来源/新鲜度/置信度的持久声明，处理矛盾保留与历史标记。知识录入或冲突时触发。
-metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
-version: 1.2.0
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.3", "layer": "core" } }
+version: 1.3.0
 ---
 
 

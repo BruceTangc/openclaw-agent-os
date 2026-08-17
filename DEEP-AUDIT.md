@@ -1,6 +1,6 @@
 # Agent OS v1.2 — 5 层一致性审计报告（DEEP AUDIT）
 
-> 审计对象：`/tmp/agentos-upload`（OpenClaw Agent OS v1.2，11 core skills + docs/ 协议层）
+> 历史存档（Agent OS v1.2 验收存档，当前版本 v1.3）。原审计对象：`/tmp/agentos-upload`（v1.2，11 core skills + docs/ 协议层）
 > 审计方式：只读诊断，不改任何文件。本报告包含诊断结论 + 可粘贴措辞建议，修改变更需父会话确认后另派任务。
 > 审计日期：2026-08-16
 

@@ -1,8 +1,8 @@
 ---
 name: permission-security
 description: 对动作做 L0-L4 风险分级与授权建议；最终由 OpenClaw 原生 policy/approval 执行。任何副作用动作前触发。
-metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
-version: 1.2.0
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.3", "layer": "core" } }
+version: 1.3.0
 ---
 
 

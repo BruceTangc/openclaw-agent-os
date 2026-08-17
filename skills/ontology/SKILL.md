@@ -1,8 +1,8 @@
 ---
 name: ontology
 description: 维护实体/关系/属性的语义索引（含别名/状态/来源/置信度）供检索与一致性；不替代 OpenClaw runtime。语义建模时触发。
-metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
-version: 1.2.0
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.3", "layer": "core" } }
+version: 1.3.0
 ---
 
 

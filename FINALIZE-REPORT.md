@@ -1,4 +1,4 @@
-# Agent OS v1.2 Finalize Report
+# Agent OS v1.2 Finalize Report（历史存档，当前版本 v1.3）
 
 > Agent OS v1.2 冻结存档。记录整轮重构、精修、脚本审计的最终状态。
 > 让后续读者（无论人还是 AI）一眼看清：这套体系审到哪、定稿状态如何、边界如何守住。

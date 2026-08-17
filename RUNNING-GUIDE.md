@@ -1,4 +1,4 @@
-# Agent OS v1.2 — Running Guide（运行环境配置指南）
+# Agent OS v1.3 — Running Guide（运行环境配置指南）
 
 > 目的：让**另一台服务器 / 新安装**的人 clone 本文档仓库后，不只复制 `skills/`，还能清楚知道
 > **要配置哪些 OpenClaw 环境、各自配成什么样，这套 Agent OS 才能真正跑起来**。
@@ -8,7 +8,7 @@
 
 ## 0. 前置确认
 
-- OpenClaw 版本：`2026.7.1-2`（Agent OS v1.2 以此为目标基线）
+- OpenClaw 版本：`2026.7.1-2`（Agent OS v1.3 以此为目标基线）
 - 复制 `skills/` 下的 11 个目录到你的 OpenClaw skills 目录（见 `docs/INSTALL.md`）
 - 装完后用 `openclaw skills list` 确认 11 个 skill 均为 `✓ ready`：
   `proactive / context-orchestration / task-manager / orchestrator / permission-security /
@@ -33,7 +33,7 @@
   agents: {
     defaults: {
       heartbeat: {
-        every: "2h",      // 周期：30m / 1h / 2h；0m 关闭。默认 30m
+        every: "10m",     // 推荐：开发/测试 10m；轻量长期运行 30m；低频 1h-2h。0m 关闭。默认 30m
         target: "last",   // 投递：last(最近渠道) | none(只内部)  | <channel-id>(指定渠道)
       },
     },
@@ -41,7 +41,11 @@
 }
 ```
 
-- 配置命令：`openclaw config set agents.defaults.heartbeat.every "2h"`
+- 配置命令：`openclaw config set agents.defaults.heartbeat.every "10m"`
+- **推荐配置（按主动性需求选）**：
+  - 开发/测试/验证期：`10m`（快速反馈，本文档仓库 agent-session-e2e 实测值）
+  - 轻量长期运行：`30m`
+  - 低频巡检 / 节省调用：`1h` 或 `2h`
 - 说明：`target: "last"` 会把 heartbeat 唤醒后 Proactive 的主动提醒投递到最近联系过的渠道（如飞书 DM）。
 - 详见官方文档 `docs/gateway/heartbeat`。
 
@@ -124,6 +128,13 @@
 **Q3：proactive 不提醒我？**
 先确认 heartbeat 已配置（§1.1）并重启；且 Proactive 只在"有值得处理的事项"才打扰，
 无价值时会 NOOP（保持安静）——这是设计，不是故障。
+
+**Q3b：我装完了，为什么 Agent 没有主动找我？**
+**安装 Skill ≠ 自动获得主动性。** 主动性需要三件事同时成立：
+① OpenClaw Heartbeat/Cron/Hook（外部 Trigger，§1.1）
+② Proactive Skill（决策层，判断值不值得做）
+③ 有价值的 Signal（有异常/机会/到期项才提醒）
+只装 proactive 而没配 Heartbeat，Agent 永远不会主动找你——这是预期行为。
 
 **Q4：spawn sub-agent 失败？**
 确认 `subagents.allowAgents` 非空、目标 agent 在 `agents.list[]` 里真实配置。

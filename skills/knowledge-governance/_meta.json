@@ -1,5 +1,5 @@
 {
   "name": "knowledge-governance",
-  "version": "1.2.0",
-  "description": "知识治理策略层（Agent OS v1.2 核心模块）。管理可复用知识为带来源/新鲜度/不确定性的持久声明；矛盾保留不静默覆盖；历史标记 obsolete/disputed。"
+  "version": "1.3.0",
+  "description": "知识治理策略层（Agent OS v1.3 核心模块）。管理可复用知识为带来源/新鲜度/不确定性的持久声明；矛盾保留不静默覆盖；历史标记 obsolete/disputed。"
 }

@@ -1,6 +1,6 @@
 # Heartbeat / Cron Policy
 
-> Agent OS v1.2 Core Protocol 之一。明确 Heartbeat、Cron、Hook、Background Tasks 的定位：
+> Agent OS v1.3 Core Protocol 之一。明确 Heartbeat、Cron、Hook、Background Tasks 的定位：
 > 它们都是**外部 Trigger**，不是 Agent OS 的一部分，不建自己的调度器。
 
 ## 1. 定位

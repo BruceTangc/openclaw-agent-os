@@ -1,8 +1,8 @@
 ---
 name: summarize
 description: 把大段/杂讯材料压缩为决策可用的信息，保留事实/数字/日期，区分事实与推断。总结文本/网页/研究时触发。
-metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
-version: 1.2.0
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.3", "layer": "core" } }
+version: 1.3.0
 ---
 
 

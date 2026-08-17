@@ -1,8 +1,8 @@
 ---
 name: memory-governance
 description: 决定什么该写进持久记忆、如何分层/晋升/清理；存储与召回由 OpenClaw 原生 memory 承担。记忆写入或复盘时触发。
-metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
-version: 1.2.0
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.3", "layer": "core" } }
+version: 1.3.0
 ---
 
 

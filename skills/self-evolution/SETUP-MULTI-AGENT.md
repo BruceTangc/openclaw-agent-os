@@ -1,7 +1,7 @@
 # SETUP-MULTI-AGENT.md — self-evolution 多 Agent 接入指南
 
 > ⚠️ 本文档早期内容沿用旧模块名 `self-improvement-llm`；现统一为 **`self-evolution`**
-> （Agent OS v1.2 模块名）。下文中 `self-improvement` / `self-improvement-llm` 均指代同一个 skill。
+> （Agent OS v1.3 模块名）。下文中 `self-improvement` / `self-improvement-llm` 均指代同一个 skill（历史版本名为 self-improvement-llm）。
 >
 > **边界声明**：本文件描述的"多机共享学习引擎（symlink）"属于 **治理/学习层的共享**，
 > 不是并行 Agent runtime 或多 Agent 编排 runtime。真正的跨 Agent 权限委托/记忆作用域

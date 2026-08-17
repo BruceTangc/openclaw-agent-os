@@ -1,6 +1,6 @@
 # Action Protocol
 
-> Agent OS v1.2 Core Protocol 之一。动作分级、权限门、幂等与副作用控制。
+> Agent OS v1.3 Core Protocol 之一。动作分级、权限门、幂等与副作用控制。
 
 ## 1. 动作分级（L0-L4，唯一真值）
 

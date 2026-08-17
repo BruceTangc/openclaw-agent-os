@@ -1,5 +1,5 @@
 {
   "name": "task-manager",
-  "version": "1.2.0",
-  "description": "任务操作系统（Agent OS v1.2 核心模块）。统一管理任务生命周期、优先级、依赖、状态、Follow-up、去重、Checkpoint、指标；管「任务是什么与状态」，Orchestrator 管执行。"
+  "version": "1.3.0",
+  "description": "任务操作系统（Agent OS v1.3 核心模块）。统一管理任务生命周期、优先级、依赖、状态、Follow-up、去重、Checkpoint、指标；管「任务是什么与状态」，Orchestrator 管执行。"
 }

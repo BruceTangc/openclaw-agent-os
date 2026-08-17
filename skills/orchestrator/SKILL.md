@@ -1,8 +1,8 @@
 ---
 name: orchestrator
 description: 决定任务如何分解、按什么顺序、由谁执行并生成执行计划；执行走 OpenClaw 原生。拆分或路由任务时触发。
-metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
-version: 1.2.0
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.3", "layer": "core" } }
+version: 1.3.0
 ---
 
 

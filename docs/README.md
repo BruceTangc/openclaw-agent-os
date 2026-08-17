@@ -1,4 +1,4 @@
-# OpenClaw Agent OS v1.2 Production
+# OpenClaw Agent OS v1.3 Production
 
 Target baseline: OpenClaw 2026.7.1-2.
 

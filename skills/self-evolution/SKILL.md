@@ -139,6 +139,12 @@ version: 1.3.0
 - **单次未验证失败不触发修改**；**不为提高完成率削弱安全**。
 - 不自动批准自己的变更；不绕过 Permission Gate 做「修复」。
 - Anti-loop：同学习反复失败 → blocked_learning，停止自动晋升。
+- **硬规则（v1.3，简版，与 EVOLUTION-PROTOCOL.md §10.1 一致）**：
+  - Change Cooldown：同一 target 修改后冷却 7 天，冷却期内不收同 target candidate。
+  - Same-target Dedup：candidate 入库前按 target+pattern 去重，重复合并不新增。
+  - Regression Failure Limit：同一 change 连续 2 次回归 FAIL → 自动回滚 + 标需人工。
+  - Max Evolution Depth：同一 pattern_key 累计 ≥3 次 change → 停止自动进化，转人工。
+  - **Regression FAIL 产生的 Evidence 只用于回滚决策，不得自动成为新 candidate 输入**（防止 Evolution 制造 Evidence 死循环）。
 - Anti-overfit：先问「一般?项目特有?Agent 特有?工具特有?用户特有?临时?上下文依赖?」，存最窄有效作用域。
 - 不建自己的 Scheduler/Event Bus/Task/Memory/Agent Runtime；复用 OpenClaw 原生。
 

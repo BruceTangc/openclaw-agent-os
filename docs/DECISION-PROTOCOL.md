@@ -1,6 +1,6 @@
 # Decision Protocol
 
-> Agent OS v1.2 Core Protocol 之一。统一决策模型与词汇表。
+> Agent OS v1.3 Core Protocol 之一。统一决策模型与词汇表。
 
 ## 1. 决策词汇表（唯一真值）
 

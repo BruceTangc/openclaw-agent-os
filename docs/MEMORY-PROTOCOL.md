@@ -1,6 +1,6 @@
 # Memory Protocol
 
-> Agent OS v1.2 Core Protocol 之一。什么该成为持久记忆、如何晋升、如何治理。
+> Agent OS v1.3 Core Protocol 之一。什么该成为持久记忆、如何晋升、如何治理。
 > OpenClaw 拥有存储/索引/召回 — 本协议只规定治理政策。
 
 ## 1. 分层

@@ -1,5 +1,5 @@
 {
   "name": "context-orchestration",
-  "version": "1.2.0",
-  "description": "上下文编排策略层（Agent OS v1.2 核心模块）。为任务选择最小有用信息：任务类型→所需实体→检索→去噪→紧凑上下文包。不替代 OpenClaw Context Engine。"
+  "version": "1.3.0",
+  "description": "上下文编排策略层（Agent OS v1.3 核心模块）。为任务选择最小有用信息：任务类型→所需实体→检索→去噪→紧凑上下文包。不替代 OpenClaw Context Engine。"
 }

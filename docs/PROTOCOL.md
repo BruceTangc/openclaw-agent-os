@@ -122,22 +122,42 @@ Permission Gate (permission-security, 所有路径必经)
 - Fast Path 不得以“简化”为由声称“无需权限判断”。
 - 分类器不可用 → 高风险默认拒绝（fail-closed），不默认放行。
 
+### 3.5 Verification vs Evaluation（固定术语）
+
+> **Verification proves completion; Evaluation judges quality.**（Agent OS 固定术语）
+
+- Verification：有没有真的做到（结果是否存在、是否完整、是否匹配成功条件）。
+- Evaluation：做得好不好（质量、是否满足业务目标、有无重复/副作用）。
+- 两者都要证据；Evaluation 通过才写 writeback，有证据的弱点才进 Evolution。
+
 ## 4. 业务 Skill 接入协议
 
-任何业务 Skill（报价/仓库/基金/交易/社媒/财务…）接入 Agent OS 必须声明：
+任何业务 Skill（报价/仓库/基金/交易/社媒/财务…）接入 Agent OS 必须声明
+（canonical template，与 SKILL-INTEGRATION.md 保持一致）：
 
 ```yaml
 x-agent-os:
-  protocol_version: "1.2"        # 或 "1.3"
+  protocol_version: "1.3"        # v1.3 canonical；v1.2 Skill 可兼容运行（legacy compatibility mode）
+  layer: "business"              # business | cognition | action | control
   trigger: "user|heartbeat|cron|hook"   # Trigger 由外部/OpenClaw 提供
-  entry_mode: "fast|full|both"   # v1.3: 该 Skill 默认走哪种执行模式
+  path:                          # capability：Skill 支持哪些路径（Agent OS 决定实际路线）
+    fast: true
+    full: true
+  entry_mode: "both"             # default preference；SHALL NOT override Agent OS routing decision
   requires:                      # v1.3: Protocol Contract（节点矩阵）
     context: true                # required / conditional
-    task: conditional
+    goal_task_semantics: true    # 目标+成功条件（Mandatory）
+    task: conditional            # Task Manager 完整状态机：仅 Full Path
     decision: conditional        # proactive 仅自主任务
-    permission: true             # L2+ 必经权限门
-    verification: true
+    orchestrator: conditional    # 仅 Full Path
+    permission: true             # L2+ 必经权限门（永远存在）
+    verification: true           # 后果性工作必经验证
+    evaluation: conditional      # Full Path 完成评估
     writeback: conditional       # 有持久化价值才写
+    evolution: conditional       # 有证据的重复失败才产 candidate
+  outputs:
+    success_condition: required  # 什么算成功
+    evidence: required           # 用什么证明成功
   permissions:                   # L0-L4 声明 (permission-security)
     - action: "read"      # L0
     - action: "send"      # L2 (默认需确认)
@@ -146,6 +166,9 @@ x-agent-os:
   memory_write: "governed"       # 走 memory-governance
   evolution_feedback: true       # 重复失败上报
 ```
+
+> **Skill 声明“需要什么”，Agent OS 决定“怎么走”**：`path` = capability，`entry_mode` = default
+> preference，实际路由由 Agent OS 按任务类型/风险决定——`entry_mode` SHALL NOT override routing。
 
 **必须做的：**
 - 副作用动作前做权限判断（permission-security 治理 Skill，遵守 OpenClaw native policy/approval）。

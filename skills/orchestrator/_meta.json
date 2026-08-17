@@ -1,5 +1,5 @@
 {
   "name": "orchestrator",
-  "version": "1.2.0",
-  "description": "总调度中枢（Agent OS v1.2 核心模块）。理解目标、拆解任务、能力匹配、路由、依赖图、权限/风险门、执行、重试、重新规划、结果合成。Proactive 决定是否值得做，Orchestrator 决定怎么做。"
+  "version": "1.3.0",
+  "description": "总调度中枢（Agent OS v1.3 核心模块）。理解目标、拆解任务、能力匹配、路由、依赖图、权限/风险门、执行、重试、重新规划、结果合成。Proactive 决定是否值得做，Orchestrator 决定怎么做。"
 }

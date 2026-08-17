@@ -1,12 +1,12 @@
 ---
-summary: "AGENTS.md reference template for Agent OS v1.2: OpenClaw workspace instructions + Agent OS governance/decision/workflow policy layer"
-title: "AGENTS.md (Agent OS v1.2 template)"
+summary: "AGENTS.md reference template for Agent OS v1.3: OpenClaw workspace instructions + Agent OS governance/decision/workflow policy layer"
+title: "AGENTS.md (Agent OS v1.3 template)"
 read_when:
   - Bootstrapping a new machine/workspace with Agent OS installed
   - Auditing whether AGENTS.md follows the Agent OS protocol
 ---
 
-# AGENTS.md - Your Workspace (Agent OS v1.2)
+# AGENTS.md - Your Workspace (Agent OS v1.3)
 
 > **本文件是参考模板**：新机器 / 新工作区装完 Agent OS 后，复制为你的 `AGENTS.md`，
 > 删掉本说明和"个性化区"占位，按需改写。
@@ -61,7 +61,7 @@ read_when:
 
 ## 🤖 Agent OS 总规则（行为规范层）
 
-本机装有 Agent OS v1.2（11 个核心 Skill：proactive / task-manager / orchestrator /
+本机装有 Agent OS v1.3（11 个核心 Skill：proactive / task-manager / orchestrator /
 ontology / summarize / self-evolution / memory-governance / knowledge-governance /
 context-orchestration / verification-evaluation / permission-security）。
 

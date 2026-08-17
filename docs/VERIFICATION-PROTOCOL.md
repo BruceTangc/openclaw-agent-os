@@ -1,6 +1,6 @@
 # Verification Protocol
 
-> Agent OS v1.2 Core Protocol 之一。证明"工具跑了"≠"任务成功"。
+> Agent OS v1.3 Core Protocol 之一。证明"工具跑了"≠"任务成功"。
 
 ## 1. 核心区分
 

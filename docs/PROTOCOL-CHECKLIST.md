@@ -1,6 +1,6 @@
 # Agent OS Protocol Checklist
 
-> Agent OS v1.2 Core Protocol 之一。逐文件审计清单：判定一个 Skill / 一个任务 / 整个
+> Agent OS v1.3 Core Protocol 之一。逐文件审计清单：判定一个 Skill / 一个任务 / 整个
 > Agent OS 是否真正遵守 Core Protocol。用于爸爸的架构审计和自我回归。
 
 ## 1. 系统性检查（防止跑偏）

@@ -1,5 +1,5 @@
 {
   "name": "proactive",
-  "version": "1.2.0",
-  "description": "主动智能中枢（Agent OS v1.2 核心模块）。主动感知、信号筛选、机会/风险/目标偏移发现、优先级判断、低风险自主执行、结果验证、反馈学习。Cron/Heartbeat 只唤醒，Proactive 决定是否值得做。"
+  "version": "1.3.0",
+  "description": "主动智能中枢（Agent OS v1.3 核心模块）。主动感知、信号筛选、机会/风险/目标偏移发现、优先级判断、低风险自主执行、结果验证、反馈学习。Cron/Heartbeat 只唤醒，Proactive 决定是否值得做。"
 }

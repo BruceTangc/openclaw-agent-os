@@ -1,8 +1,8 @@
 ---
 name: verification-evaluation
 description: 区分工具成功与任务成功，按 V0-V4 验证并给出 PASS/PARTIAL/FAIL/UNKNOWN。任务完成后或失败修复时触发。
-metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.2", "layer": "core" } }
-version: 1.2.0
+metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.3", "layer": "core" } }
+version: 1.3.0
 ---
 
 
