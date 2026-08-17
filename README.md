@@ -1,6 +1,10 @@
-# OpenClaw Agent OS v1.2
+# OpenClaw Agent OS v1.3 (Freeze)
 
-Governance, decision and workflow policy layer around OpenClaw's native runtime.
+> **v1.3 Freeze（2026-08-17）**：Core Protocol / Fast-Full Path / Proactive / Permission /
+> Verification / Memory-Knowledge-Ontology / Evolution / Heartbeat 已冻结，不再新增 Core Skill。
+> 后续只做三件事：协议文字收敛、Execution Record 追溯、Long-running 验证。
+>
+> Governance, decision and workflow policy layer around OpenClaw's native runtime.
 
 > 官方协议：见 [docs/PROTOCOL.md](docs/PROTOCOL.md)（统一行为协议）。
 > 冻结存档：见 [FINALIZE-REPORT.md](FINALIZE-REPORT.md)、[DEEP-AUDIT.md](DEEP-AUDIT.md)、[SCRIPTS-AUDIT-FINAL.md](SCRIPTS-AUDIT-FINAL.md)。
@@ -27,23 +31,52 @@ Governance, decision and workflow policy layer around OpenClaw's native runtime.
 
 ## Architecture
 
+> v1.3：不是单线执行链，而是 **Fast Path / Full Path 分流**。
+> 简单任务不过度官僚化；复杂/自主/有副作用任务走完整链路。
+
 ```
-Trigger (user / heartbeat / automation / hook)
-  -> Intake (signal ingestion)
-  -> Context Orchestration
- -> Goal / Task semantics
- -> Proactive Decision
- -> Orchestrator
- -> Permission Security
- -> OpenClaw execution (native)
- -> Verification
- -> Evaluation
- -> Memory / Knowledge writeback
- -> Self-Evolution candidate
+                    Trigger (OpenClaw 提供: user / heartbeat / cron / hook / background)
+                                   │
+                                   ▼
+                              Context Orchestration
+                                   │
+                                   ▼
+                            Goal / Task Semantics  ← Mandatory（目标+成功条件）
+                                   │
+                        ┌──────────┴──────────┐
+                        ▼                     ▼
+                    Fast Path             Full Path
+              (简单/低风险/单能力)    (复杂/自主/多步/有副作用)
+                        │                     │
+               Direct Skill            Decision(仅自主) → Orchestrator
+                        │                     │
+                        └──────────┬──────────┘
+                                   ▼
+                           Permission Gate（永远存在; L0/L1 自动 ALLOW）
+                                   │
+                                   ▼
+                          OpenClaw Native Execution
+                                   │
+                                   ▼
+                           Verification（tool success ≠ task success）
+                                   │
+                                   ▼
+                            Evaluation → Writeback?(条件) → Evidence
+                                   │
+                                   ▼
+                        Evolution Candidate（有证据才触发）
 ```
 
+**两个闭环**：
+1. **主任务闭环**：Trigger → Context → Goal/Task → (Fast|Full) → Permission → Execution → Verification → Evaluation → Writeback
+2. **Evolution 闭环**：Evidence → Discover+Classify → Candidate → Judge → Proposal → Governance → Apply → Regression → Observe → New Evidence
+   两环通过 **Verification/Evaluation → Evidence** 连接。
 
-## Control Plane (v1.2 Core Protocol)
+**Task Semantics ≠ Task Manager**：所有任务必经的是 Goal/Task **Semantics**（目标+成功条件）；
+Task Manager **State Machine**（READY/RUNNING/BLOCKED/DONE）仅 Full Path / 长任务才用，简单任务不建任务对象。
+
+
+## Control Plane (v1.3 Core Protocol)
 
 ```
 OpenClaw Native Runtime (owner: OpenClaw)
@@ -87,11 +120,16 @@ OpenClaw Tools / Sub-agents / Skills / Runtime
 
 ## Design guardrails
 
+> **最高级 guardrail（永久）：OpenClaw Runtime + Agent OS Control Plane + Evidence-driven Evolution。**
+> OpenClaw 拥有 agent loop / tool wiring / prompt assembly / session / workspace / skills / tasks /
+> approvals / sandbox；Agent OS 只在其上提供协议、治理、验证与受控进化。**Agent OS 不造任何 Runtime。**
+
 - **不建并行 Runtime**：scheduler / event bus / task runtime / memory runtime /
-  context engine / agent runtime / permission runtime 全部禁止。
+  context engine / agent runtime / permission runtime 全部禁止（永久）。
 - **Verification 独立**：tool success ≠ task success；必须检查实际结果 → PASS/PARTIAL/FAIL/UNKNOWN。
-- **Self-Evolution 受控**：权限/安全/凭证/外部副作用/Runtime 变更必须人工审批。
+- **Self-Evolution 受控**：权限/安全/凭证/外部副作用/Runtime 变更必须人工审批；Evolution 不得制造 Evidence。
 - **OpenClaw 原生优先**：重复造 OpenClaw 已有的机制 = 违反协议。
+- **v1.3 Freeze**：不再新增 Core Skill；只做协议收敛、Execution Record 追溯、Long-running 验证。
 
 ## Explicitly do NOT build
 

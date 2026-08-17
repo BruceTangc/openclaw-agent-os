@@ -153,6 +153,25 @@ Observe → Verify → Diagnose → Propose → Test → Evaluate → Approve �
 - 用未分类的 Evidence 直接触发修改（必须先过 Candidate 判定）
 - 把 Heartbeat/定时唤醒当作 Evolution 触发条件（evidence-driven, not schedule-driven）
 
+## 10.1 Evolution Anti-Loop（v1.3 强制，防自我制造 Evidence）
+
+> 防止 `Evolution → Regression FAIL → Evidence → 又改 → 又 FAIL` 死循环。
+> 关键：**Regression FAIL 产生的 Evidence 只用于回滚决策，不自动成为新 candidate 的输入**；
+> 新 candidate 必须来自独立的失败/纠正/观测。
+
+四道闸 + 人工兜底：
+
+| # | 闸 | 规则 |
+|:--|:--|:--|
+| 1 | Change Cooldown | 同一 target 修改后冷却期（默认 7 天），冷却期内不接受同 target candidate |
+| 2 | Same-target Dedup | candidate 入库前按 target+pattern 去重；重复者合并，不新增 |
+| 3 | Regression Failure Limit | 同一 change 连续 2 次 Regression FAIL → 自动回滚 + 标记需人工 |
+| 4 | Max Evolution Depth | 同一 pattern_key 累计 ≥3 次 change → 停止自动进化，转人工评估 |
+| 5 | Manual Escalation | 任一闸触发或 G5-G6 修改 → 人工审批 |
+
+长期监控清单见 `docs/tests/long-running.md`（7d/30d 观察项：candidate 重复、evolution loop、
+regression 过期、heartbeat 噪音、stale state、repeated proposal、failed change、rollback、permission drift）。
+
 ## 11. 输出
 
 - 变更候选必须有：问题、证据、提议变更、预期影响、回归检查、G 级别、审批路径。

@@ -3,6 +3,9 @@
 > Agent OS v1.3。证明"实际经过了哪些协议节点"——不是新建 Runtime，
 > 而是每个 Full Path / 高风险任务附带的一份轻量语义记录。
 > OpenClaw 仍是执行者；本记录只回答：**这次行为是否符合 Agent OS Protocol**。
+>
+> **P1（2026-08-17 升级）**：从 P2 升为 P1。可追溯性是 Agent OS 的核心能力——
+> 必须能回答"这次行为从哪来、到哪去、为什么改"。仍只做语义关联，不建 trace runtime。
 
 ## 定位
 
@@ -63,7 +66,7 @@ steps:
   evolution:
     status: "none"            # none | candidate | applied | blocked
     candidate_id: null
-    # 轻量 trace 链（P2）：回答“这次行为改变从哪来、到哪去”
+    # 轻量 trace 链（P1）：回答“这次行为改变从哪来、到哪去”
     # 不建 trace runtime，只做关联：exec → evidence → candidate → proposal → change → regression
     trace:
       execution_id: "exec_xxx"     # 本次任务执行 id

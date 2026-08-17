@@ -16,14 +16,21 @@ x-agent-os:
   protocol_version: "1.3"        # 1.2 仍兼容
   layer: "business"              # business | cognition | action | control
   trigger: "user|heartbeat|cron|hook"   # Trigger 由 OpenClaw/外部提供
+  path:                        # v1.3：声明走哪种路径（Skill 声明能力，Agent OS 决定路线）
+    fast: true                 # 支持 Fast Path（简单/低风险/单能力）
+    full: true                 # 支持 Full Path（复杂/自主/多步/有副作用）
   entry_mode: "both"             # fast | full | both（v1.3：默认执行模式）
   requires:                      # v1.3：Protocol Contract（节点矩阵）
     context: true                # required=true / conditional=false
-    task: conditional            # 简单任务可跳过 task-manager 完整状态机
+    goal_task_semantics: true    # 目标+成功条件（Mandatory，不建状态机）
+    task: conditional            # Task Manager 完整状态机：仅 Full Path/长任务
     decision: conditional        # 仅自主决策任务进 proactive；用户直接指令不进
+    orchestrator: conditional    # 仅 Full Path 才编排；Fast Path 直调 Skill
     permission: true             # L2+ 必经权限门（Fast Path 也适用）
     verification: true           # 后果性工作必经验证
+    evaluation: conditional      # Full Path 完成评估
     writeback: conditional       # 有持久化价值才写 governance
+    evolution: conditional       # 有证据的重复失败才产 candidate
   capabilities:
     - read      # L0
     - search    # L0
@@ -41,6 +48,9 @@ x-agent-os:
   knowledge_write: "governed"  # 走 knowledge-governance
   evolution_feedback: true     # 重复失败上报 self-evolution
 ```
+
+> **Skill 声明“需要什么”，Agent OS 决定“怎么走”**：`path` + `requires` 矩阵是声明式的，
+> 执行时由 Agent OS（结合任务类型与风险）选择 Fast/Full，业务 Skill 不自己实现一套 Agent OS。
 
 ## 1.1 Protocol Contract（节点矩阵，v1.3 核心）
 
