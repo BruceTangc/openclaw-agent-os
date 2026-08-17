@@ -18,6 +18,10 @@ ontology_bridge.py — Ontology × Self-Improvement 桥接层
 
 规范对齐命令（供 learn.py / 人工调用）：
   python3 scripts/ontology_bridge.py --impact <entity_id>  # 影响分析
+
+> 多 workspace 探测：ONTOLOGY_SCRIPT 不再硬编码单一路径，而是自动探测
+> （本 WORKSPACE → ~/.openclaw/workspace-* 按名排序取首命中 → 回退默认），
+> 以兼容多 agent/多服务器（如 workspace-jarvis）下 ontology skill 的安装目录。
 """
 
 import argparse
@@ -33,13 +37,56 @@ WORKSPACE = (
     or os.path.expanduser("~/.openclaw/workspace")
 )
 TRAIL_PATH = os.path.join(WORKSPACE, "memory", ".learning-trail.json")
-ONTOLOGY_SCRIPT = os.path.join(WORKSPACE, "skills", "ontology", "scripts", "ontology.py")
+
+
+def _probe_ontology_script():
+    """自动探测 ontology.py 路径。
+
+    ontology skill 可能装在主 workspace，也可能装在 workspace-*（多 agent
+    或多服务器）目录，用硬编码单一路径会在其中一台打 stderr。这里探测：
+      1. WORKSPACE 本身
+      2. ~/.openclaw/workspace-*（按名称排序，取第一个命中）
+    返回实际存在的脚本路径；找不到返回 None（由调用方决定如何降级）。
+    """
+    import glob
+    # 1) WORKSPACE 本身
+    if WORKSPACE:
+        p = os.path.join(WORKSPACE, "skills", "ontology", "scripts", "ontology.py")
+        if os.path.exists(p):
+            return p
+    # 2) workspace-*（多 agent / 多服务器）目录里探测
+    base = os.path.dirname(WORKSPACE) if WORKSPACE else os.path.expanduser("~/.openclaw")
+    for ws in sorted(glob.glob(os.path.join(base, "workspace-*"))):
+        p = os.path.join(ws, "skills", "ontology", "scripts", "ontology.py")
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def _resolve_ontology_script():
+    """返回 ontology.py 真实路径；探测失败时回退到 WORKSPACE 默认。"""
+    found = _probe_ontology_script()
+    if found:
+        return found
+    return os.path.join(WORKSPACE, "skills", "ontology", "scripts", "ontology.py")
+
+
+ONTOLOGY_SCRIPT = None  # 惰性解析，避免 import 时探测
+_ONTOLOGY_CACHE = {"v": None}
+
+
+def get_ontology_script():
+    """带缓存的 ontology.py 路径解析，供 status 等重复调用。"""
+    if _ONTOLOGY_CACHE["v"] is None:
+        _ONTOLOGY_CACHE["v"] = _resolve_ontology_script()
+    return _ONTOLOGY_CACHE["v"]
 
 
 def ensure_ontology():
-    if not os.path.exists(ONTOLOGY_SCRIPT):
-        raise FileNotFoundError("ontology.py 不存在: {0}".format(ONTOLOGY_SCRIPT))
-    return ONTOLOGY_SCRIPT
+    script = get_ontology_script()
+    if not os.path.exists(script):
+        raise FileNotFoundError("ontology.py 不存在: {0}".format(script))
+    return script
 
 
 def run_ontology(args_list, timeout=30):
@@ -168,8 +215,8 @@ def cmd_status(args):
     print("Ontology Bridge Status:")
     print("  entries: {0}".format(len(entries)))
     print("  enriched with ontology: {0}".format(done))
-    print("  ontology script: {0}".format(ONTOLOGY_SCRIPT))
-    print("  available: {0}".format(os.path.exists(ONTOLOGY_SCRIPT)))
+    print("  ontology script: {0}".format(get_ontology_script()))
+    print("  available: {0}".format(os.path.exists(get_ontology_script())))
     return 0
 
 
