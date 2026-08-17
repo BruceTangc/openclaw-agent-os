@@ -105,3 +105,26 @@
 - 后半段测试：`docs/tests/scripts/evolution-e2e.sh`（PASS=5, FAIL=0）
 - 学习引擎：`skills/self-evolution/scripts/learn.py`
 - 生产 trail：`~/.openclaw/workspace/memory/.learning-trail.json`
+---
+
+## 7. P4 落地：Heartbeat 自动巡检（轻量接入，2026-08-17）
+
+> 原则：OpenClaw 提供外部 Trigger（Heartbeat），Agent OS 不自造 scheduler。只读检查，有发现才提醒。
+
+### 7.1 接入点（全部已实测）
+
+| 环节 | 配置/命令 | 实测结果 |
+|:----|:----|:----|
+| Trigger | OpenClaw Heartbeat：`every: 10m`，06:00-22:00，target=last | ✅ 已启用 |
+| 唤醒打点 | `proactive.py state --op wake` | ✅ `{"wake": "ok"}` |
+| 巡检①到期验证 | `learn.py --verify` | ✅ `0 due, 1 monitoring` |
+| 巡检②晋升候选 | `learn.py --propose` | ✅ `No proposals` |
+| 判定 | 有 due → 处理；有候选 → SUGGEST；都无 → HEARTBEAT_OK | ✅ HEARTBEAT_OK（不打扰） |
+
+### 7.2 写入位置
+- `~/.openclaw/workspace/HEARTBEAT.md` 新增「学习系统巡检」段（L0 只读自动；晋升/修改走 L1+ 与 permission-security）
+
+### 7.3 验证结论
+- 真实 heartbeat 巡检流程跑通：wake → verify → propose → 判定 → HEARTBEAT_OK
+- 当前无到期验证、无晋升候选 → 静默是正确行为（防骚扰）
+- 下次有真实 due（如 change-20260817-001 的 next_check=2026-08-24）时会自然触发处理路径
