@@ -39,6 +39,7 @@ if _LIB not in sys.path:
     sys.path.insert(0, _LIB)
 from id_utils import generate_id
 from persistence import atomic_write_json
+from persistence import FileLock
 
 # ---------------------------------------------------------------------------
 # 常量
@@ -104,6 +105,18 @@ def load_tasks():
 def save_tasks(tasks):
     # v1.3 #6/#17: 原子写入 (lock + temp + fsync + os.replace)
     atomic_write_json(DATA_PATH, tasks)
+
+
+def atomic_update_tasks(mutator):
+    """P1-2/修复: read→modify→write 真正放进同一把 FileLock 事务。
+    用法: atomic_update_tasks(lambda tasks: _create_into(tasks))，
+    锁内读 → 改 → 写，杜绝并发 lost update。
+    mutator 返回 (新数据, 结果)；异常则锁内回滚不写盘。"""
+    with FileLock(DATA_PATH):
+        tasks = load_tasks()
+        new_tasks, result = mutator(tasks)
+        save_tasks(new_tasks)
+        return result
 
 
 def new_task_id():
@@ -346,18 +359,19 @@ def main():
     if args.cmd == "create":
         data = read_stdin_or_json(args.json, "task")
         t = normalize_task(data)
-        tasks = load_tasks()
-        dup = find_duplicate(tasks, t) if args.merge else None
-        if dup is not None:
-            merged = merge_tasks(tasks[dup], t)
-            tasks[dup] = merged
-            save_tasks(tasks)
-            res = {"action": "merged", "task": merged}
-        else:
+
+        def _create(tasks):
+            dup = find_duplicate(tasks, t) if args.merge else None
+            if dup is not None:
+                merged = merge_tasks(tasks[dup], t)
+                tasks[dup] = merged
+                return tasks, {"action": "merged", "task": merged}
             t["priority"] = compute_priority(t)   # 重新计算, 拒绝盲从 hint (§65)
             tasks.append(t)
-            save_tasks(tasks)
-            res = {"action": "created", "task": t}
+            return tasks, {"action": "created", "task": t}
+
+        # P1-2: read→modify→save 在 atomic_update_tasks 同一把锁内完成
+        res = atomic_update_tasks(_create)
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return
 
@@ -382,48 +396,63 @@ def main():
         return
 
     if args.cmd == "update":
-        tasks = load_tasks()
-        for t in tasks:
-            if t["id"] == args.id:
-                old = t["status"]
-                if args.status:
-                    ns = args.status.upper()
-                    if ns not in VALID_STATUS:
-                        print(json.dumps({"error": f"非法状态 {ns}"}, ensure_ascii=False)); sys.exit(1)
-                    if ns != old and ns not in VALID_TRANSITIONS.get(old, set()):
-                        print(json.dumps({"error": f"非法转换 {old}→{ns}"}, ensure_ascii=False)); sys.exit(1)
-                    t["status"] = ns
-                    if ns == "COMPLETED":
-                        t["completed_at"] = utcnow_iso()
-                    t["history"].append({"timestamp": utcnow_iso(), "actor": "system",
-                                         "action": "status_changed", "from": old, "to": ns})
-                if args.title: t["title"] = args.title
-                extra = read_stdin_or_json(args.json, "extra") if args.json else {}
-                for k, v in extra.items():
-                    if k in ("context", "blocked_by", "dependencies", "outputs", "success_conditions"):
-                        t[k] = v
-                if extra.get("priority_score"):
-                    t["priority"]["score"] = _f(extra["priority_score"])
-                    t["priority"] = compute_priority(t)
-                t["updated_at"] = utcnow_iso()
-                save_tasks(tasks)
-                print(json.dumps({"updated": t["id"], "task": t}, ensure_ascii=False, indent=2))
-                return
-        print(json.dumps({"error": f"task {args.id} 不存在"}, ensure_ascii=False))
+        def _update(tasks):
+            for t in tasks:
+                if t["id"] == args.id:
+                    old = t["status"]
+                    if args.status:
+                        ns = args.status.upper()
+                        if ns not in VALID_STATUS:
+                            raise ValueError("非法状态 %s" % ns)
+                        if ns != old and ns not in VALID_TRANSITIONS.get(old, set()):
+                            raise ValueError("非法转换 %s→%s" % (old, ns))
+                        t["status"] = ns
+                        if ns == "COMPLETED":
+                            t["completed_at"] = utcnow_iso()
+                        t["history"].append({"timestamp": utcnow_iso(), "actor": "system",
+                                             "action": "status_changed", "from": old, "to": ns})
+                    if args.title:
+                        t["title"] = args.title
+                    extra = read_stdin_or_json(args.json, "extra") if args.json else {}
+                    for k, v in extra.items():
+                        if k in ("context", "blocked_by", "dependencies", "outputs", "success_conditions"):
+                            t[k] = v
+                    if extra.get("priority_score"):
+                        t["priority"]["score"] = _f(extra["priority_score"])
+                        t["priority"] = compute_priority(t)
+                    t["updated_at"] = utcnow_iso()
+                    return tasks, {"updated": t["id"], "task": t}
+            return tasks, None
+
+        # P1-2: 同一锁内 read→modify→save
+        try:
+            res = atomic_update_tasks(_update)
+        except ValueError as e:
+            print(json.dumps({"error": str(e)}, ensure_ascii=False))
+            sys.exit(1)
+        if res is None:
+            print(json.dumps({"error": "task %s 不存在" % args.id}, ensure_ascii=False))
+        else:
+            print(json.dumps(res, ensure_ascii=False, indent=2))
         return
 
     if args.cmd == "assign":
-        tasks = load_tasks()
-        for t in tasks:
-            if t["id"] == args.id:
-                t[args.role] = {"type": args.type, "id": args.to}
-                t["updated_at"] = utcnow_iso()
-                t["history"].append({"timestamp": utcnow_iso(), "actor": "system",
-                                     "action": "assigned", "detail": f"{args.role}={args.to}"})
-                save_tasks(tasks)
-                print(json.dumps({"assigned": t["id"], args.role: t[args.role]}, ensure_ascii=False))
-                return
-        print(json.dumps({"error": f"task {args.id} 不存在"}, ensure_ascii=False))
+        def _assign(tasks):
+            for t in tasks:
+                if t["id"] == args.id:
+                    t[args.role] = {"type": args.type, "id": args.to}
+                    t["updated_at"] = utcnow_iso()
+                    t["history"].append({"timestamp": utcnow_iso(), "actor": "system",
+                                         "action": "assigned", "detail": "%s=%s" % (args.role, args.to)})
+                    return tasks, {"assigned": t["id"], args.role: t[args.role]}
+            return tasks, None
+
+        # P1-2: 同一锁内 read→modify→save
+        res = atomic_update_tasks(_assign)
+        if res is None:
+            print(json.dumps({"error": "task %s 不存在" % args.id}, ensure_ascii=False))
+        else:
+            print(json.dumps(res, ensure_ascii=False))
         return
 
     if args.cmd == "scan":

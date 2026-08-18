@@ -95,6 +95,26 @@ def _apply_change_locked(prop, evo_id, approve, approver, reason):
     change["_snapshot"] = snap
     # #31: 记录 Apply 前基准 fingerprint（expected 的对照起点）
     change["_baseline_fingerprints"] = _core.baseline_fingerprints(change["targets"])
+
+    # P1-6/修复: Apply 前拿“当前文件”重新 hash 与 baseline 比较。
+    #   若 baseline 记录后文件已被他人修改（≠ baseline），则拒绝 apply，
+    #   不覆盖外部修改。这是 #31/#32 “防止别人修改后覆盖”的最后一道防线。
+    base_fp = change["_baseline_fingerprints"] or {}
+    pre_verify_ok = True
+    pre_mismatch = []
+    if base_fp:
+        for rel, fp in base_fp.items():
+            cur = _core._idutil_fingerprint(_core.ws_abs(rel))
+            if cur != fp:
+                pre_verify_ok = False
+                pre_mismatch.append((rel, fp, cur))
+    if not pre_verify_ok:
+        change["status"] = "APPLY_FAILED"
+        change["apply_error"] = "baseline fingerprint 变化(外部修改)，拒绝覆盖: " + str(pre_mismatch[:5])
+        _core.save_artifact("change", change)
+        _core.restore_snapshot(cid)
+        return None, "APPLY_FAILED: baseline 变化(外部已修改目标文件)，拒绝覆盖: " + str([m[0] for m in pre_mismatch])
+
     _core.save_artifact("change", change)
 
     # v2.3: 状态推进到 APPLYING（crash recovery 可检测此状态）
@@ -118,12 +138,18 @@ def _apply_change_locked(prop, evo_id, approve, approver, reason):
     change["_expected_fingerprints"] = _core.record_applied_fingerprints(cid, applied)
     _verify_ok, _mismatch = _core.validate_applied_files(cid)
     if not _verify_ok:
+        # P1-7/修复: verify FAIL 不得 APPLIED。必须回滚到 APPLY_FAILED，
+        #   而不是写了 verify_error 后 still APPLIED。
+        change["status"] = "APPLY_FAILED"
         change["verify_error"] = "expected_fingerprint_mismatch: " + str(_mismatch)
+        change["verify"] = {"fingerprint_ok": False, "mismatches": _mismatch}
+        _core.restore_snapshot(cid)
         _core.save_artifact("change", change)
+        return None, "APPLY_FAILED + POST_VERIFY_MISMATCH + RESTORED: " + str(_mismatch)
     # #33: apply→verify→regression 链路，Apply 只推进到 APPLIED；后续 regression.py 负责
     #      APPLIED→MONITORING→VALIDATED/REGRESSED。verify 已在此完成指纹一致性确认。
     change["status"] = "APPLIED"
-    change["verify"] = {"fingerprint_ok": _verify_ok, "mismatches": _mismatch}
+    change["verify"] = {"fingerprint_ok": True, "mismatches": []}
     _core.assert_transition(change, "APPLIED", kind="change")
     _core.save_artifact("change", change)
 
@@ -158,6 +184,24 @@ def _retry_from_change(change_id):
         if prop.get("status") not in ("PROPOSED", "APPROVED", "APPLIED"):
             return "RETRY_SKIP: proposal 状态 " + str(prop.get("status"))
         with _core.apply_lock():
+            # P1-8/修复: apply 前重新验证 baseline fingerprint。
+            #   若 Apply 中断期间目标文件已被外部修改(≠ baseline)，拒绝重新 patch，
+            #   不覆盖外部修改。
+            baseline = chg.get("_baseline_fingerprints") or {}
+            if baseline:
+                for rel, fp in baseline.items():
+                    cur = _core._idutil_fingerprint(_core.ws_abs(rel))
+                    if cur != fp:
+                        # F-RVW-002/修复: baseline 变化(中断期外部修改)是确定性失败，
+                        #   需将 change 落盘为 APPLY_FAILED 并停止自动重试，
+                        #   否则下次启动 recovery 会再次进入此分支形成无限重试循环。
+                        chg["status"] = "APPLY_FAILED"
+                        chg["verify_error"] = (
+                            "baseline 变化(Apply 中断期间目标文件已被外部修改)，拒绝覆盖: "
+                            + rel)
+                        _core._core_save_artifact("change", chg)
+                        return ("RETRY_FAILED: baseline 变化(Apply 中断期间目标文件已被外部"
+                                "修改)，拒绝覆盖: " + rel)
             ops = (prop.get("change") or {}).get("operations") or []
             applied = _core.apply_patch(ops)
             chg["_applied_files"] = applied

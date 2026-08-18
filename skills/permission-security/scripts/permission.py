@@ -114,20 +114,47 @@ def check(req):
     side_effect = req.get("external_side_effect", req.get("side_effect", "NONE"))
     scope = req.get("scope")
     authorized = req.get("authorized", False)  # 是否已有授权/审批
+    # P1-9 (#29/#30): authorization 结构化元数据 + requested scope ≤ authorized scope
+    authorization = req.get("authorization") if isinstance(req.get("authorization"), dict) else {}
+    auth_scope = authorization.get("scope") or req.get("authorized_scope")
+    auth_source = authorization.get("source") or req.get("authorization_source")
+    auth_expiry = authorization.get("expiry") or req.get("authorization_expiry")
+    requested_scope = req.get("requested_scope") or scope
 
     cls = classify(action, resource_type, side_effect, scope)
     level = int(cls["level"][1])
+
+    # P1-9 (#30): requested scope ≤ authorized scope 才视为已授权；越界则需重新确认。
+    scope_ok = True
+    scope_problem = None
+    if requested_scope and auth_scope:
+        # 简单层级比较：从具体到通用。authorized=GLOBAL > PROJECT > AGENT > TASK > 具体ID
+        order = {"TASK": 1, "AGENT": 2, "PROJECT": 3, "GLOBAL": 4, "USER": 4}
+        r = str(requested_scope).upper()
+        a = str(auth_scope).upper()
+        if r in order and a in order and order[r] > order[a]:
+            scope_ok = False
+            scope_problem = "requested scope %s 超出 authorized scope %s" % (r, a)
+        elif r not in order and a not in order and r != a:
+            # 具体ID级别：要求精确匹配或 authorized 为更宽的 TASK/AGENT
+            if r != a:
+                scope_ok = False
+                scope_problem = "requested scope %s 与 authorized scope %s 不匹配" % (r, a)
+    auth_valid = authorized and (authorization or auth_scope or auth_expiry or auth_source)
+    authorized_effective = auth_valid and scope_ok
 
     # 决策
     if level == 4:
         decision = "deny"
         reason = "L4 Prohibited: 禁止操作"
     elif level == 3:
-        decision = "allow" if authorized else "ask"
-        reason = "L3 High impact: 需显式审批" if not authorized else "L3 已授权"
+        decision = "allow" if authorized_effective else "ask"
+        reason = "L3 High impact: 需显式审批" if not authorized_effective else \
+            ("L3 已授权" if scope_ok else "L3 authorized 但 " + scope_problem)
     elif level == 2:
-        decision = "allow" if authorized else "ask"
-        reason = "L2 External impact: 需确认" if not authorized else "L2 已授权"
+        decision = "allow" if authorized_effective else "ask"
+        reason = "L2 External impact: 需确认" if not authorized_effective else \
+            ("L2 已授权" if scope_ok else "L2 authorized 但 " + scope_problem)
     elif level == 1:
         if cls["no_scope_warning"]:
             decision = "ask"
@@ -150,6 +177,14 @@ def check(req):
         "reason": reason,
         "requires_approval": cls["requires_approval"],
         "reversibility": cls["reversibility"],
+        "authorization": {
+            "valid": auth_valid,
+            "scope_ok": scope_ok,
+            "scope_problem": scope_problem,
+            "source": auth_source,
+            "scope": auth_scope,
+            "expiry": auth_expiry,
+        },
         "native_policy_final": True,  # OpenClaw 原生 policy 仍是最终拦截
     }
 

@@ -576,109 +576,112 @@ def main():
         return
 
     if args.cmd == "record":
-        # v1.3: Execution Record 接入
-        # 记录执行结果到 Execution Record，判断是否应该停止
-        import hashlib
+        # v1.3 修复(P1-1): 统一调用 execution_record 的唯一 Progress Gate，
+        #   不再在 Orchestrator 里复制一套并行的 Anti-loop 判断。
+        #   Agent → Orchestrator.record → Execution Record.check_action_loop → 唯一决策。
         rec = read_stdin_or_json(args.json, "record")
-        goal_id = rec.get("goal_id", "")
-        task_id = rec.get("task_id", "")
-        action_type = rec.get("action_type", "unknown")
-        target = rec.get("target", "")
-        result = rec.get("result", {})
+        er_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "..", "..", "proactive", "scripts", "execution_record.py")
 
-        # 生成 action_signature
-        raw = "|".join([str(goal_id), str(task_id), str(action_type), str(target)])
-        action_signature = hashlib.sha256(raw.encode()).hexdigest()[:12]
+        # 1) 生成 action_signature / result_hash / evidence_hash / input_hash / strategy
+        import hashlib as _h
+        goal_id = str(rec.get("goal_id", ""))
+        task_id = str(rec.get("task_id", ""))
+        action_type = str(rec.get("action_type", "unknown"))
+        target = str(rec.get("target", ""))
+        raw = "|".join([goal_id, task_id, action_type, target])
+        action_signature = _h.sha256(raw.encode()).hexdigest()[:12]
 
-        # 生成 result_hash（排除 volatile fields）
+        result = rec.get("result", {}) or {}
         clean_result = {k: v for k, v in sorted(result.items())
                         if k not in ("timestamp", "created_at", "updated_at")}
-        result_hash = hashlib.sha256(
-            json.dumps(clean_result, sort_keys=True).encode()
+        result_hash = _h.sha256(
+            json.dumps(clean_result, sort_keys=True, ensure_ascii=False).encode()
         ).hexdigest()[:12]
+        evidence_hash = str(rec.get("evidence_hash", ""))
+        input_hash = str(rec.get("input_hash", ""))
+        strategy = str(rec.get("strategy", ""))
 
-        # 读取上一次记录
-        prev_records = []
+        # 2) 通过 execution_record 的 check 命令走唯一 Progress Gate
+        #    (check 内部会 load 历史 + 调 check_action_loop)。
+        check_payload = {
+            "goal_id": goal_id,
+            "task_id": task_id,
+            "action_type": action_type,
+            "action_signature": action_signature,
+            "result_hash": result_hash,
+            "evidence_hash": evidence_hash,
+            "input_hash": input_hash,
+            "strategy": strategy,
+            "current_state": str(rec.get("current_state", "")),
+            "progress": {
+                "new_artifact": rec.get("new_artifact", False),
+                "goal_progress": rec.get("goal_progress", False),
+                "new_state": rec.get("new_state", False),
+            },
+        }
         try:
-            er_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                   "..", "..", "proactive", "scripts", "execution_record.py")
             proc = subprocess.run(
-                [sys.executable, er_path, "query", "--goal", goal_id, "--limit", "50"],
+                [sys.executable, er_path, "check", "--json",
+                 json.dumps(check_payload, ensure_ascii=False)],
                 capture_output=True, text=True, timeout=10)
             if proc.returncode == 0:
-                prev_records = json.loads(proc.stdout).get("records", [])
-        except Exception:
-            pass
+                gate = json.loads(proc.stdout)
+            else:
+                # 记录层异常 → 不静默 pass：降级为 UNKNOWN，禁止当首次 CONTINUE
+                gate = {"decision": "UNKNOWN",
+                        "reason": "execution_record check 失败 rc=%s: %s" % (proc.returncode, proc.stderr[:200]),
+                        "consecutive_no_progress": 0,
+                        "history_unavailable": True}
+        except Exception as e:
+            gate = {"decision": "UNKNOWN",
+                    "reason": "execution_record check 不可用: %s" % str(e),
+                    "consecutive_no_progress": 0,
+                    "history_unavailable": True}
 
-        # 找同一 action 的上一条记录
-        prev = None
-        for r in reversed(prev_records):
-            if r.get("action_signature") == action_signature:
-                prev = r
-                break
+        decision = gate.get("decision", "UNKNOWN")
+        stop_reason = gate.get("reason", "")
+        consecutive = gate.get("consecutive_no_progress", 0)
 
-        # 判断是否 no-progress loop
-        same_action = True  # 已经匹配
-        same_result = (prev and prev.get("result_hash") == result_hash)
-        same_evidence = (prev and prev.get("evidence_hash") == rec.get("evidence_hash", ""))
-
-        no_progress = same_result and same_evidence
-        prev_count = prev.get("progress", {}).get("no_progress", 0) if prev else 0
-
-        if no_progress:
-            new_count = prev_count + 1
-        else:
-            new_count = 0
-
-        if new_count >= 3:
-            decision = "ESCALATE"
-            stop_reason = "连续 %d 次无进展" % new_count
-        elif new_count >= 2:
-            decision = "NOOP"
-            stop_reason = "连续 %d 次无进展" % new_count
-        elif new_count == 1:
-            decision = "WARN"
-            stop_reason = "第 %d 次无进展" % new_count
-        else:
-            decision = "CONTINUE"
-            stop_reason = ""
-
-        # 写入记录
+        # 3) 把本次记录（含 gate 结果）追加写入 execution record（append-only, 带锁）。
         record = {
             "goal_id": goal_id,
             "task_id": task_id,
             "action_type": action_type,
             "action_signature": action_signature,
             "result_hash": result_hash,
-            "evidence_hash": rec.get("evidence_hash", ""),
-            "previous_state": rec.get("previous_state", ""),
-            "current_state": rec.get("current_state", ""),
+            "evidence_hash": evidence_hash,
+            "input_hash": input_hash,
+            "strategy": strategy,
+            "previous_state": str(rec.get("previous_state", "")),
+            "current_state": str(rec.get("current_state", "")),
             "progress": {
-                "new_evidence": not same_evidence if prev else True,
+                "new_evidence": bool(rec.get("new_evidence", rec.get("evidence_hash", "") != "")),
                 "new_artifact": rec.get("new_artifact", False),
                 "new_state": rec.get("new_state", False),
                 "goal_progress": rec.get("goal_progress", False),
-                "no_progress": new_count,
+                "no_progress": consecutive,
             },
             "decision": decision,
             "stop_reason": stop_reason,
         }
-
-        # 写入 execution record
         try:
-            er_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                   "..", "..", "proactive", "scripts", "execution_record.py")
             proc = subprocess.run(
-                [sys.executable, er_path, "log", "--json", json.dumps(record, ensure_ascii=False)],
+                [sys.executable, er_path, "log", "--json",
+                 json.dumps(record, ensure_ascii=False)],
                 capture_output=True, text=True, timeout=10)
-        except Exception:
-            pass
+            # 记录写入失败不应静默 pass：反映到输出 reason
+            if proc.returncode != 0:
+                stop_reason = (stop_reason + " | log_failed rc=%s" % proc.returncode).strip()
+        except Exception as e:
+            stop_reason = (stop_reason + " | log_unavailable: %s" % str(e)).strip()
 
         print(json.dumps({
             "decision": decision,
             "stop_reason": stop_reason,
-            "consecutive_no_progress": new_count,
+            "consecutive_no_progress": consecutive,
             "action_signature": action_signature,
+            "gate": "execution_record.check_action_loop",
         }, ensure_ascii=False, indent=2))
         return
 

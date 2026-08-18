@@ -348,11 +348,12 @@ def write_state(state):
 
 
 def cmd_status(args):
+    # [#24/修复]: --status 默认只读，不做任何写盘副作用。
+    #   状态计算是纯函数；持久化(写 state.json)只属于 --rebuild-index。
     entities = read_entities()
     relations = read_relations()
     proposals = read_proposals()
     state = build_state(entities, relations, proposals)
-    write_state(state)
     print("Ontology Status:")
     print("  Entities:  {0}".format(state["entities"]))
     print("  Relations: {0}".format(state["relations"]))
@@ -417,7 +418,7 @@ def cmd_create_entity(args):
     }
     append_log(ENTITIES_FILE, {"op": "create", "entity": entity})
     change = {
-        "change_id": "CHG-{0}".format(int(time.time() * 1000)),
+        "change_id": "CHG-" + generate_id("id").split("_", 1)[1],
         "action": "create_entity",
         "entity_id": eid,
         "at": now_iso(),
@@ -453,7 +454,7 @@ def cmd_relate(args):
     }
     append_log(RELATIONS_FILE, {"op": "relate", "relation": relation})
     change = {
-        "change_id": "CHG-{0}".format(int(time.time() * 1000)),
+        "change_id": "CHG-" + generate_id("id").split("_", 1)[1],
         "action": "add_relation",
         "relation_id": rid,
         "at": now_iso(),
@@ -757,11 +758,16 @@ def cmd_rollback(args):
     if not target:
         print("未找到变更: {0}".format(args.rollback))
         return 1
-    # #19: 若已被回滚过，拒绝重复回滚（只撤销指定 change 一次）
+    # #19/修复: 若已被回滚过，拒绝重复回滚（只撤销指定 change 一次）。
+    # 必须在任何写盘之前检查并返回，否则重复回滚仍会追加事件。
     already_rolled = any(
-        op.get("op") == "rollback" and op.get("target_change_id") == args.rollback
+        (op.get("op") == "rollback" or op.get("action") == "rollback")
+        and op.get("target_change_id") == args.rollback
         for op in read_log(CHANGELOG_FILE)
     )
+    if already_rolled:
+        print("⚠ 该变更已被回滚过，拒绝重复回滚: {0}".format(args.rollback))
+        return 3
     action = target.get("action")
 
     if action == "create_entity":
@@ -781,13 +787,12 @@ def cmd_rollback(args):
             "op": "rollback_entity", "id": eid,
             "target_change_id": args.rollback, "at": now_iso(),
         })
-        # 关联关系也追加式回滚
+        # 关联关系也追加式回滚（已确认未被回滚，见开头拒绝）
         for r in linked:
-            if not already_rolled:
-                append_log(RELATIONS_FILE, {
-                    "op": "rollback_relation", "relation_id": r["id"],
-                    "target_change_id": args.rollback, "at": now_iso(),
-                })
+            append_log(RELATIONS_FILE, {
+                "op": "rollback_relation", "relation_id": r["id"],
+                "target_change_id": args.rollback, "at": now_iso(),
+            })
         print("已回滚实体创建 (append-only): {0} (含 {1} 条关联关系)".format(eid, len(linked)))
     elif action == "add_relation":
         rid = target.get("relation_id")

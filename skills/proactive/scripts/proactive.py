@@ -128,6 +128,7 @@ if _LIB not in sys.path:
     sys.path.insert(0, _LIB)
 from id_utils import generate_id, deterministic_id
 from persistence import atomic_write_json
+from persistence import FileLock
 
 import hashlib as _hashlib
 
@@ -322,16 +323,36 @@ def _save_queue(q):
     atomic_write_json(QUEUE_PATH, q)
 
 
+def _atomic_mutate_queue(mutator):
+    """P1-2/修复: Queue 的 read→modify→write 放进同一 FileLock 事务。
+    mutator(q) 返回 (new_q, result)；异常则锁内回滚不写盘。"""
+    with FileLock(QUEUE_PATH):
+        q = _load_queue()
+        new_q, result = mutator(q)
+        _save_queue(new_q)
+        return result
+
+
 def _save_state(st):
     # v1.3 #8: State 并发写入 atomic
     atomic_write_json(STATE_PATH, st)
 
 
+def _atomic_mutate_state(mutator):
+    """P1-2/修复: State 的 read→modify→write 放进同一 FileLock 事务。
+    mutator(st) 返回 (new_st, result)；异常则锁内回滚不写盘。"""
+    with FileLock(STATE_PATH):
+        st = load_json(STATE_PATH, _default_state())
+        new_st, result = mutator(st)
+        _save_state(new_st)
+        return result
+
+
 def queue_cmd(sub, args):
-    q = _load_queue()
-    if sub == "list":
-        return q
     now = utcnow_iso()
+    if sub == "list":
+        q = _load_queue()
+        return q
     if sub == "add":
         item = {
             "id": generate_id("queue"),
@@ -343,31 +364,36 @@ def queue_cmd(sub, args):
             "next_review_at": args.review_at or now,
             "owner": "proactive",
         }
-        q.append(item)
-        _save_queue(q)
-        return item
-    if sub == "update":
+
+        def _add(q):
+            q.append(item)
+            return q, item
+
+        # P1-2: read→modify→save 同一锁事务
+        return _atomic_mutate_queue(_add)
+    if sub in ("update", "done", "dismiss"):
         target_id = args.id
-        for it in q:
-            if it["id"] == target_id:
-                if args.status:
-                    it["status"] = args.status
-                if args.priority:
-                    it["priority"] = args.priority
-                it["updated_at"] = now
-                _save_queue(q)
-                return it
-        return {"error": f"queue item {target_id} 不存在"}
-    if sub == "done" or sub == "dismiss":
-        target_id = args.id
-        for it in q:
-            if it["id"] == target_id:
-                it["status"] = "done" if sub == "done" else "dismissed"
-                it["updated_at"] = now
-                _save_queue(q)
-                return it
-        return {"error": f"queue item {target_id} 不存在"}
-    return {"error": f"未知子命令 {sub}"}
+
+        def _mut(q):
+            for it in q:
+                if it["id"] == target_id:
+                    if sub == "update":
+                        if args.status:
+                            it["status"] = args.status
+                        if args.priority:
+                            it["priority"] = args.priority
+                        it["updated_at"] = now
+                    else:
+                        it["status"] = "done" if sub == "done" else "dismissed"
+                        it["updated_at"] = now
+                    return q, it
+            return q, None
+
+        res = _atomic_mutate_queue(_mut)
+        if res is None:
+            return {"error": "queue item %s 不存在" % target_id}
+        return res
+    return {"error": "未知子命令 %s" % sub}
 
 
 # ---------------------------------------------------------------------------
@@ -403,55 +429,64 @@ def _default_state():
 
 
 def state_cmd(sub, args):
-    st = load_json(STATE_PATH, _default_state())
     now = utcnow_iso()
     if sub == "show":
-        return st
+        return load_json(STATE_PATH, _default_state())
     if sub == "wake":
         # v1.3 Anti-loop: wake cooldown check (default 60s)
         WAKE_COOLDOWN_SEC = 60
-        last_wake = st.get("last_wake_at", "")
-        cooldown_until = st.get("anti_loop", {}).get("cooldown_until", "")
-        if cooldown_until and now < cooldown_until:
-            return {"wake": "no_action", "reason": "cooldown",
-                    "cooldown_until": cooldown_until}
-        if last_wake:
-            try:
-                from datetime import datetime as dt
-                last_dt = dt.fromisoformat(last_wake.replace("Z", "+00:00"))
-                now_dt = dt.fromisoformat(now.replace("Z", "+00:00"))
-                elapsed = (now_dt - last_dt).total_seconds()
-                if elapsed < WAKE_COOLDOWN_SEC:
-                    cd = (last_dt.timestamp() + WAKE_COOLDOWN_SEC)
-                    from datetime import datetime as dt2, timezone as tz
-                    cd_iso = dt2.fromtimestamp(cd, tz=tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                    st.setdefault("anti_loop", {})["cooldown_until"] = cd_iso
-                    _save_state(st)
-                    return {"wake": "no_action", "reason": "cooldown",
-                            "cooldown_until": cd_iso}
-            except Exception:
-                pass
-        st["last_wake_at"] = now
-        st["metrics"]["signals_today"] = st["metrics"].get("signals_today", 0) + 1
-        st.setdefault("anti_loop", {})["cooldown_until"] = ""
-        _save_state(st)
-        return {"wake": "ok", "last_wake_at": now}
+
+        def _wake(st):
+            last_wake = st.get("last_wake_at", "")
+            cooldown_until = st.get("anti_loop", {}).get("cooldown_until", "")
+            if cooldown_until and now < cooldown_until:
+                return st, {"wake": "no_action", "reason": "cooldown",
+                            "cooldown_until": cooldown_until}
+            if last_wake:
+                try:
+                    from datetime import datetime as dt
+                    last_dt = dt.fromisoformat(last_wake.replace("Z", "+00:00"))
+                    now_dt = dt.fromisoformat(now.replace("Z", "+00:00"))
+                    elapsed = (now_dt - last_dt).total_seconds()
+                    if elapsed < WAKE_COOLDOWN_SEC:
+                        cd = (last_dt.timestamp() + WAKE_COOLDOWN_SEC)
+                        from datetime import datetime as dt2, timezone as tz
+                        cd_iso = dt2.fromtimestamp(cd, tz=tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                        st.setdefault("anti_loop", {})["cooldown_until"] = cd_iso
+                        return st, {"wake": "no_action", "reason": "cooldown",
+                                    "cooldown_until": cd_iso}
+                except Exception:
+                    pass
+            st["last_wake_at"] = now
+            st["metrics"]["signals_today"] = st["metrics"].get("signals_today", 0) + 1
+            st.setdefault("anti_loop", {})["cooldown_until"] = ""
+            return st, {"wake": "ok", "last_wake_at": now}
+
+        # P1-2: read→modify→save 同一锁事务
+        return _atomic_mutate_state(_wake)
     if sub == "bump":
         # 计数一个指标
         key = args.key
-        if key in st["metrics"]:
-            if args.delta:
-                st["metrics"][key] += args.delta
-            else:
-                st["metrics"][key] = st["metrics"].get(key, 0) + 1
-            _save_state(st)
-            return {"metrics": st["metrics"]}
-        return {"error": f"未知指标 {key}"}
+
+        def _bump(st):
+            if key in st["metrics"]:
+                if args.delta:
+                    st["metrics"][key] += args.delta
+                else:
+                    st["metrics"][key] = st["metrics"].get(key, 0) + 1
+                return st, {"metrics": st["metrics"]}
+            return st, None
+
+        res = _atomic_mutate_state(_bump)
+        if res is None:
+            return {"error": "未知指标 %s" % key}
+        return res
     if sub == "set-goal":
-        st["current_goal"] = {"id": args.goal, "alignment": args.alignment or 0.0}
-        _save_state(st)
-        return st["current_goal"]
-    return {"error": f"未知子命令 {sub}"}
+        def _go(st):
+            st["current_goal"] = {"id": args.goal, "alignment": args.alignment or 0.0}
+            return st, st["current_goal"]
+        return _atomic_mutate_state(_go)
+    return {"error": "未知子命令 %s" % sub}
 
 
 # ---------------------------------------------------------------------------

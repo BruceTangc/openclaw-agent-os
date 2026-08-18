@@ -18,8 +18,8 @@
 Phase 1 安全
 - [x] #1 P0 Permission fail-closed (P0) — orchestrator.py + permission.py ✅
 - [x] #28 Unknown action 默认 ASK ✅(permission.py check() unknown→ASK, 补充ASKING词)
-- [ ] #29 authorized 增加 source/scope/expiry ⏳ 本次未实施（P1 authorization-scope 项，phase1 顺延；check() 现仅读 bool authorized，未加 source/expiry 字段）
-- [ ] #30 requested scope ≤ authorized scope ⏳ 本次未实施（依赖 #29；现无 requested vs authorized scope 比较）
+- [x] #29 authorized 增加 source/scope/expiry ✅(本轮 P1-9 实现: check() 解析 authorization dict, 输出 source/scope/expiry/scope_ok)
+- [x] #30 requested scope ≤ authorized scope ✅(本轮 P1-9 实现: 越界(requested>authorized) 拒绝授权 → ask)
 Phase 2 ID + Atomic Persistence
 - [x] #2 Orchestrator hash() → canonical+SHA256 ✅
 - [x] #3 Task ID → UUID ✅(orchestrator/proactive; task_manager 待)
@@ -73,3 +73,22 @@ Phase 9 回归测试
 - ❌ 不把 Execution Record 改数据库 (保持 append-only recording, 状态持久化用 atomic)
 - ❌ 不改 Proactive 非 Scheduler 边界
 - ❌ Verification 架构不重写 (只补代码兑现)
+
+## 复验轮 (2026-08-19) — 验收报告 8+3 项修复
+> 上一轮(124a290→c983607)验收发现部分"打勾没兑现"。本轮按验收报告口径逐项落实，未改架构。
+
+| 项 | 内容 | 状态 |
+|----|------|------|
+| P1-1 | Orchestrator.record 统一调 execution_record.check_action_loop (删除旧两套 Anti-loop + 静默 pass→降级 UNKNOWN) | ✅ |
+| P1-2 | task_manager(create/update/assign) + proactive(queue/state) 的 read→modify→write 放入同一 FileLock 事务 | ✅ |
+| P1-3 | Ontology duplicate rollback 真正拒绝 (修复 op/action 字段名 bug, add_relation 重复回滚→rc=3) | ✅ |
+| P1-4 | Ontology Change ID 改 UUID (create_entity + add_relation 两处) | ✅ |
+| P1-5 | Ontology --status 真正只读 (去 write_state 副作用, --rebuild-index 才写) | ✅ |
+| P1-6 | Self-Evolution Apply 前重新 hash 比对 baseline fingerprint, 外部修改→STOP | ✅ |
+| P1-7 | Self-Evolution verify FAIL→APPLY_FAILED+RESTORED (不再 APPLIED) | ✅ |
+| P1-8 | Recovery retry 前重新验证 baseline fingerprint (拒绝覆盖中断期外部修改) | ✅ |
+| P1-9 | Permission #29/#30: authorization source/scope/expiry + requested≤authorized (越界→ask) | ✅ |
+| P2-1 | persistence 非 POSIX fallback 用 O_EXCL .stamp 真锁 + FileLock 线程级可重入 (修重入死锁) | ✅ |
+| P2-2 | Summarize aggregate 加 truncation metadata | ✅ |
+
+回归: 全部 py_compile ✅ / self_test 60 PASS ✅ / anti_loop 14 PASS ✅

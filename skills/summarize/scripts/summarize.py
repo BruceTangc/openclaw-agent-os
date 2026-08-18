@@ -155,6 +155,11 @@ def aggregate_dir(dir_path):
             content = read_text(p)
         except Exception:
             continue
+        # F-RVW-001/修复: 缓存首次读取结果，避免同一文件读两次。
+        raw = content
+        # P2-2/修复: 截断时输出 truncation metadata，避免把截断后的内容当成完整事实。
+        truncated = len(raw) > 50000
+        content = raw[:50000]
         docs.append({
             "source_id": fname,
             "title": fname,
@@ -162,8 +167,11 @@ def aggregate_dir(dir_path):
             "date": None,
             "type": "document",
             "chars": len(content),
+            "original_chars": len(raw),
             "hash": sha1(content),
-            "content": content[:50000],
+            "truncated": truncated,
+            "truncation_note": "content 超出 50000 字符已被截断，SUMMARY != FACT" if truncated else None,
+            "content": content,
         })
     return {"documents": docs, "count": len(docs), "aggregated_at": datetime.now().isoformat()}
 
