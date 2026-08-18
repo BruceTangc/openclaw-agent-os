@@ -361,6 +361,16 @@ def _default_state():
         },
         "current_goal": {"id": None, "alignment": 0.0},
         "active_plan": None,
+        # v1.3 Anti-loop: action-level loop detection state
+        "anti_loop": {
+            "last_action_signature": "",
+            "last_action_at": "",
+            "last_result_hash": "",
+            "cooldown_until": "",
+            "consecutive_no_progress": 0,
+            "last_decision": "",
+            "last_stop_reason": "",
+        },
     }
 
 
@@ -370,8 +380,32 @@ def state_cmd(sub, args):
     if sub == "show":
         return st
     if sub == "wake":
+        # v1.3 Anti-loop: wake cooldown check (default 60s)
+        WAKE_COOLDOWN_SEC = 60
+        last_wake = st.get("last_wake_at", "")
+        cooldown_until = st.get("anti_loop", {}).get("cooldown_until", "")
+        if cooldown_until and now < cooldown_until:
+            return {"wake": "no_action", "reason": "cooldown",
+                    "cooldown_until": cooldown_until}
+        if last_wake:
+            try:
+                from datetime import datetime as dt
+                last_dt = dt.fromisoformat(last_wake.replace("Z", "+00:00"))
+                now_dt = dt.fromisoformat(now.replace("Z", "+00:00"))
+                elapsed = (now_dt - last_dt).total_seconds()
+                if elapsed < WAKE_COOLDOWN_SEC:
+                    cd = (last_dt.timestamp() + WAKE_COOLDOWN_SEC)
+                    from datetime import datetime as dt2, timezone as tz
+                    cd_iso = dt2.fromtimestamp(cd, tz=tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    st.setdefault("anti_loop", {})["cooldown_until"] = cd_iso
+                    save_json(STATE_PATH, st)
+                    return {"wake": "no_action", "reason": "cooldown",
+                            "cooldown_until": cd_iso}
+            except Exception:
+                pass
         st["last_wake_at"] = now
         st["metrics"]["signals_today"] = st["metrics"].get("signals_today", 0) + 1
+        st.setdefault("anti_loop", {})["cooldown_until"] = ""
         save_json(STATE_PATH, st)
         return {"wake": "ok", "last_wake_at": now}
     if sub == "bump":

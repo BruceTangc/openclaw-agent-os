@@ -29,6 +29,7 @@ OpenClaw 总调度中枢可运行的确定性核心。实现文档【Orchestrato
 import argparse
 import json
 import os
+import subprocess
 import sys
 from collections import deque
 
@@ -460,6 +461,9 @@ def main():
     p_evol.add_argument("--confidence", type=float, default=0.0)
     p_evol.add_argument("--no-approval", action="store_true")
 
+    p_record = sub.add_parser("record", help="记录执行结果到 Execution Record 并判断 no-progress")
+    p_record.add_argument("--json", required=True, help="记录 JSON")
+
     args = parser.parse_args()
 
     if args.cmd is None:
@@ -524,6 +528,113 @@ def main():
             args.impact, args.change, args.confidence,
             requires_approval=not args.no_approval)
         print(json.dumps(cand, ensure_ascii=False, indent=2))
+        return
+
+    if args.cmd == "record":
+        # v1.3: Execution Record 接入
+        # 记录执行结果到 Execution Record，判断是否应该停止
+        import hashlib
+        rec = read_stdin_or_json(args.json, "record")
+        goal_id = rec.get("goal_id", "")
+        task_id = rec.get("task_id", "")
+        action_type = rec.get("action_type", "unknown")
+        target = rec.get("target", "")
+        result = rec.get("result", {})
+
+        # 生成 action_signature
+        raw = "|".join([str(goal_id), str(task_id), str(action_type), str(target)])
+        action_signature = hashlib.sha256(raw.encode()).hexdigest()[:12]
+
+        # 生成 result_hash（排除 volatile fields）
+        clean_result = {k: v for k, v in sorted(result.items())
+                        if k not in ("timestamp", "created_at", "updated_at")}
+        result_hash = hashlib.sha256(
+            json.dumps(clean_result, sort_keys=True).encode()
+        ).hexdigest()[:12]
+
+        # 读取上一次记录
+        prev_records = []
+        try:
+            er_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "..", "..", "proactive", "scripts", "execution_record.py")
+            proc = subprocess.run(
+                [sys.executable, er_path, "query", "--goal", goal_id, "--limit", "50"],
+                capture_output=True, text=True, timeout=10)
+            if proc.returncode == 0:
+                prev_records = json.loads(proc.stdout).get("records", [])
+        except Exception:
+            pass
+
+        # 找同一 action 的上一条记录
+        prev = None
+        for r in reversed(prev_records):
+            if r.get("action_signature") == action_signature:
+                prev = r
+                break
+
+        # 判断是否 no-progress loop
+        same_action = True  # 已经匹配
+        same_result = (prev and prev.get("result_hash") == result_hash)
+        same_evidence = (prev and prev.get("evidence_hash") == rec.get("evidence_hash", ""))
+
+        no_progress = same_result and same_evidence
+        prev_count = prev.get("progress", {}).get("no_progress", 0) if prev else 0
+
+        if no_progress:
+            new_count = prev_count + 1
+        else:
+            new_count = 0
+
+        if new_count >= 3:
+            decision = "ESCALATE"
+            stop_reason = "连续 %d 次无进展" % new_count
+        elif new_count >= 2:
+            decision = "NOOP"
+            stop_reason = "连续 %d 次无进展" % new_count
+        elif new_count == 1:
+            decision = "WARN"
+            stop_reason = "第 %d 次无进展" % new_count
+        else:
+            decision = "CONTINUE"
+            stop_reason = ""
+
+        # 写入记录
+        record = {
+            "goal_id": goal_id,
+            "task_id": task_id,
+            "action_type": action_type,
+            "action_signature": action_signature,
+            "result_hash": result_hash,
+            "evidence_hash": rec.get("evidence_hash", ""),
+            "previous_state": rec.get("previous_state", ""),
+            "current_state": rec.get("current_state", ""),
+            "progress": {
+                "new_evidence": not same_evidence if prev else True,
+                "new_artifact": rec.get("new_artifact", False),
+                "new_state": rec.get("new_state", False),
+                "goal_progress": rec.get("goal_progress", False),
+                "no_progress": new_count,
+            },
+            "decision": decision,
+            "stop_reason": stop_reason,
+        }
+
+        # 写入 execution record
+        try:
+            er_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "..", "..", "proactive", "scripts", "execution_record.py")
+            proc = subprocess.run(
+                [sys.executable, er_path, "log", "--json", json.dumps(record, ensure_ascii=False)],
+                capture_output=True, text=True, timeout=10)
+        except Exception:
+            pass
+
+        print(json.dumps({
+            "decision": decision,
+            "stop_reason": stop_reason,
+            "consecutive_no_progress": new_count,
+            "action_signature": action_signature,
+        }, ensure_ascii=False, indent=2))
         return
 
 

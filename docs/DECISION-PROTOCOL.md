@@ -52,6 +52,10 @@ reason: "决策理由"
 
 ## 5. Anti-loop（防死循环）
 
+三层防御：OpenClaw Runtime 管 tool-call loop；Agent OS 管业务循环；Execution Record 跨模块判断“有没有进展”。
+
+### 5.1 Proactive 局部防循环
+
 每次 cycle 携带：
 
 ```
@@ -63,4 +67,42 @@ last_action_time
 escalation_state
 ```
 
-相同 action_signature 且无新证据/紧急性 → NOOP/IGNORE，不重复提醒。
+`action_signature` 由代码确定性生成（不依赖 LLM）：
+```
+hash(goal_id + task_id + action_type + normalized_target)
+```
+
+### 5.2 Progress Gate（Execution Record）
+
+相同 action 本身不等于 loop。只有：
+
+```
+same action + same result + no new evidence + no new state
+```
+
+才进入 no-progress 计数：
+
+| consecutive_no_progress | decision |
+|---|---|
+| 1 | WARN |
+| 2 | NOOP |
+| >=3 | ESCALATE |
+
+同 action 但 result/evidence/state 有变化 → CONTINUE（正常执行）。
+
+### 5.3 Wake Cooldown
+
+`state --op wake` 内置 60 秒 cooldown：
+
+- cooldown 内 → `NO_ACTION`
+- cooldown 外 → 正常 wake
+
+### 5.4 Signal Fingerprint
+
+Signal 使用稳定 fingerprint（`hash(type + subject + source)`），不使用 timestamp 作为唯一 identity。
+
+### 5.5 边界
+
+- OpenClaw Runtime 负责 runtime/tool-call loop
+- Agent OS 负责 business/control-plane loop
+- Self-Evolution 只接收结果，不负责 retry/loop detection/runtime stop

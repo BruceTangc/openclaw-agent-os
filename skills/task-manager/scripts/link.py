@@ -91,6 +91,15 @@ def cmd_proactive_to_task(args):
         print(json.dumps({"error": "signal.subject 缺失"}, ensure_ascii=False))
         sys.exit(2)
 
+    import hashlib
+    # v1.3: Signal fingerprint (stable, 不用 timestamp)
+    fp_raw = "|".join([
+        str(sig.get("type", "")),
+        str(sig.get("subject", "")),
+        str(sig.get("source", "")),
+    ])
+    fingerprint = hashlib.sha256(fp_raw.encode()).hexdigest()[:16]
+
     task = {
         "title": sig.get("subject"),
         "description": sig.get("summary", ""),
@@ -100,7 +109,9 @@ def cmd_proactive_to_task(args):
         "priority_score": int((sig.get("confidence", 0.5) or 0.5) * 100),
         "context": {
             "signal_id": sig.get("id"),
+            "signal_fingerprint": fingerprint,
             "signal_type": sig.get("type", "change"),
+            "goal_id": sig.get("goal_id", ""),
             "confidence": sig.get("confidence", 0),
             "urgency": sig.get("urgency", 0),
             "expected_value": sig.get("expected_value", 0),
@@ -287,8 +298,12 @@ def cmd_result_to_task(args):
                 tm(["update", "--id", task_id,
                     "--json", json.dumps({"context": {"retry_count": new_rc}}, ensure_ascii=False)])
                 retry_info = {"task_id": task_id, "retry_count": new_rc}
-                # retry_count >= 3 → 回传 Proactive 触发 ESCALATE (§40)
-                if new_rc >= 3:
+                # v1.3: retry_count >= 3 → 仅首次 escalation（防止重复 escalation signal）
+                escalated_key = "escalated_at"
+                if new_rc >= 3 and not task_data.get("context", {}).get(escalated_key):
+                    tm(["update", "--id", task_id,
+                        "--json", json.dumps({"context": {escalated_key: utcnow_iso()}},
+                                             ensure_ascii=False)])
                     esc = {
                         "type": "risk",
                         "subject": "任务连续失败需升级: " + task_data.get("title", task_id),
