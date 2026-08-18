@@ -44,6 +44,212 @@ def evo_dir():
     return os.path.join(_workspace(), ".agent-os", "evolution")
 
 
+def ws_root():
+    """workspace 根（所有 target 以它做相对解析，避免绝对路径跨 workspace 污染）。"""
+    return os.path.realpath(_workspace())
+
+
+def ws_rel(p):
+    """绝对路径 → workspace 相对路径（越界则原样返回相对化）。"""
+    p = os.path.realpath(os.path.expanduser(p))
+    try:
+        return os.path.relpath(p, ws_root())
+    except ValueError:
+        return p.lstrip("/")
+
+
+def ws_abs(rel):
+    """workspace 相对路径 → 绝对路径（绝对则原样）。"""
+    if os.path.isabs(rel):
+        return rel
+    return os.path.join(ws_root(), rel)
+
+def is_within_workspace(path):
+    p = os.path.realpath(path)
+    try:
+        os.path.commonpath([p, ws_root()]) == ws_root()
+        return True
+    except ValueError:
+        return False
+
+
+# ------------------------- Evidence Store（治理 artifact，非 Runtime） -------------------------
+# Agent OS 的 Verification/Evaluation 产出 Evidence，注册进这个 JSONL 索引。
+# discover 从 IDs 读取并**自算**统计，而不是信任调用者填的 recurrence/sessions。
+
+def evidence_store_path():
+    return os.path.join(evo_dir(), "evidence.jsonl")
+
+
+def register_evidence(rec):
+    """登记一条 Evidence（分配 EVID id）并 append 到 evidence.jsonl + index。"""
+    rec.setdefault("id", gen_id("EVID"))
+    os.makedirs(os.path.dirname(evidence_store_path()), exist_ok=True)
+    with open(evidence_store_path(), "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    with open(index_path(), "a", encoding="utf-8") as f:
+        f.write("{}\t{}\t{}\n".format(rec["id"], "evidence", rec.get("pattern_key", "")))
+    return rec["id"]
+
+
+def load_evidence(evids=None):
+    out = []
+    if not os.path.exists(evidence_store_path()):
+        return out
+    evids = set(evids) if evids else None
+    with open(evidence_store_path(), encoding="utf-8") as f:
+        for ln in f:
+            if not ln.strip():
+                continue
+            try:
+                rec = json.loads(ln)
+            except json.JSONDecodeError:
+                continue
+            if evids and rec.get("id") not in evids:
+                continue
+            out.append(rec)
+    return out
+
+
+def query_evidence(pattern_key=None, scope=None, target=None):
+    """按 pattern_key(必) / scope / target 取历史 Evidence，用于自算统计。"""
+    rows = []
+    for rec in load_evidence():
+        if pattern_key and rec.get("pattern_key") != pattern_key:
+            continue
+        if scope and rec.get("scope") != scope:
+            continue
+        if target and rec.get("target") != target:
+            continue
+        rows.append(rec)
+    return rows
+
+
+def compute_stats(evids=None, pattern_key=None, scope=None, target=None):
+    """由 Evidence（IDs 或按 pattern 查询）**自算**统计，不信任调用者声称值。
+    返回 {recurrence, sessions, independent_sources, verified_count, systemic, external, evids}。"""
+    rows = []
+    if evids:
+        rows = load_evidence(evids)
+    else:
+        rows = query_evidence(pattern_key, scope, target)
+    if not rows:
+        return {"recurrence": 0, "sessions": 0, "independent_sources": 0,
+                "verified_count": 0, "systemic": False, "external": False, "evids": []}
+    sessions = {r.get("session", r.get("id")) for r in rows if r.get("session")}
+    sources = {r.get("source", r.get("source_agent", r.get("source", "unknown")))
+               for r in rows} | {r.get("source_agent") for r in rows if r.get("source_agent")}
+    sources.discard(None)
+    if not sources:
+        sources = {"evidence"}
+    surface = " ".join(str(r.get(k, "")) for r in rows for k in ("class", "category", "tags", "problem", "source")).lower()
+    ex = ["external_environment", "network", "timeout", "third_party", "rate_limit",
+          "api", "intermittent", "transient", "server_error"]
+    return {
+        "recurrence": len(rows),
+        "sessions": len(sessions) if sessions else 1,
+        "independent_sources": len(sources),
+        "verified_count": sum(1 for r in rows if r.get("verified", False)),
+        "systemic": any(r.get("systemic", False) for r in rows),
+        "external": any(k in surface for k in ex),
+        "evids": [r.get("id") for r in rows],
+    }
+
+
+# ------------------------- 结构化 Patch 引擎（Apply 真正动手 + 校验） -------------------------
+# Proposal.change 为结构化 operations，Apply 只执行这些 operation、并校验结果在允许范围内。
+# operations:
+#   {"op": "replace",  "file": "skills/x/SKILL.md", "anchor": "旧文本", "content": "新文本"}
+#   {"op": "append",   "file": "...",                "content": "追加文本\n"}
+#   {"op": "create",   "file": "new.md",            "content": "内容"}
+
+
+def _read_file(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def _write_file(path, content):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+def allowed_ops(operations, targets):
+    """校验每个 operation 的 file 都在允许的 targets 内（diff 不越界）。返回 (ok, 越界清单)。"""
+    allowed = [ws_abs(t) for t in targets]
+    bad = []
+    for op in operations:
+        f = ws_abs(op.get("file", ""))
+        if not is_within_workspace(f):
+            bad.append("越出 workspace: " + op.get("file", ""))
+            continue
+        if not any(os.path.commonpath([f, a]) == a for a in allowed if os.path.dirname(a) == a
+                   or f == a or f.startswith(a.rstrip("/") + "/") or os.path.dirname(a) == os.path.dirname(f)):
+            # 宽松判：file 必须等于某个 target 或位于 target 目录下
+            if not any(f == a or (os.path.dirname(a) and f.startswith(os.path.dirname(a) + "/"))
+                       or (os.path.dirname(f) == os.path.dirname(a)) for a in allowed):
+                bad.append("越出 targets: " + op.get("file", ""))
+    return (len(bad) == 0), bad
+
+
+def apply_patch(operations, workspace=None):
+    """执行结构化 operations（真正写文件）。返回 [(rel_path, op)]。
+
+    安全：每个将写文件先读原内容到内存，任一失败→恢复内存原内容（不依赖磁盘快照）。
+    只允许 replace/append/create 三种 op，file 必须在 workspace 内（调用方先 allowed_ops 校验）。"""
+    ws = workspace or ws_root()
+    originals = {}   # rel -> 原内容（或 None=原本不存在）
+    done = []
+    try:
+        for op in operations:
+            rel = op["file"]
+            path = ws_abs(rel)
+            o = op.get("op")
+            # 记录原状（仅首次）
+            if rel not in originals:
+                originals[rel] = _read_file(path) if os.path.exists(path) else None
+            if o == "create":
+                if os.path.exists(path):
+                    raise ValueError("create 目标已存在: " + rel)
+                _write_file(path, op.get("content", ""))
+            else:
+                if not os.path.exists(path):
+                    raise ValueError("patch 目标不存在: " + rel)
+                content = _read_file(path)
+                if o == "replace":
+                    old = op.get("anchor", "")
+                    if not old or old not in content:
+                        raise ValueError("anchor 未找到: " + str(old)[:40])
+                    content = content.replace(old, op.get("content", ""), 1)
+                elif o == "append":
+                    content = content + op.get("content", "")
+                else:
+                    raise ValueError("不支持 op: " + str(o))
+                _write_file(path, content)
+            done.append(rel)
+        return [(rel, op["op"]) for rel in done]
+    except Exception:
+        # 回滚：恢复内存原状
+        for rel, orig in originals.items():
+            path = ws_abs(rel)
+            if orig is None:
+                if os.path.exists(path):
+                    os.remove(path)
+            else:
+                _write_file(path, orig)
+        raise
+
+
+def ws_rel_path(abs_path, ws=None):
+    ws = ws or ws_root()
+    try:
+        return os.path.relpath(abs_path, ws)
+    except ValueError:
+        return os.path.basename(abs_path)
+
+
+
 # kind -> 存储子目录名（显式映射，避免 diagnosis 复数拼错：diagnoses, 不是 diagnosiss）
 KIND_DIR = {
     "candidate": "candidates",
@@ -277,31 +483,43 @@ def change_dir(change_id):
 
 
 def take_snapshot(change_id, targets):
-    """Apply 前把目标文件快照到 changes/CHG-*/snapshot/（保留相对路径）。"""
-    snap = os.path.join(change_dir(change_id), "snapshot")
-    os.makedirs(snap, exist_ok=True)
+    """Apply 前把目标文件快照到 changes/CHG-*/snapshot/files/<workspace相对路径>。
+
+    workspace-relative：不产生跨 workspace / 跨用户 / 绝对路径污染；
+    Change Record 记录 workspace_root，Rollback 时 root + relative 还原。
+    返回 {root, files: [rel,...]}。"""
+    snap_files = os.path.join(change_dir(change_id), "snapshot", "files")
+    os.makedirs(snap_files, exist_ok=True)
+    root = ws_root()
+    rels = []
     for t in targets:
         t = os.path.expanduser(t)
         if not os.path.exists(t):
+            # 尝试以 workspace root 解析
+            t = os.path.join(root, t)
+        if not os.path.exists(t):
             continue
-        rel = t.lstrip("/")
-        dest = os.path.join(snap, rel)
+        rel = ws_rel(t)
+        dest = os.path.join(snap_files, rel)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         shutil.copy2(t, dest)
-    return snap
+        rels.append(rel)
+    return {"root": root, "files": rels}
 
 
-def restore_snapshot(change_id):
-    """Rollback：从 snapshot 恢复目标文件到原位置。返回恢复的文件列表。"""
-    snap = os.path.join(change_dir(change_id), "snapshot")
+def restore_snapshot(change_id, workspace_root=None):
+    """Rollback：从 snapshot/files/<rel> 恢复到 workspace root + relative。
+    返回恢复的绝对路径列表。"""
+    snap_files = os.path.join(change_dir(change_id), "snapshot", "files")
     restored = []
-    if not os.path.isdir(snap):
+    if not os.path.isdir(snap_files):
         return restored
-    for root, _dirs, files in os.walk(snap):
+    root = workspace_root or ws_root()
+    for root2, _dirs, files in os.walk(snap_files):
         for fn in files:
-            src = os.path.join(root, fn)
-            rel = os.path.relpath(src, snap)
-            dest = os.path.join("/", rel)   # 恢复绝对路径
+            src = os.path.join(root2, fn)
+            rel = os.path.relpath(src, snap_files)
+            dest = os.path.join(root, rel)   # workspace root + relative
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             shutil.copy2(src, dest)
             restored.append(dest)

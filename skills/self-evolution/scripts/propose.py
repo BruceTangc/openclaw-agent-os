@@ -27,7 +27,7 @@ import _core
 
 
 def build_proposal(cand_id, dgn_id, scope, level, targets, change, expected_metric,
-                   baseline, test_plan):
+                   baseline, test_plan, operations=None, change_type="file_patch"):
     dgn = _core.load_artifact("diagnosis", dgn_id)
     if not dgn:
         return None, "diagnosis 不存在: " + str(dgn_id)
@@ -54,6 +54,17 @@ def build_proposal(cand_id, dgn_id, scope, level, targets, change, expected_metr
     if _core.is_protected_target(targets):
         raise ValueError("目标 {} 受保护，不能进入演进（Permission/Security/Runtime 永不自动改）".format(targets))
 
+    # 结构化 operations（Proposal = 允许改什么，不只是自然语言 summary）
+    ops = json.loads(operations) if operations else None
+    if ops is not None:
+        _ok, bad = _core.allowed_ops(ops, targets) if isinstance(ops, list) else (False, ["operations 非数组"])
+        if not _ok:
+            return None, "operations 越界: " + ";".join(bad)
+
+    change_obj = {"summary": change, "type": change_type}
+    if ops is not None:
+        change_obj["operations"] = ops
+
     prop = {
         "status": "PROPOSED",
         "candidate_id": cand_id,
@@ -61,7 +72,7 @@ def build_proposal(cand_id, dgn_id, scope, level, targets, change, expected_metr
         "scope": scope,
         "level": level,
         "targets": targets,
-        "change": {"summary": change},
+        "change": change_obj,
         "expected_metric": expected_metric,
         "evidence_refs": cand.get("evidence_refs", []),
         "baseline": baseline,
@@ -88,11 +99,14 @@ def main():
     p.add_argument("--expected_metric", required=True)
     p.add_argument("--baseline", default="")
     p.add_argument("--test_plan", default="known_failure,normal,boundary")
+    p.add_argument("--operations", default=None,
+                   help="结构化操作 JSON: [{\"op\":\"replace\",\"file\":\"...\",\"anchor\":\"..\",\"content\":\"..\"}]")
     args = p.parse_args()
 
     pid, err = build_proposal(args.candidate, args.diagnosis, args.scope,
                               args.level, args.targets, args.change,
-                              args.expected_metric, args.baseline, args.test_plan)
+                              args.expected_metric, args.baseline, args.test_plan,
+                              args.operations)
     if err:
         print(json.dumps({"decision": "REJECT" if "DEDUP" not in err else "DEDUP",
                           "reason": err}, ensure_ascii=False, indent=2))
