@@ -22,7 +22,7 @@ OpenClaw 原生 policy/approval 仍为最终拦截层, 本脚本仅做决策层�
 import argparse
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 # L0-L4 动作分类
 ACTION_LEVELS = {
@@ -148,12 +148,19 @@ def check(req):
     expiry_problem = None
     if auth_expiry:
         try:
-            _exp = str(auth_expiry).strip().rstrip("Z").replace("Z", "")
-            # 兼容带 offset 的 ISO 与纯日期两种格式
-            if _exp.endswith("Z") is False and len(_exp) == 19:
+            _exp = str(auth_expiry).strip()
+            # 统一为 UTC aware datetime 比较，避免 naive/aware 冲突(P2 收敛)。
+            if _exp.endswith("Z"):
+                _exp = _exp[:-1] + "+00:00"
+            elif _exp.endswith("z"):
+                _exp = _exp[:-1] + "+00:00"
+            elif len(_exp) == 19 and " " in _exp:
                 _exp = _exp.replace(" ", "T")
             _exp_dt = datetime.fromisoformat(_exp)
-            if datetime.now() >= _exp_dt:
+            if _exp_dt.tzinfo is None:
+                # naive expiry(无时区)按 UTC 理解，保持确定性。
+                _exp_dt = _exp_dt.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) >= _exp_dt:
                 expired = True
                 expiry_problem = "authorization 已过期: expiry=" + str(auth_expiry)
         except ValueError:
