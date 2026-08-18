@@ -52,7 +52,14 @@ def do_rollback(change_id, reason, regression_id):
         cnd["updated_at"] = _core.now_iso()
         _core._core_save_artifact("candidate", cnd)
 
-    # v2.3: Evidence 不删除（"这次修改失败"本身就是有价值的 Evidence）
+    # v2.4: Rollback 产生 evolution_event Evidence（"这次修改失败"本身就是有价值信号）
+    try:
+        _core.register_evolution_event("rollback", change_id, reason=reason,
+                                       regression_id=regression_id)
+    except ValueError as e:
+        # 状态验证失败不应阻断 rollback 本身，只记录警告
+        print(json.dumps({"warning": "rollback evidence 未生成: {}".format(e)},
+                          ensure_ascii=False))
 
     # 更新 regression 记录
     if regression_id:

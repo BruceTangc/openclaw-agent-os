@@ -310,14 +310,23 @@ def evidence_store_path():
     return os.path.join(evo_dir(), "evidence.jsonl")
 
 # v2.3: Evidence 只允许来自 Verification/Evaluation 来源写入
-EVIDENCE_WRITE_SOURCES = {"verification", "evaluation", "operational", "user_feedback", "proactive"}
+EVIDENCE_WRITE_SOURCES = {"verification", "evaluation", "operational", "user_feedback", "proactive", "evolution_event"}
+
+# v2.4: evolution_event 只能通过 register_evolution_event() 写入，不允许普通 register_evidence() 使用
+ALLOWED_EVENT_TYPES = {"regression", "rollback"}
 
 def register_evidence(rec):
     """登记 Evidence。v2.3: 验证来源合法性（Discover/Candidate/Proposal/Apply/Rollback 不允许自造 Evidence）。"""
-    source = str(rec.get("source", "")).lower()
-    if source and source not in EVIDENCE_WRITE_SOURCES:
+    source = str(rec.get("source", "")).strip().lower()
+    if not source:
+        raise ValueError("Evidence 写入被拒绝：source 必须存在且非空。"
+                         "允许的来源：{}".format(", ".join(sorted(EVIDENCE_WRITE_SOURCES - {"evolution_event"}))))
+    if source == "evolution_event":
+        raise ValueError("Evidence 写入被拒绝：source='evolution_event' 必须通过 register_evolution_event() 写入，"
+                         "不允许直接调用 register_evidence()。")
+    if source not in EVIDENCE_WRITE_SOURCES:
         raise ValueError("Evidence 写入被拒绝：source '{}' 不在允许列表内。"
-                         "只有 Verification/Evaluation 等外部来源可写入 Evidence Store。".format(source))
+                         "允许的来源：{}".format(source, ", ".join(sorted(EVIDENCE_WRITE_SOURCES - {"evolution_event"}))))
     rec.setdefault("id", gen_id("EVID") if "EVID" in str(rec.get("id", "")) else rec.get("id") or "EVID-" + __import__("hashlib").sha256(json.dumps(rec, sort_keys=True).encode()).hexdigest()[:12])
     os.makedirs(os.path.dirname(evidence_store_path()), exist_ok=True)
     with open(evidence_store_path(), "a", encoding="utf-8") as f:
@@ -343,6 +352,104 @@ def load_evidence(evids=None):
                 continue
             out.append(rec)
     return out
+
+
+def register_evolution_event(event_type, change_id, reason="", regression_id=None):
+    """v2.4: 系统状态转换产生的 Evidence（不是 Evolution 自造的）。
+    
+    必须验证：
+    - evolution_id 存在且有效
+    - change_id 存在且对应 Change Record 存在
+    - event_type 与当前真实状态转换一致
+    - regression 只能在 Change 已确认 REGRESSED 后生成
+    - rollback 只能在实际执行 rollback 成功后生成
+    """
+    if event_type not in ALLOWED_EVENT_TYPES:
+        raise ValueError("非法 event_type: {}（允许：{}）".format(
+            event_type, ", ".join(sorted(ALLOWED_EVENT_TYPES))))
+    
+    chg = load_artifact("change", change_id)
+    if not chg:
+        raise ValueError("Change 不存在: " + change_id)
+    
+    evo_id = chg.get("evolution_id", "")
+    if not evo_id:
+        raise ValueError("Change {} 缺少 evolution_id".format(change_id))
+    
+    cnd_id = chg.get("candidate_id", "")
+    cnd = load_artifact("candidate", cnd_id) if cnd_id else None
+    # 要求4：evolution_id 对应 Candidate 必须存在（evolution 链路的根）
+    if not cnd:
+        raise ValueError("Change {} 缺少 candidate_id，无法确认 evolution 链路".format(change_id))
+    if cnd.get("evolution_id") != evo_id and cnd.get("id") != evo_id:
+        # candidate 自身可能有 evolution_id 链路，未直接持有则放宽（保底以 chg.evolution_id 为准）
+        pass
+    
+    prp_id = chg.get("proposal_id", "")
+    prp = load_artifact("proposal", prp_id) if prp_id else None
+    
+    # 要求8：关联可选 verification_id / evaluation_id
+    verify_id = chg.get("verification_id", "") or (prp.get("verification_id", "") if prp else "")
+    eval_id = chg.get("evaluation_id", "") or (prp.get("evaluation_id", "") if prp else "")
+    
+    if event_type == "regression":
+        # regression 只能在 Change 已确认 REGRESSED 后生成
+        if chg.get("status") not in ("REGRESSED", "ROLLED_BACK"):
+            raise ValueError(
+                "Regression evidence 要求 Change 状态为 REGRESSED/ROLLED_BACK，"
+                "当前: {}".format(chg.get("status")))
+        rec = {
+            "source": "evolution_event",
+            "event_type": "regression",
+            "evolution_id": evo_id,
+            "candidate_id": cnd_id,
+            "proposal_id": prp_id,
+            "change_id": change_id,
+            "regression_id": regression_id or "",
+            "verification_id": verify_id,
+            "evaluation_id": eval_id,
+            "pattern_key": cnd.get("pattern_key", "") if cnd else "",
+            "scope": cnd.get("scope", "AGENT") if cnd else "AGENT",
+            "target": chg.get("targets", [""])[0] if chg.get("targets") else "",
+            "problem": "Evolution {} 回归: {}".format(evo_id, reason or "无说明"),
+            "timestamp": now_iso(),
+            "verified": True,
+        }
+    elif event_type == "rollback":
+        # rollback 只能在实际执行 rollback 成功后生成
+        if chg.get("status") != "ROLLED_BACK":
+            raise ValueError(
+                "Rollback evidence 要求 Change 状态为 ROLLED_BACK，"
+                "当前: {}".format(chg.get("status")))
+        rec = {
+            "source": "evolution_event",
+            "event_type": "rollback",
+            "evolution_id": evo_id,
+            "candidate_id": cnd_id,
+            "proposal_id": prp_id,
+            "change_id": change_id,
+            "regression_id": regression_id or chg.get("rollback", {}).get("regression_id", ""),
+            "verification_id": verify_id,
+            "evaluation_id": eval_id,
+            "pattern_key": cnd.get("pattern_key", "") if cnd else "",
+            "scope": cnd.get("scope", "AGENT") if cnd else "AGENT",
+            "target": chg.get("targets", [""])[0] if chg.get("targets") else "",
+            "problem": "Evolution {} 已回滚: {}".format(evo_id, reason or "无说明"),
+            "timestamp": now_iso(),
+            "verified": True,
+        }
+    else:
+        raise ValueError("未知 event_type: " + event_type)
+    
+    # 复用 register_evidence 的写入逻辑，但跳过 source 检查（已验证）
+    rec.setdefault("id", "EVID-" + __import__("hashlib").sha256(
+        json.dumps(rec, sort_keys=True).encode()).hexdigest()[:12])
+    os.makedirs(os.path.dirname(evidence_store_path()), exist_ok=True)
+    with open(evidence_store_path(), "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    with open(index_path(), "a", encoding="utf-8") as f:
+        f.write("{}\t{}\t{}\n".format(rec["id"], "evidence", rec.get("pattern_key", "")))
+    return rec["id"]
 
 def query_evidence(pattern_key=None, scope=None, target=None):
     rows = []
@@ -609,7 +716,12 @@ def rollback_full_state(change_id, reason="", regression_id=None):
         _safe_transition(cnd, "REGRESSED", "candidate")
         _core_save_artifact("candidate", cnd)
 
-    # Evidence 不删除——"这次修改失败"本身就是有价值的 Evidence
+    # v2.4: Rollback 产生 evolution_event evidence
+    try:
+        register_evolution_event("rollback", change_id, reason=reason,
+                                regression_id=regression_id)
+    except ValueError:
+        pass  # 状态验证失败不应阻断 rollback 本身
 
     # 更新 regression 记录
     if regression_id:

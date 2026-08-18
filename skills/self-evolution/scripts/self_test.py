@@ -101,7 +101,7 @@ check("chain_has_evolution_id", bool(chain.get("change", {}).get("evolution_id")
 D = run(["discover.py", "--evidence", json.dumps({
     "class": "verification", "scope": "skill", "target": TARGET_SKILL_REL,
     "pattern_key": "missing_artifact_check", "problem": "又一条",
-    "session": "s-x", "verified": True, "systemic": True})], "DEDUP_EXISTING")
+    "session": "s-x", "source": "verification", "verified": True, "systemic": True})], "DEDUP_EXISTING")
 check("idempotent_dedup", D and D.get("decision") == "DEDUP_EXISTING")
 
 # === 5. 外因拦截 ===
@@ -172,6 +172,53 @@ final = open(TARGET_SKILL, encoding="utf-8").read()
 check("rollback_end_state", D and D.get("state") == "ROLLED_BACK")
 check("rollback_content_restored", final == PRE_APPLY and "# review step" not in final)
 check("rollback_preserves_evolution_id", bool(D.get("evolution_id")))
+
+# === 9b. Regression/Rollback 产生 evolution_event Evidence ===
+import _core as _core_module
+_EV = _core_module.load_evidence()
+_reg_evs = [r for r in _EV if r.get("event_type") == "regression" and r.get("change_id") == H5]
+_rb_evs = [r for r in _EV if r.get("event_type") == "rollback" and r.get("change_id") == H5]
+check("regression_generates_evidence", len(_reg_evs) == 1 and _reg_evs[0].get("source") == "evolution_event")
+check("rollback_generates_evidence", len(_rb_evs) == 1 and _rb_evs[0].get("source") == "evolution_event")
+
+# === 9c. 非法 evolution_event：状态不匹配被拒（用从未 ROLLED_BACK 的 CHG）===
+try:
+    _core_module.register_evolution_event("rollback", CHG)  # CHG=PROMOTED，非 ROLLED_BACK，应拒
+    check("illegal_evolution_event_rejected", False)
+except ValueError:
+    check("illegal_evolution_event_rejected", True)
+try:
+    _core_module.register_evolution_event("regression", CHG)  # CHG=PROMOTED，非 REGRESSED，应拒
+    check("illegal_evolution_event_regression_rejected", False)
+except ValueError:
+    check("illegal_evolution_event_regression_rejected", True)
+try:
+    _core_module.register_evidence({"source": "evolution_event", "pattern_key": "x",
+                                    "scope": "AGENT", "target": "t", "problem": "p"})
+    check("evolution_event_source_direct_write_rejected", False)
+except ValueError:
+    check("evolution_event_source_direct_write_rejected", True)
+good_ev = [r for r in _core_module.load_evidence()
+           if r.get("event_type") == "regression" and r.get("change_id") == H5]
+check("original_evidence_not_deleted", len(good_ev) == 1)
+
+# === 9d. rollback evidence requires actual successful rollback ===
+# H5 已真实 rollback（文件已恢复+ROLLED_BACK），因此应恰好有 1 条 rollback evidence
+rb_evs = [r for r in _core_module.load_evidence()
+          if r.get("event_type") == "rollback" and r.get("change_id") == H5]
+check("rollback_requires_actual_rollback", len(rb_evs) == 1)
+# rollback evidence 必须关联到实际回滚的 change，且 source=evolution_event
+check("rollback_evidence_linked", bool(rb_evs) and rb_evs[0].get("source") == "evolution_event"
+      and rb_evs[0].get("evolution_id"))
+
+# === 9e. evidence can be rediscovered after rollback ===
+# rollback 后的 evidence 仍能被 query_evidence（按 event_type 过滤）查到
+queried = _core_module.query_evidence("evolution_event")
+rollback_queried = [r for r in _core_module.load_evidence()
+                    if r.get("source") == "evolution_event"]
+check("rollback_evidence_rediscoverable",
+      any(r.get("change_id") == H5 and r.get("event_type") == "rollback"
+          for r in queried) or any(r.get("event_type") == "rollback" for r in rollback_queried))
 
 # === 10. Crash Recovery: APPLYING 状态检测 ===
 import _core

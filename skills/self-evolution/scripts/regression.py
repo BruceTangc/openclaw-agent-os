@@ -55,6 +55,13 @@ def run_regression(change_id, result, evidence):
         _core.save_artifact("change", chg)
         rgr["status"] = "REGRESSED"
         _core.save_artifact("regression", rgr)
+        # v2.4: Regression 产生 evolution_event Evidence（"这次修改失败"是重要信号）
+        try:
+            _core.register_evolution_event("regression", change_id, reason=evidence or "",
+                                           regression_id=rid)
+        except ValueError as e:
+            print(json.dumps({"warning": "regression evidence 未生成: {}".format(e)},
+                              ensure_ascii=False))
     # NO_CHANGE / UNKNOWN: 不推进状态
 
     return rid, None
