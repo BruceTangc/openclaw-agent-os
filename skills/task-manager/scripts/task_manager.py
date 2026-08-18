@@ -246,8 +246,10 @@ def scan_health(tasks, now_iso=None):
         if t.get("status") in nonterm:
             continue
         tid = t["id"]
-        created = datetime.fromisoformat(t.get("created_at", utcnow_iso()).replace("Z", "+00:00"))
-        age_days = (now - created).total_seconds() / 86400.0
+        # stale 按最近更新时间判断：优先 updated_at，缺省回退 created_at（兼容旧任务）
+        last_activity = t.get("updated_at") or t.get("created_at") or utcnow_iso()
+        last_activity_dt = datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
+        age_days = (now - last_activity_dt).total_seconds() / 86400.0
         # overdue
         due = t.get("due_at")
         if due:
