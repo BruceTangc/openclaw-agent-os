@@ -151,7 +151,7 @@ P2 = run(["propose.py", "--candidate", C2, "--diagnosis", D2, "--scope", "skill"
           "--level", "G3", "--targets", "skills/quotation/other.md",
           "--operations", OPS_BAD, "--change", "越界", "--expected_metric", "x"],
          None)
-check("propose_out_of_scope_rejected", P2 and P2.get("decision") == "DEDUP")
+check("propose_out_of_scope_rejected", P2 and P2.get("decision") == "REJECT")
 
 # ---------- 10. 保护目标：AGENTS.md ----------
 C3 = run(["discover.py", "--candidate", json.dumps({

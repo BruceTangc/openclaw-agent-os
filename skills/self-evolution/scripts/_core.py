@@ -64,13 +64,38 @@ def ws_abs(rel):
         return rel
     return os.path.join(ws_root(), rel)
 
-def is_within_workspace(path):
+def is_within_workspace(path, root=None):
+    r = root or ws_root()
     p = os.path.realpath(path)
     try:
-        os.path.commonpath([p, ws_root()]) == ws_root()
-        return True
+        return os.path.commonpath([p, r]) == r
     except ValueError:
         return False
+
+
+class WorkspaceContext:
+    """统一路径解析：所有 Snapshot/Apply/Rollback/allowed_ops/diff 共享。
+    避免 workspace 参数 vs global ws_root() 的 API 假象。"""
+    def __init__(self, root=None):
+        self.root = root or ws_root()
+
+    def resolve(self, rel):
+        """workspace 相对路径 → 绝对路径。"""
+        if os.path.isabs(rel):
+            return os.path.realpath(rel)
+        return os.path.realpath(os.path.join(self.root, rel))
+
+    def relative(self, abs_path):
+        """绝对路径 → workspace 相对路径。"""
+        return os.path.relpath(os.path.realpath(abs_path), self.root)
+
+    def contains(self, abs_path):
+        """路径是否在 workspace 内。"""
+        return is_within_workspace(abs_path, self.root)
+
+    def snapshot_path(self, change_id):
+        """workspace-relative snapshot 路径。"""
+        return os.path.join(evo_dir(), CHANGES_DIR, change_id, "snapshot", "files")
 
 
 # ------------------------- Evidence Store（治理 artifact，非 Runtime） -------------------------
@@ -147,7 +172,7 @@ def compute_stats(evids=None, pattern_key=None, scope=None, target=None):
           "api", "intermittent", "transient", "server_error"]
     return {
         "recurrence": len(rows),
-        "sessions": len(sessions) if sessions else 1,
+        "sessions": len(sessions) if sessions else None,
         "independent_sources": len(sources),
         "verified_count": sum(1 for r in rows if r.get("verified", False)),
         "systemic": any(r.get("systemic", False) for r in rows),
@@ -176,20 +201,28 @@ def _write_file(path, content):
 
 
 def allowed_ops(operations, targets):
-    """校验每个 operation 的 file 都在允许的 targets 内（diff 不越界）。返回 (ok, 越界清单)。"""
-    allowed = [ws_abs(t) for t in targets]
+    """严格 allowlist：每个 operation 的 file 必须精确等于某个 target。
+    默认 target=file，只有显式 dir: 前缀才允许目录匹配。"""
+    allowed = set()
+    dirs = set()
+    for t in targets:
+        if t.startswith("dir:"):
+            dirs.add(ws_abs(t[4:]))
+        else:
+            allowed.add(ws_abs(t))
     bad = []
     for op in operations:
         f = ws_abs(op.get("file", ""))
         if not is_within_workspace(f):
             bad.append("越出 workspace: " + op.get("file", ""))
             continue
-        if not any(os.path.commonpath([f, a]) == a for a in allowed if os.path.dirname(a) == a
-                   or f == a or f.startswith(a.rstrip("/") + "/") or os.path.dirname(a) == os.path.dirname(f)):
-            # 宽松判：file 必须等于某个 target 或位于 target 目录下
-            if not any(f == a or (os.path.dirname(a) and f.startswith(os.path.dirname(a) + "/"))
-                       or (os.path.dirname(f) == os.path.dirname(a)) for a in allowed):
-                bad.append("越出 targets: " + op.get("file", ""))
+        # 精确匹配 OR 在显式声明的目录内
+        if f in allowed:
+            continue
+        if any(os.path.dirname(f).startswith(d.rstrip("/") + "/") or f.startswith(d.rstrip("/") + "/")
+               for d in dirs):
+            continue
+        bad.append("越出 targets: " + op.get("file", ""))
     return (len(bad) == 0), bad
 
 
@@ -508,18 +541,22 @@ def take_snapshot(change_id, targets):
 
 
 def restore_snapshot(change_id, workspace_root=None):
-    """Rollback：从 snapshot/files/<rel> 恢复到 workspace root + relative。
+    """Rollback：从 snapshot/files/<rel> 恢复。
+
+    优先使用 Change Record 记录的 workspace root（确定性）；
+    仅当 Change Record 未记录时 fallback 到 workspace_root 参数或当前 workspace。
     返回恢复的绝对路径列表。"""
     snap_files = os.path.join(change_dir(change_id), "snapshot", "files")
     restored = []
     if not os.path.isdir(snap_files):
         return restored
-    root = workspace_root or ws_root()
+    chg = load_artifact("change", change_id)
+    root = (chg.get("workspace", {}).get("root") if chg else None) or workspace_root or ws_root()
     for root2, _dirs, files in os.walk(snap_files):
         for fn in files:
             src = os.path.join(root2, fn)
             rel = os.path.relpath(src, snap_files)
-            dest = os.path.join(root, rel)   # workspace root + relative
+            dest = os.path.join(root, rel)
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             shutil.copy2(src, dest)
             restored.append(dest)
