@@ -68,6 +68,13 @@ def apply_change(proposal_id, approve, approver, reason):
         return None, "GOVERNANCE_REJECT: " + "; ".join(problems)
 
     evo_id = prop.get("evolution_id")
+    with _core.apply_lock():
+        return _apply_change_locked(prop, evo_id, approve, approver, reason)
+
+
+def _apply_change_locked(prop, evo_id, approve, approver, reason):
+    """#32: Apply 全程持 lock；#31: 记录 expected fingerprint；#33: apply→verify→regression。"""
+    proposal_id = prop.get("id")
     ws_ctx = _core.WorkspaceContext()
 
     # v2.3: 创建 Change Record（含 workspace identity + evolution_id）
@@ -86,6 +93,8 @@ def apply_change(proposal_id, approve, approver, reason):
     # Snapshot
     snap = _core.take_snapshot(cid, change["targets"])
     change["_snapshot"] = snap
+    # #31: 记录 Apply 前基准 fingerprint（expected 的对照起点）
+    change["_baseline_fingerprints"] = _core.baseline_fingerprints(change["targets"])
     _core.save_artifact("change", change)
 
     # v2.3: 状态推进到 APPLYING（crash recovery 可检测此状态）
@@ -104,9 +113,17 @@ def apply_change(proposal_id, approve, approver, reason):
         _core.restore_snapshot(cid)
         return None, "APPLY_FAILED + RESTORED: " + str(e)
 
-    # 成功：推进到 APPLIED
-    change["status"] = "APPLIED"
+    # 成功：#31 记录实际变更文件的 expected fingerprint；#32/#33 立即做后置校验
     change["_applied_files"] = applied
+    change["_expected_fingerprints"] = _core.record_applied_fingerprints(cid, applied)
+    _verify_ok, _mismatch = _core.validate_applied_files(cid)
+    if not _verify_ok:
+        change["verify_error"] = "expected_fingerprint_mismatch: " + str(_mismatch)
+        _core.save_artifact("change", change)
+    # #33: apply→verify→regression 链路，Apply 只推进到 APPLIED；后续 regression.py 负责
+    #      APPLIED→MONITORING→VALIDATED/REGRESSED。verify 已在此完成指纹一致性确认。
+    change["status"] = "APPLIED"
+    change["verify"] = {"fingerprint_ok": _verify_ok, "mismatches": _mismatch}
     _core.assert_transition(change, "APPLIED", kind="change")
     _core.save_artifact("change", change)
 
@@ -119,6 +136,39 @@ def apply_change(proposal_id, approve, approver, reason):
     _core.save_artifact("proposal", prop)
 
     return cid, None
+
+
+
+def _retry_from_change(change_id):
+    """#34: 崩溃恢复 re-apply。Change=APPLYING 中断时复用其 operations 重新 apply。
+
+    只用于 recovery.py 的 SAFE_TO_RETRY 路径；通过 Proposal 重新进入既有链路，
+    必要时在 lock 保护下补 apply 后置校验。失败不抛异常，返回描述字符串。
+    """
+    try:
+        chg = _core.load_artifact("change", change_id)
+        if not chg:
+            return "RETRY_FAILED: change 不存在"
+        proposal_id = chg.get("proposal_id", "")
+        if not proposal_id:
+            return "RETRY_MANUAL: change 缺 proposal_id，无法自动重试"
+        prop = _core.load_artifact("proposal", proposal_id)
+        if not prop:
+            return "RETRY_MANUAL: proposal 不存在: " + str(proposal_id)
+        if prop.get("status") not in ("PROPOSED", "APPROVED", "APPLIED"):
+            return "RETRY_SKIP: proposal 状态 " + str(prop.get("status"))
+        with _core.apply_lock():
+            ops = (prop.get("change") or {}).get("operations") or []
+            applied = _core.apply_patch(ops)
+            chg["_applied_files"] = applied
+            chg["_expected_fingerprints"] = _core.record_applied_fingerprints(
+                change_id, applied)
+            ok, mism = _core.validate_applied_files(change_id)
+            chg["verify"] = {"fingerprint_ok": ok, "mismatches": mism}
+            _core._core_save_artifact("change", chg)
+            return "RETRYED files=" + str(len(applied)) + " fingerprint_ok=" + str(ok)
+    except Exception as e:
+        return "RETRY_FAILED: {}".format(str(e))
 
 
 def main():

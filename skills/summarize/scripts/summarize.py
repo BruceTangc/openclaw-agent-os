@@ -331,6 +331,8 @@ def cmd_extract(args):
             "claims": [],
             "conclusions": [],
             "inferences": [],
+            "uncertainties": [],
+            "conflicts": [],
             "evidence": [],
             "decisions": [],
             "action_items": [],
@@ -338,6 +340,7 @@ def cmd_extract(args):
             "open_questions": [],
             "entities": [],
             "relations": [],
+            "note": "SUMMARY != FACT: 由规则提取的是候选事实(fact_candidates)，须经 LLM 区分 facts/claims/inferences/uncertainties/conflicts；'可能A'不得判为'A'",
         },
         "state": {"completed": [], "in_progress": [], "pending": []},
         "integrations": {

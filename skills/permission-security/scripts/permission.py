@@ -96,8 +96,19 @@ def classify(action, resource_type="internal", side_effect="NONE", scope=None):
 
 
 def check(req):
-    """完整授权检查: req = {action, resource_type, side_effect, scope, authorized}"""
-    action = req.get("action", "")
+    """完整授权检查: req = {action, resource_type, side_effect, scope, authorized}
+
+    PHASE 1 P0 fail-closed: 输入缺失/异常 → deny, 不默认放行。
+    """
+    action = req.get("action")
+    if not action or not isinstance(action, str) or not action.strip():
+        return {
+            "decision": "deny", "level": "R?",
+            "reason": "fail-closed: empty/missing action",
+            "requires_approval": True,
+            "reversibility": "unknown",
+            "native_policy_final": True,
+        }
     resource_type = (req.get("resource") or {}).get("type", "internal") \
         if isinstance(req.get("resource"), dict) else req.get("resource_type", "internal")
     side_effect = req.get("external_side_effect", req.get("side_effect", "NONE"))
@@ -127,6 +138,11 @@ def check(req):
     else:
         decision = "allow"
         reason = "L0 Observe: 只读操作"
+
+    # PHASE 1: unknown action → 不进 allow (至少 ask; L0/L1 未知默认 deny)
+    if cls["unknown_action"] and decision == "allow":
+        decision = "ask" if level >= 1 else "deny"
+        reason = "未知动作, 保守处理: " + reason
 
     return {
         "decision": decision,

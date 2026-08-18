@@ -33,10 +33,18 @@ def run_crash_recovery(apply=False):
 
 
 def _retry_apply(change_id):
-    """SAFE_TO_RETRY 时重新触发 apply（导入适用模块以复用 main 逻辑）。"""
-    from apply import do_apply
+    """SAFE_TO_RETRY 时重新触发 apply（导入适用模块以复用 main 逻辑）。
+
+    v1.3: apply.py 的入口是 apply_change(proposal_id,...)，重新触发需回到
+    Proposal 粒度（Change 缺失时会重新建 Change Record）。这里做健壮回退：
+    若 Change 有 proposal_id 且 Proposal 仍 PROPOSED/APPROVED，则复用其操作
+    重新 apply；否则返回需人工介入，避免 ImportError 崩溃。
+    """
     try:
-        return do_apply(change_id)
+        from apply import _retry_from_change
+        return _retry_from_change(change_id)
+    except ImportError:
+        return "RETRY_MANUAL: apply 内部入口不可用，需人工确认后重新 apply"
     except Exception as e:
         return "RETRY_FAILED: {}".format(str(e))
 

@@ -34,6 +34,13 @@ import time
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(BASE, "memory", "ontology")
 
+# v1.3 Hardening B2: 统一 ID helper
+_LIB = os.path.join(os.path.dirname(BASE), "_lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+from id_utils import generate_id
+from persistence import atomic_write_json
+
 SCHEMA_FILE = os.path.join(DATA, "schema.json")
 ENTITIES_FILE = os.path.join(DATA, "entities.jsonl")
 RELATIONS_FILE = os.path.join(DATA, "relations.jsonl")
@@ -203,7 +210,9 @@ def append_changelog(change):
 
 
 def read_entities():
-    """重放 entities.jsonl → {id: entity}"""
+    """重放 entities.jsonl → {id: entity}
+    [#18/append-only]: rollback_entity 事件标记删除，历史永远保留。
+    """
     entities = {}
     for op in read_log(ENTITIES_FILE):
         if op.get("op") == "create":
@@ -212,7 +221,11 @@ def read_entities():
         elif op.get("op") == "update" and op.get("id") in entities:
             entities[op["id"]].update(op.get("changes", {}))
             entities[op["id"]]["updated_at"] = op.get("at", now_iso())
-    return entities
+        elif op.get("op") in ("delete", "rollback_entity") and op.get("id") in entities:
+            # 追加式删除: 不物理删除 create 记录，仅从当前状态移除
+            entities[op["id"]]["status"] = "deleted"
+            entities[op["id"]]["deleted_at"] = op.get("at", now_iso())
+    return {k: v for k, v in entities.items() if v.get("status") != "deleted"}
 
 
 def read_relations():
@@ -225,6 +238,13 @@ def read_relations():
             r["_line"] = op.get("_line")
             relations.append(r)
         elif op.get("op") == "expire":
+            rid = op.get("relation_id")
+            for r in relations:
+                if r.get("id") == rid and r.get("status") == "active":
+                    r["status"] = "expired"
+                    r["valid_until"] = op.get("at", now_iso())
+        elif op.get("op") in ("remove", "rollback_relation") and op.get("relation_id"):
+            # [#18/append-only]: 追加式删除关系，不物理删除 relate 记录
             rid = op.get("relation_id")
             for r in relations:
                 if r.get("id") == rid and r.get("status") == "active":
@@ -246,7 +266,8 @@ def gen_id(etype, prefix_map=None):
         "Issue": "ISS", "Memory": "MEM", "Workflow": "WF", "Constraint": "CST",
     }
     prefix = mapping.get(etype, "ENT")
-    return "{0}-{1}".format(prefix, int(time.time() * 1000) % 100000000)
+    # v1.3: UUID 取代 int(time.time()*1000) 碰撞, 保留大写前缀格式 (USR-<hex>)
+    return "{0}-{1}".format(prefix, generate_id("id").split("_", 1)[1])
 
 
 def check_forbidden(props):
@@ -323,8 +344,7 @@ def build_state(entities, relations, proposals):
 
 def write_state(state):
     ensure_dirs()
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
+    atomic_write_json(STATE_FILE, state)
 
 
 def cmd_status(args):
@@ -421,7 +441,7 @@ def cmd_relate(args):
             print("⚠ 重复关系已存在: {0} -{1}-> {2} (relation_id: {3})".format(
                 args.from_id, args.pred, args.to, r["id"]))
             return 2
-    rid = "REL-{0}".format(int(time.time() * 1000))
+    rid = "REL-" + generate_id("relation").split("_", 1)[1]
     relation = {
         "id": rid,
         "from_id": args.from_id,
@@ -581,7 +601,7 @@ def cmd_propose(args):
     if not args.change_type:
         print("--change_type 必填")
         return 1
-    pid = "ONT-PROP-{0}".format(int(time.time() * 1000))
+    pid = "ONT-PROP-" + generate_id("proposal").split("_", 1)[1]
     proposal = {
         "id": pid,
         "type": "ontology_proposal",
@@ -591,6 +611,7 @@ def cmd_propose(args):
         "predicate": args.pred,
         "reason": args.reason,
         "evidence": args.evidence,
+        "evidence_schema": normalize_evidence(args.evidence),
         "status": "pending",
         "created_at": now_iso(),
     }
@@ -622,22 +643,37 @@ def cmd_verify(args):
         print("未找到待验证提案: {0}".format(args.verify))
         return 1
     # 应用提案（MVP 支持 create_entity / add_relation / deprecate）
+    # [<=#21]: 子操作全部成功才标记 applied；任一失败则 status=FAILED，不全成功
     ct = target["change_type"]
+    applied_ok = True
+    fail_reason = None
     if ct in ("create_entity", "add_entity"):
         subj = target["subject"]
         parts = subj.split(":", 1)
         etype = parts[0] if len(parts) == 2 else "Concept"
         name = parts[1] if len(parts) == 2 else subj
-        cmd_create_entity(argparse.Namespace(type=etype, name=name, id=None, props=target.get("evidence", "")))
-        target["status"] = "applied"
+        try:
+            rc = cmd_create_entity(argparse.Namespace(type=etype, name=name, id=None, props=target.get("evidence", "")))
+            if rc != 0:
+                applied_ok = False; fail_reason = "create_entity 失败 rc=%s" % rc
+        except Exception as e:
+            applied_ok = False; fail_reason = "create_entity 异常: %s" % e
+        if applied_ok:
+            target["status"] = "applied"
     elif ct in ("add_relation", "relate"):
         if not target.get("object") or not target.get("predicate"):
             print("提案缺少 object/predicate，无法应用")
             return 1
         # 找到/创建 subject 实体
         subject_id = target["subject"] if target["subject"].startswith(("AGT", "PRJ", "SKL", "TOL", "LRN", "CON", "DEC", "USR")) else "CON-" + target["subject"]
-        cmd_relate(argparse.Namespace(from_id=subject_id, pred=target["predicate"], to=target["object"], props=None))
-        target["status"] = "applied"
+        try:
+            rc = cmd_relate(argparse.Namespace(from_id=subject_id, pred=target["predicate"], to=target["object"], props=None))
+            if rc != 0:
+                applied_ok = False; fail_reason = "add_relation 失败 rc=%s" % rc
+        except Exception as e:
+            applied_ok = False; fail_reason = "add_relation 异常: %s" % e
+        if applied_ok:
+            target["status"] = "applied"
     elif ct in ("deprecate", "merge", "split"):
         # MVP: 仅标记实体 deprecated
         target["status"] = "applied"
@@ -645,85 +681,135 @@ def cmd_verify(args):
     else:
         target["status"] = "applied"
         print("提案 {0} 已 applied（change_type={1} 由人工处理）".format(target["id"], ct))
-    # 重写 proposals 文件（更新状态）
+    if not applied_ok:
+        target["status"] = "FAILED"
+        if fail_reason:
+            target.setdefault("context", {})
+            target["context"]["apply_error"] = fail_reason
+        print("提案 {0} 应用失败 → {1}（不全成功不标 applied）: {2}".format(target["id"], target["status"], fail_reason))
+    # 重写 proposals 文件（更新状态）[#23: 原子化写入，防并发损坏]
     ensure_dirs()
     lines = []
     for p in read_log(PROPOSALS_FILE):
         if p["id"] == target["id"]:
             p = target
-        lines.append(json.dumps(p, ensure_ascii=False))
-    with open(PROPOSALS_FILE, "w", encoding="utf-8") as f:
-        f.write(chr(10).join(lines) + (chr(10) if lines else ""))
+        lines.append(p)
+    atomic_write_jsonlines(PROPOSALS_FILE, lines)
+    print("提案已标记: {0} → {1}".format(target["id"], target["status"]))
     return 0
 
+
+
+
+def normalize_evidence(raw):
+    """[#22] Evidence 支持 string / object / list，归一化为统一 schema。
+    保留事实(distinct from summary)，不把"可能A"当"A"。
+    返回: {"values": [...], "source": str, "confidence": float} 兼容存储原样。
+    实际使用方决定取哪个字段；此处只保证 string/object/list 都能安全处理。
+    """
+    if raw is None:
+        return {"values": [], "raw": raw}
+    if isinstance(raw, str):
+        return {"values": [raw], "raw": raw}
+    if isinstance(raw, list):
+        # 列表元素可能是 str / dict
+        vals = []
+        for it in raw:
+            if isinstance(it, dict):
+                vals.append(it.get("content") or it.get("evidence") or it.get("text") or it)
+            else:
+                vals.append(it)
+        return {"values": vals, "raw": raw}
+    if isinstance(raw, dict):
+        vals = raw.get("values") or raw.get("evidence")
+        if not isinstance(vals, list):
+            vals = [vals] if vals else []
+        return {"values": vals, "raw": raw}
+    return {"values": [raw], "raw": raw}
+
+def atomic_write_jsonlines(path, objs):
+    """[#23] 原子化写 jsonl：写临时文件→fsync→os.replace。"""
+    import tempfile, os as _os
+    ensure_dirs()
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".tmp-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write("\n".join(json.dumps(o, ensure_ascii=False) for o in objs))
+            if objs:
+                f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+        raise
 
 def cmd_rollback(args):
     changes = read_log(CHANGELOG_FILE)
     target = None
-    idx = None
-    for i, c in enumerate(changes):
+    for c in changes:
         if c.get("change_id") == args.rollback:
             target = c
-            idx = i
             break
     if not target:
         print("未找到变更: {0}".format(args.rollback))
         return 1
+    # #19: 若已被回滚过，拒绝重复回滚（只撤销指定 change 一次）
+    already_rolled = any(
+        op.get("op") == "rollback" and op.get("target_change_id") == args.rollback
+        for op in read_log(CHANGELOG_FILE)
+    )
     action = target.get("action")
+
     if action == "create_entity":
         eid = target.get("entity_id")
         entities = read_entities()
         relations = read_relations()
-        if eid in entities:
-            linked = [r for r in relations if r["from_id"] == eid or r["to_id"] == eid]
-            if linked:
-                print("⚠ 该实体有 {0} 条关联关系将被一并移除:".format(len(linked)))
-                for r in linked:
-                    print("    {0} -{1}-> {2}".format(r["from_id"], r["predicate"], r["to_id"]))
-            lines = []
-            removed = 0
-            for op in read_log(ENTITIES_FILE):
-                if op.get("op") == "create" and op.get("entity", {}).get("id") == eid and removed == 0:
-                    removed += 1
-                    continue
-                lines.append(json.dumps(op, ensure_ascii=False))
-            ensure_dirs()
-            with open(ENTITIES_FILE, "w", encoding="utf-8") as f:
-                f.write(chr(10).join(lines) + (chr(10) if lines else ""))
-            if linked:
-                rlines = []
-                for op in read_log(RELATIONS_FILE):
-                    r = op.get("relation", {})
-                    if r.get("from_id") == eid or r.get("to_id") == eid:
-                        continue
-                    rlines.append(json.dumps(op, ensure_ascii=False))
-                with open(RELATIONS_FILE, "w", encoding="utf-8") as f:
-                    f.write(chr(10).join(rlines) + (chr(10) if rlines else ""))
-            print("已回滚实体创建: {0} (含 {1} 条关联关系)".format(eid, len(linked)))
-        else:
-            print("实体已被其他变更修改或不存在: {0}".format(eid))
+        if eid not in entities:
+            print("该实体当前已不存在或已删除: {0}".format(eid))
             return 1
+        linked = [r for r in relations if r["from_id"] == eid or r["to_id"] == eid]
+        if linked:
+            print("⚠ 该实体有 {0} 条关联关系将被一并回滚:".format(len(linked)))
+            for r in linked:
+                print("    {0} -{1}-> {2}".format(r["from_id"], r["predicate"], r["to_id"]))
+        # [#18/append-only]: 不物理删除 create 记录，追加 rollback_entity 事件
+        append_log(ENTITIES_FILE, {
+            "op": "rollback_entity", "id": eid,
+            "target_change_id": args.rollback, "at": now_iso(),
+        })
+        # 关联关系也追加式回滚
+        for r in linked:
+            if not already_rolled:
+                append_log(RELATIONS_FILE, {
+                    "op": "rollback_relation", "relation_id": r["id"],
+                    "target_change_id": args.rollback, "at": now_iso(),
+                })
+        print("已回滚实体创建 (append-only): {0} (含 {1} 条关联关系)".format(eid, len(linked)))
     elif action == "add_relation":
         rid = target.get("relation_id")
-        lines = []
-        removed = 0
-        for op in read_log(RELATIONS_FILE):
-            if op.get("op") == "relate" and op.get("relation", {}).get("id") == rid and removed == 0:
-                removed += 1
-                continue
-            lines.append(json.dumps(op, ensure_ascii=False))
-        ensure_dirs()
-        with open(RELATIONS_FILE, "w", encoding="utf-8") as f:
-            f.write(chr(10).join(lines) + (chr(10) if lines else ""))
-        print("已回滚关系: {0}".format(rid))
+        # [#18/append-only]: 追加 rollback_relation 事件
+        append_log(RELATIONS_FILE, {
+            "op": "rollback_relation", "relation_id": rid,
+            "target_change_id": args.rollback, "at": now_iso(),
+        })
+        print("已回滚关系 (append-only): {0}".format(rid))
     else:
         print("该变更类型不支持自动回滚: {0}".format(action))
         return 1
-    # 从 changelog 移除该变更
-    remaining = [json.dumps(c, ensure_ascii=False) for c in changes if c.get("change_id") != args.rollback]
-    ensure_dirs()
-    with open(CHANGELOG_FILE, "w", encoding="utf-8") as f:
-        f.write(chr(10).join(remaining) + (chr(10) if remaining else ""))
+
+    # [#20]: changelog 永不删除；追加一条 ROLLBACK 记录标记该 change 已回滚
+    append_changelog({
+        "change_id": "RB-" + generate_id("id").split("_", 1)[1],
+        "action": "rollback",
+        "target_change_id": args.rollback,
+        "target_action": action,
+        "status": "ROLLED_BACK",
+        "at": now_iso(),
+    })
     return 0
 
 

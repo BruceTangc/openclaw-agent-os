@@ -250,8 +250,11 @@ def cmd_result_to_task(args):
                            "--level", args.verify_level])
         veri = json.loads(out) if rc == 0 and out else {"error": err or "verify failed"}
 
-    # 状态映射
+    # 状态映射 (v1.3 #14: UNKNOWN 不得直接进自动 Retry → 归为观察/等待)
     target = {"success": "COMPLETED", "partial": "REVIEW", "failure": "FAILED"}.get(status)
+    is_unknown = (veri and isinstance(veri, dict) and (veri.get("level") == "UNKNOWN" or veri.get("verdict") == "UNKNOWN" or veri.get("result") == "UNKNOWN")) or status in ("unknown", "unverified")
+    if is_unknown:
+        target = "WAITING"
     if not target:
         print(json.dumps({"error": "非法执行状态: " + status}, ensure_ascii=False))
         sys.exit(2)
@@ -263,6 +266,9 @@ def cmd_result_to_task(args):
             "verified": veri,
         },
     }
+    if is_unknown:
+        extra["context"]["execution_state"] = "UNKNOWN"
+        extra["context"]["unknown_reason"] = "验证结果无法确认, 进入观察 (observe/wait), 不自动重试"
 
     # 状态机自动中转: READY/PLANNED/INBOX/REVIEW → RUNNING → 目标 (§9)
     rc0, out0, err0 = tm(["show", "--id", task_id])

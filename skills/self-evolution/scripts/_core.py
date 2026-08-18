@@ -18,8 +18,16 @@ import json
 import os
 import re
 import shutil
+import contextlib
 import hashlib
 from datetime import datetime, timezone
+import sys
+
+_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))), "_lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+from id_utils import generate_id as _idutil_generate_id, file_fingerprint as _idutil_fingerprint
 
 # ======================== 路径与 Workspace ========================
 
@@ -93,26 +101,9 @@ def _read_index():
         return [ln.rstrip("\n") for ln in f if ln.strip()]
 
 def gen_id(prefix):
-    """ID 生成：prefix-YYYYMMDD-NNN。"""
-    kind_map = {"CAND": "candidates", "DGN": "diagnoses", "PRP": "proposals",
-                "CHG": "changes", "RGR": "regressions"}
-    kind = kind_map.get(prefix)
-    existing = []
-    if kind:
-        d = os.path.join(evo_dir(), kind)
-        if os.path.isdir(d):
-            pat = re.compile(r"^" + re.escape(prefix) + r"-(\d{8})-(\d+)$")
-            for f in os.listdir(d):
-                m = pat.match(f)
-                if m and m.group(1) == today_compact():
-                    existing.append(int(m.group(2)))
-    pat2 = re.compile(r"^(\w+)-(\d{8})-(\d+)\t")
-    for ln in _read_index():
-        m = pat2.match(ln)
-        if m and m.group(1) == prefix and m.group(2) == today_compact():
-            existing.append(int(m.group(3)))
-    n = (max(existing) + 1) if existing else 1
-    return "{}-{}-{:03d}".format(prefix, today_compact(), n)
+    """#35: artifact ID → UUID。统一走 id_utils.generate_id()（稳定 UUID4、
+    跨进程唯一），不再用日期+序号（并发下会碰撞、跨运行不可复现）。"""
+    return _idutil_generate_id(prefix)
 
 
 def gen_evolution_id():
@@ -510,6 +501,80 @@ def file_hash(path):
     with open(path, "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()
 
+@contextlib.contextmanager
+def apply_lock():
+    """#32: Apply 互斥锁（fcntl.flock 阻塞锁，跨进程安全）。
+
+    用法: with apply_lock(): ...  并发 apply 会排队，防止同一目标文件被并发 patch
+    产生脏写。锁文件放 evolution 根目录 apply.lock。
+    """
+    import fcntl
+    lock_path = os.path.join(evo_dir(), "apply.lock")
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    fh = open(lock_path, "a")
+    try:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        yield fh
+    finally:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+        finally:
+            fh.close()
+
+
+def baseline_fingerprints(targets):
+    """#31: Apply 前记录 targets 的当前 SHA-256（基准指纹）。"""
+    fps = {}
+    for t in targets or []:
+        rel = ws_rel(ws_abs(t))
+        fps[rel] = _idutil_fingerprint(ws_abs(t))
+    return fps
+
+
+def record_applied_fingerprints(change_id, applied_files):
+    """#31: Apply 成功后，把实际变更文件的 SHA-256 记为 'expected fingerprint'，
+    写入 change record（供后续 verify/regression/crash-recovery 对照）。"""
+    chg = load_artifact("change", change_id)
+    if not chg:
+        return None
+    expected = {}
+    for entry in applied_files or []:
+        # apply_patch 返回 [(rel, op)] 元组；归一化为纯 rel 路径
+        rel = entry[0] if isinstance(entry, (tuple, list)) else entry
+        f = ws_abs(rel)
+        if os.path.exists(f):
+            expected[rel] = _idutil_fingerprint(f)
+    chg["_expected_fingerprints"] = expected
+    _core_save_artifact("change", chg)
+    return expected
+
+
+def verify_fingerprints(change_id):
+    """#31/#32: 对照 expected fingerprint 校验当前文件是否仍一致。
+
+    返回 (all_ok, mismatches: list[(rel, expected, current)])。
+    供 Apply 后校验 / 崩溃恢复 / regression 前一致性确认。
+    """
+    chg = load_artifact("change", change_id)
+    if not chg:
+        return False, [("", "change 不存在", "")]
+    expected = chg.get("_expected_fingerprints", {}) or {}
+    if not expected:
+        return False, [("", "no expected fingerprint", "")]
+    bad = []
+    for rel, exp in expected.items():
+        cur = _idutil_fingerprint(ws_abs(rel))
+        if cur != exp:
+            bad.append((rel, exp, cur))
+    return (len(bad) == 0), bad
+
+
+def validate_applied_files(change_id):
+    """Apply 后置校验：文件指纹必须与期望一致，否则判定不一致（供 #33 APPLIED 前置确认）。"""
+    ok, bad = verify_fingerprints(change_id)
+    return ok, bad
+
+
 def allowed_ops(operations, targets):
     """v2.3: 严格 exact-file allowlist。dir: 前缀允许目录。"""
     allowed = set()
@@ -676,7 +741,12 @@ def recover_apply(change_id):
     if all_match and not applied_files:
         return "SAFE_TO_RETRY", "文件未修改，可安全重试 apply"
     elif all_match and applied_files:
-        return "VERIFY", "文件已完整修改，需验证"
+        # #34: 有 expected fingerprint 时进一步校验当前文件是否与期望一致。
+        # 一致→VERIFY（确认后推进）；不一致→ROLLBACK（回滚到 snapshot 保证一致）。
+        ok, mism = verify_fingerprints(change_id)
+        if ok or not chg.get("_expected_fingerprints"):
+            return "VERIFY", "文件已完整修改，需验证"
+        return "ROLLBACK", "指纹不一致，回滚: " + str([r[0] for r in mism][:5]) if mism else "指纹不一致"
     else:
         return "ROLLBACK", "文件部分修改，回滚到 snapshot"
 

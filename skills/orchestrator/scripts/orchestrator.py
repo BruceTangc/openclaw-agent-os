@@ -33,6 +33,13 @@ import subprocess
 import sys
 from collections import deque
 
+# v1.3 Hardening B2: 统一 ID helper
+_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))), "_lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+from id_utils import generate_id, deterministic_id
+
 # ---------------------------------------------------------------------------
 # 常量
 # ---------------------------------------------------------------------------
@@ -121,7 +128,7 @@ def parse_request(req):
     """统一输入 → 结构化 orchestration_request (文档 §3)."""
     now_req = dict(req or {})
     out = {
-        "id": now_req.get("id", "req_" + str(hash(json.dumps(now_req, sort_keys=True)) & 0xffff)),
+        "id": now_req.get("id") or generate_id("request"),
         "source": now_req.get("source", "user"),
         "objective": now_req.get("objective", now_req.get("goal", "")),
         "context": now_req.get("context", {}),
@@ -140,7 +147,7 @@ def parse_request(req):
 def goal_model(req):
     """建立 Goal (文档 §5). 目标不清晰 → 标记需要 ASK."""
     g = {
-        "id": "goal_" + str(abs(hash(req.get("objective", ""))) & 0xfffff),
+        "id": "goal_" + deterministic_id("goal", {"objective": req.get("objective", "")}).split("_", 1)[1],
         "objective": req.get("objective", ""),
         "success_condition": req.get("success_condition", []),
         "constraints": req.get("constraints", []),
@@ -295,7 +302,20 @@ PERMISSION_CLASSIFIER = os.path.join(
 
 def permission_gate(action, resource_type="internal", side_effect="NONE",
                     scope=None, authorized=False):
-    """分发前闸门: 返回 {allowed, level, decision, reason}."""
+    """分发前闸门 (fail-closed): 返回 {allowed, level, decision, reason}.
+
+    PHASE 1 P0 (Hardening Patch):
+      classifier 正常 → ALLOW / ASK / DENY
+      classifier timeout / non-zero / malformed JSON / missing fields /
+      exception → DENY (fail-closed)
+
+    只有分类器明确返回 decision == "allow" 才放行; 任何异常/缺失/歧义一律拒绝。
+    OpenClaw 原生 policy/approval 仍是最终执行边界, 本函数不取代它。
+    """
+    fail_closed = {
+        "allowed": False, "level": "R?", "decision": "deny",
+        "requires_approval": True,
+    }
     try:
         import subprocess
         req = {
@@ -309,24 +329,32 @@ def permission_gate(action, resource_type="internal", side_effect="NONE",
             [sys.executable, PERMISSION_CLASSIFIER, "check",
              "--json", json.dumps(req, ensure_ascii=False)],
             capture_output=True, text=True, timeout=10)
-        if proc.returncode == 0:
+        if proc.returncode != 0:
+            # non-zero exit → DENY
+            return dict(fail_closed, reason="permission classifier exited non-zero")
+        try:
             result = json.loads(proc.stdout)
-            level = result.get("level", "L0")
-            decision = result.get("decision", "allow")
-            return {
-                "allowed": decision == "allow",
-                "level": level,
-                "decision": decision,
-                "reason": result.get("reason", ""),
-                "requires_approval": result.get("requires_approval", False),
-            }
+        except Exception as e:
+            # malformed JSON → DENY
+            return dict(fail_closed, reason="permission classifier returned malformed JSON: " + str(e))
+        if not isinstance(result, dict):
+            return dict(fail_closed, reason="permission classifier returned non-object result")
+        decision = result.get("decision")
+        if decision is None:
+            # missing decision field → DENY
+            return dict(fail_closed, reason="permission classifier missing decision field")
+        return {
+            "allowed": str(decision) == "allow",
+            "level": result.get("level", "R?"),
+            "decision": decision,
+            "reason": result.get("reason", ""),
+            "requires_approval": result.get("requires_approval", True),
+        }
+    except subprocess.TimeoutExpired:
+        return dict(fail_closed, reason="permission classifier timed out")
     except Exception as e:
-        # Fail closed: 分类器不可用 → 高风险动作拒绝 (§111)
-        return {"allowed": False, "level": "R?", "decision": "deny",
-                "reason": "permission classifier unavailable: " + str(e),
-                "requires_approval": True}
-    return {"allowed": True, "level": "L0", "decision": "allow",
-            "reason": "no permission check requested", "requires_approval": False}
+        # exception → DENY
+        return dict(fail_closed, reason="permission classifier unavailable: " + str(e))
 
 # ---------------------------------------------------------------------------
 # Execution Plan (文档 §18)
@@ -334,7 +362,7 @@ def permission_gate(action, resource_type="internal", side_effect="NONE",
 def build_plan(req, tasks, dag_result=None):
     """生成 execution_plan."""
     return {
-        "id": "plan_" + str(abs(hash(json.dumps(req, sort_keys=True))) & 0xfffff),
+        "id": generate_id("plan"),
         "objective": req.get("objective", ""),
         "tasks": tasks,
         "dag": dag_result,
@@ -368,9 +396,26 @@ def verify_result(result, level="V1"):
     if level == "V2":
         res["passed"] = all(c["ok"] for c in res["checks"])
         return res
-    # V3: 独立验证
-    independent = bool(result.get("independently_verified"))
-    res["checks"].append({"check": "V3 independent", "ok": independent})
+    # V3: 独立验证 [<=#25]: 不能只看 independently_verified 布尔，必须 method+evidence_refs+verified_by 齐全
+    v3 = result.get("verification") if isinstance(result.get("verification"), dict) else result
+    method = v3.get("verification_method") or v3.get("method")
+    evidence_refs = v3.get("evidence_refs") or result.get("evidence_refs")
+    verified_by = v3.get("verified_by") or result.get("verified_by")
+    indep = bool(v3.get("independently_verified") or result.get("independently_verified"))
+    has_evidence_list = isinstance(evidence_refs, (list, tuple, set)) and len(evidence_refs) > 0
+    v3_ok = bool(method) and bool(verified_by) and has_evidence_list and indep
+    res["checks"].append({
+        "check": "V3 independent_verified",
+        "ok": v3_ok,
+        "detail": {
+            "method": method, "evidence_refs_count": len(evidence_refs) if has_evidence_list else 0,
+            "verified_by": verified_by, "independent": indep,
+        },
+    })
+    # #26: 无法确认(UNKNOWN) → 不算通过，标记 decision=UNKNOWN，不得静默当成功
+    if not v3_ok:
+        res["decision"] = "UNKNOWN"
+        res["unknown_reason"] = "V3 缺少 method/evidence_refs/verified_by/independent 之一，无法确认独立验证"
     if level == "V3":
         res["passed"] = all(c["ok"] for c in res["checks"])
         return res

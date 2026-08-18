@@ -121,12 +121,33 @@ def read_stdin_or_json(raw, label):
 SIGNAL_TYPES = ["change", "anomaly", "deadline", "opportunity", "risk",
                 "goal_drift", "followup", "failure"]
 
+# v1.3 Hardening B2: 统一 ID helper
+_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))), "_lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+from id_utils import generate_id, deterministic_id
+from persistence import atomic_write_json
+
+import hashlib as _hashlib
+
+
+def _signal_fingerprint(sig):
+    """稳定 fingerprint: hash(type + subject + source)，不使用 timestamp。"""
+    if isinstance(sig, str):
+        return sig
+    raw = "|".join([str(sig.get("type", "")),
+                     str(sig.get("subject", "")),
+                     str(sig.get("source", ""))])
+    return _hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
 
 def ingest_signal(sig):
     """摄入 Signal, 做结构校验 + 默认值补齐."""
     now = utcnow_iso()
     out = dict(sig)
-    out.setdefault("id", "sig_" + str(int(time.time())))
+    out.setdefault("id", generate_id("signal"))
+    out["fingerprint"] = _signal_fingerprint(out)
     out.setdefault("timestamp", now)
     out.setdefault("source", "system")
     out.setdefault("type", "change")
@@ -190,9 +211,10 @@ def _f(v, default=0.0):
 
 def build_opportunity(sig, **overrides):
     opp = {
-        "id": "opp_" + str(int(time.time())),
+        "id": generate_id("opportunity"),
         "title": sig.get("subject", "opportunity"),
         "source_signal": sig.get("id"),
+        "source_signal_fingerprint": sig.get("fingerprint") or _signal_fingerprint(sig),
         # 从 signal 继承评分字段 (value/urgency/effort/risk 等), 避免被覆盖成 0
         "value": _f(sig.get("value")),
         "urgency": _f(sig.get("urgency")),
@@ -296,7 +318,13 @@ def _load_queue():
 
 
 def _save_queue(q):
-    save_json(QUEUE_PATH, q)
+    # v1.3 #7: atomic write (lock + reload + temp + fsync + replace)
+    atomic_write_json(QUEUE_PATH, q)
+
+
+def _save_state(st):
+    # v1.3 #8: State 并发写入 atomic
+    atomic_write_json(STATE_PATH, st)
 
 
 def queue_cmd(sub, args):
@@ -306,7 +334,7 @@ def queue_cmd(sub, args):
     now = utcnow_iso()
     if sub == "add":
         item = {
-            "id": "q_" + str(int(time.time())),
+            "id": generate_id("queue"),
             "type": args.type or "opportunity",
             "priority": args.priority or DEFAULT_PRIORITY,
             "status": "queued",
@@ -398,7 +426,7 @@ def state_cmd(sub, args):
                     from datetime import datetime as dt2, timezone as tz
                     cd_iso = dt2.fromtimestamp(cd, tz=tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                     st.setdefault("anti_loop", {})["cooldown_until"] = cd_iso
-                    save_json(STATE_PATH, st)
+                    _save_state(st)
                     return {"wake": "no_action", "reason": "cooldown",
                             "cooldown_until": cd_iso}
             except Exception:
@@ -406,7 +434,7 @@ def state_cmd(sub, args):
         st["last_wake_at"] = now
         st["metrics"]["signals_today"] = st["metrics"].get("signals_today", 0) + 1
         st.setdefault("anti_loop", {})["cooldown_until"] = ""
-        save_json(STATE_PATH, st)
+        _save_state(st)
         return {"wake": "ok", "last_wake_at": now}
     if sub == "bump":
         # 计数一个指标
@@ -416,12 +444,12 @@ def state_cmd(sub, args):
                 st["metrics"][key] += args.delta
             else:
                 st["metrics"][key] = st["metrics"].get(key, 0) + 1
-            save_json(STATE_PATH, st)
+            _save_state(st)
             return {"metrics": st["metrics"]}
         return {"error": f"未知指标 {key}"}
     if sub == "set-goal":
         st["current_goal"] = {"id": args.goal, "alignment": args.alignment or 0.0}
-        save_json(STATE_PATH, st)
+        _save_state(st)
         return st["current_goal"]
     return {"error": f"未知子命令 {sub}"}
 

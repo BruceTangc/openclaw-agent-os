@@ -32,6 +32,14 @@ import sys
 import time
 from datetime import datetime, timezone
 
+# v1.3 Hardening: 统一 ID + 原子持久化
+_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))), "_lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+from id_utils import generate_id
+from persistence import atomic_write_json
+
 # ---------------------------------------------------------------------------
 # 常量
 # ---------------------------------------------------------------------------
@@ -88,20 +96,19 @@ def load_tasks():
         with open(DATA_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
             return data if isinstance(data, list) else []
-    except Exception:
-        return []
+    except Exception as e:
+        # v1.3 #15: JSON 损坏不得当成空任务 → 标记进入 recovery/error
+        raise RuntimeError("tasks.json 损坏, 拒绝当空列表处理: " + str(e))
 
 
 def save_tasks(tasks):
-    d = os.path.dirname(DATA_PATH)
-    if d and not os.path.isdir(d):
-        os.makedirs(d, exist_ok=True)
-    with open(DATA_PATH, "w", encoding="utf-8") as f:
-        json.dump(tasks, f, ensure_ascii=False, indent=2)
+    # v1.3 #6/#17: 原子写入 (lock + temp + fsync + os.replace)
+    atomic_write_json(DATA_PATH, tasks)
 
 
 def new_task_id():
-    return "task_" + datetime.now().strftime("%Y%m%d") + "_" + str(int(time.time()))
+    # v1.3 #3: UUID 取代秒级时间戳, 防碰撞
+    return generate_id("task")
 
 
 # ---------------------------------------------------------------------------
@@ -183,26 +190,39 @@ def find_duplicate(tasks, task):
     return None
 
 
+def ordered_dedup(items):
+    """#16: 保序去重 (list of hashable)。"""
+    seen = set()
+    out = []
+    for it in items:
+        if it not in seen:
+            seen.add(it)
+            out.append(it)
+    return out
+
+
 def merge_tasks(existing, new):
     """合并 (文档 §13): 保留最早创建, 最高优先级, 最严格 deadline, 合并来源."""
     merged = dict(existing)
     merged["title"] = existing.get("title") or new.get("title")
     merged["description"] = existing.get("description") or new.get("description")
-    # 来源引用合并
-    srcs = set()
+    # 来源引用合并 (#16: 保序去重)
+    srcs = []
     for s in [existing.get("source"), new.get("source")]:
         if s and s.get("id"):
-            srcs.add(s["id"])
+            srcs.append(s["id"])
+    srcs = ordered_dedup(srcs)
     if srcs:
-        merged["source"] = {"type": "merged", "id": "|".join(sorted(srcs))}
+        merged["source"] = {"type": "merged", "id": "|".join(srcs)}
     # 优先级: 取更高
     if new["priority"]["level"] < existing["priority"]["level"]:
         merged["priority"]["level"] = new["priority"]["level"]
     # deadline: 取更早
     if new.get("due_at") and (not existing.get("due_at") or new["due_at"] < existing["due_at"]):
         merged["due_at"] = new["due_at"]
-    # 依赖合并
-    merged["dependencies"] = list(set(existing.get("dependencies", []) + new.get("dependencies", [])))
+    # 依赖合并 (#16: 保序去重)
+    merged["dependencies"] = ordered_dedup(
+        list(existing.get("dependencies", [])) + list(new.get("dependencies", [])))
     merged["context"] = {**existing.get("context", {}), **new.get("context", {})}
     merged["history"].append({
         "timestamp": utcnow_iso(), "actor": "system",
