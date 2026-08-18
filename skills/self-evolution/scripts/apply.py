@@ -93,11 +93,15 @@ def _apply_change_locked(prop, evo_id, approve, approver, reason):
     # Snapshot
     snap = _core.take_snapshot(cid, change["targets"])
     change["_snapshot"] = snap
-    # #31: 记录 Apply 前基准 fingerprint（expected 的对照起点）
-    change["_baseline_fingerprints"] = _core.baseline_fingerprints(change["targets"])
+    # SE-01/修复: baseline fingerprint 应来自 Proposal 创建时(而非 Apply 时)记录的基准。
+    #   这样 Apply 前才能检测“Proposal 创建 → Apply 之间”的外部修改。
+    #   旧 proposal(本轮修复前创建)缺该字段，fallback 到 Apply 时采样(向后兼容)。
+    prop_base = (prop.get("_baseline_fingerprints") or {})
+    change["_baseline_fingerprints"] = (
+        prop_base if prop_base else _core.baseline_fingerprints(change["targets"]))
 
-    # P1-6/修复: Apply 前拿“当前文件”重新 hash 与 baseline 比较。
-    #   若 baseline 记录后文件已被他人修改（≠ baseline），则拒绝 apply，
+    # P1-6/修复: Apply 前拿“当前文件”重新 hash 与 baseline(Proposal 阶段基准)比较。
+    #   若 baseline 记录后文件已被他人修改(≠ baseline)，则拒绝 apply，
     #   不覆盖外部修改。这是 #31/#32 “防止别人修改后覆盖”的最后一道防线。
     base_fp = change["_baseline_fingerprints"] or {}
     pre_verify_ok = True
@@ -209,6 +213,16 @@ def _retry_from_change(change_id):
                 change_id, applied)
             ok, mism = _core.validate_applied_files(change_id)
             chg["verify"] = {"fingerprint_ok": ok, "mismatches": mism}
+            if not ok:
+                # SE-02/修复: recovery-retry 的 post-verify 失败必须同样收敛到
+                #    terminal failure(APPLY_FAILED)。否则下次启动 recovery 检测到
+                #   SAFE_TO_RETRY 会再次 apply，形成 retry 循环。
+                chg["status"] = "APPLY_FAILED"
+                chg["verify_error"] = (
+                    "post-verify fingerprint mismatch: " + str(mism))
+                _core._core_save_artifact("change", chg)
+                return ("RETRY_FAILED + APPLY_FAILED: post-verify fingerprint mismatch: "
+                        + str(mism))
             _core._core_save_artifact("change", chg)
             return "RETRYED files=" + str(len(applied)) + " fingerprint_ok=" + str(ok)
     except Exception as e:

@@ -22,6 +22,7 @@ OpenClaw 原生 policy/approval 仍为最终拦截层, 本脚本仅做决策层�
 import argparse
 import json
 import sys
+from datetime import datetime
 
 # L0-L4 动作分类
 ACTION_LEVELS = {
@@ -140,7 +141,26 @@ def check(req):
             if r != a:
                 scope_ok = False
                 scope_problem = "requested scope %s 与 authorized scope %s 不匹配" % (r, a)
-    auth_valid = authorized and (authorization or auth_scope or auth_expiry or auth_source)
+    auth_valid = bool(authorized) and bool(authorization or auth_scope or auth_expiry or auth_source)
+    # PERM-01/修复: expiry 必须真正参与授权决策。过期授权视为无效，
+    #   需重新确认(ask)，绝不静默 allow。
+    expired = False
+    expiry_problem = None
+    if auth_expiry:
+        try:
+            _exp = str(auth_expiry).strip().rstrip("Z").replace("Z", "")
+            # 兼容带 offset 的 ISO 与纯日期两种格式
+            if _exp.endswith("Z") is False and len(_exp) == 19:
+                _exp = _exp.replace(" ", "T")
+            _exp_dt = datetime.fromisoformat(_exp)
+            if datetime.now() >= _exp_dt:
+                expired = True
+                expiry_problem = "authorization 已过期: expiry=" + str(auth_expiry)
+        except ValueError:
+            # 无法解析的 expiry 在安全上按“视为有效但提醒”；避免误拦截合法授权。
+            expiry_problem = "authorization expiry 无法解析: " + str(auth_expiry)
+    if expired:
+        auth_valid = False
     authorized_effective = auth_valid and scope_ok
 
     # 决策
@@ -179,6 +199,8 @@ def check(req):
         "reversibility": cls["reversibility"],
         "authorization": {
             "valid": auth_valid,
+            "expired": expired,
+            "expiry_problem": expiry_problem,
             "scope_ok": scope_ok,
             "scope_problem": scope_problem,
             "source": auth_source,

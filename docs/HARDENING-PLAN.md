@@ -92,3 +92,23 @@ Phase 9 回归测试
 | P2-2 | Summarize aggregate 加 truncation metadata | ✅ |
 
 回归: 全部 py_compile ✅ / self_test 60 PASS ✅ / anti_loop 14 PASS ✅
+
+### 终验轮 (2026-08-19) — e46d432 代码逐项复核后补修 3 项
+> 上一轮(124a290→e46d432)推送后, 父对 commit e46d432 逐项复核, 发现 3 项"看似修复/未形成有效保护", 本轮补全。未改架构。
+
+| 项 | 内容 | 状态 |
+|----|------|------|
+| SE-01 | baseline fingerprint 前移到 Proposal 创建时记录 (propose.py `_baseline_fingerprints`), Apply 前与 Proposal 阶段基准比对。**修复前**: Apply 时才拍 baseline, 等于自己拍自己马上验, 检测不到"Proposal→Apply"之间的外部修改。**修复后**: proposal 阶段采样 targets SHA-256, apply 前重 hash 当前文件与 proposal 基准比对, 不等则 APPLY_FAILED 拒绝覆盖 (旧 proposal 缺该字段时 fallback 到 apply 时采样, 向后兼容) | ✅ |
+| PERM-01 | Permission expiry 真正参与授权决策 (permission.py)。**修复前**: expiry 只存字段不判断, 过期授权仍判有效。**修复后**: `datetime.now() >= expiry` → expired → auth_valid=False → decision=ask (重新确认), 绝不静默 allow; 未过期/无 expiry 不误判; 输出增 `expired`/`expiry_problem` 字段 | ✅ |
+| SE-02 | Recovery retry 的所有 post-verify failure 统一收敛到 terminal APPLY_FAILED (apply.py `_retry_from_change`)。**修复前**: 只处理了 baseline mismatch 落盘 APPLY_FAILED, post-verify mismatch 路径仍不落盘状态→下次 recovery 会再次 apply 形成 retry 循环。**修复后**: validate failure → 设 status=APPLY_FAILED + verify_error + save, 返回 RETRY_FAILED+APPLY_FAILED, 终止 retry loop | ✅ |
+
+定向验证 (隔离 workspace, 不碰真实数据):
+- SE-01: propose 记录 baseline ✅ / apply 检测外部篡改→REJECT(APPLY_FAILED) ✅ / 外部内容保留 ✅
+- PERM-01: 过期→ask(valid=False,expired=True) ✅ / 未过期→allow ✅ / 无expiry不误判 ✅
+- SE-02: post-verify mismatch→RETRY_FAILED+APPLY_FAILED ✅ / change.status 落盘 APPLY_FAILED ✅
+
+回归: py_compile ✅ / self_test 60 PASS ✅ / anti_loop 14 PASS ✅
+
+> 已确认关闭: P1-1~P1-5, P1-7, P2-1, P2-2, P1-9(基础结构)。
+> 可后置 (P2): PERM-02 具体 scope 与 TASK/AGENT/PROJECT 层级关系; LOCK-01 Windows stale .stamp recovery (当前 fail-safe: 宁可 ASK 不错 ALLOW, 主运行于 Linux)。
+> 终验后建议进入全项目最终验收, 不再无限加修复项。

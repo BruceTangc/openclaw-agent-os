@@ -48,6 +48,14 @@ def build_proposal(cand_id, dgn_id, scope, level, targets, change, expected_metr
         change_obj["operations"] = ops
 
     evo_id = cand.get("evolution_id")
+    # SE-01/修复: baseline fingerprint 必须在 Proposal 创建时(而非 Apply 时)记录。
+    #   这样 Apply 前才能检测“Proposal 创建 → Apply 之间”的外部修改。
+    #   --baseline 若未显式提供指纹，则自动采样 targets 当前 SHA-256 作为基准。
+    baseline_fps = {}
+    if isinstance(baseline, dict):
+        baseline_fps = {rel: fp for rel, fp in baseline.items() if fp}
+    else:
+        baseline_fps = _core.baseline_fingerprints(targets)
     prop = {
         "status": "PROPOSED",
         "evolution_id": evo_id,
@@ -60,6 +68,8 @@ def build_proposal(cand_id, dgn_id, scope, level, targets, change, expected_metr
         "expected_metric": expected_metric,
         "evidence_refs": cand.get("evidence_refs", []),
         "baseline": baseline,
+        # SE-01: 记录 Proposal 创建时的目标文件 SHA-256 基准，Apply 时据此比对。
+        "_baseline_fingerprints": baseline_fps,
         "test_plan": {"cases": test_plan},
         "governance": {
             "approval_required": _core.APPROVAL_BY_LEVEL.get(level, "review"),
