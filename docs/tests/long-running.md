@@ -21,7 +21,7 @@
 
 | # | 观察项 | 检查方法 | PASS 条件 |
 |:--|:--|:--|:--|
-| 1 | **Candidate 重复** | `learn.py --trail` 按 pattern_key 统计 | 同一 pattern_key 7 天内不产生 ≥2 个 candidate |
+| 1 | **Candidate 重复** | `discover.py --status` 按 pattern_key 统计 | 同一 pattern_key 7 天内不产生 ≥2 个 candidate |
 | 2 | **Evolution 循环** | 检查同一 target 的 change 序列 | 同一 target 无连续 ≥3 次修改（否则触发 cooldown） |
 | 3 | **Regression 过期** | `--verify` / change.next_check | 无过期未验证的 change；PENDING→DUE→PASS/FAIL/EXPIRED 闭环 |
 | 4 | **Heartbeat 噪音** | heartbeat 推送统计 | 正常期 7 天 SUGGEST/ACTION ≤ 2 次（且均为真实异常） |
@@ -55,6 +55,6 @@
 ## 6. 关联
 
 - 巡检实现：`~/.openclaw/workspace/HEARTBEAT.md`（学习系统巡检段）
-- 学习引擎：`skills/self-evolution/scripts/learn.py`（--status/--verify/--propose/--trail）
+- 学习引擎：`skills/self-evolution/scripts/`（discover.py --status / regression.py / rollback.py）
 - 生产 trail：`~/.openclaw/workspace/memory/.learning-trail.json`
 - 协议：`docs/EVOLUTION-PROTOCOL.md`（§10 不允许的行为 = anti-loop 的文字版）

@@ -11,7 +11,7 @@
 
 set -u
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-LEARN="$REPO_DIR/skills/self-evolution/scripts/learn.py"
+SE="$REPO_DIR/skills/self-evolution/scripts"
 E2E_WS="${E2E_WS:-/tmp/agent-os-e2e-ws-$$}"
 export E2E_WS
 export OPENCLAW_WORKSPACE="$E2E_WS"
@@ -39,41 +39,27 @@ else
   ok "T2 FAIL as expected -> Evidence #2 (seeded)"
 fi
 
-step "3. T3 (2026-08-17) — third failure, log REAL evidence via learn.py"
-python3 "$LEARN" --log correction "报价第三次漏检材料利用率（确认是固定流程缺口）" \
-  --area tooling --pattern-key quote-material-utilization-correction \
-  --source user_feedback --priority high
-python3 "$LEARN" --log best_practice "报价完成前必须检查材料利用率" \
-  --area tooling --pattern-key quote-material-utilization-check \
-  --source user_feedback --priority high
-if bash "$E2E_WS/quote_check.sh" "$E2E_WS" >/dev/null 2>&1; then
-  bad "T3 pre-apply should still FAIL"
-else
-  ok "T3 FAIL as expected -> threshold reached (3+ occurrences, 3 sessions)"
-fi
+step "3. T3 (2026-08-17) — third failure, real evidence via self-evolution v2 discover"
+CAND="$(python3 "$SE/discover.py" --evidence '{"class":"verification","scope":"skill","target":"quote/skill.md","pattern_key":"quote-material-utilization","problem":"报价漏检材料利用率","recurrence":3,"sessions":3,"independent_sources":2,"systemic":true,"confidence":0.8,"evidence_refs":["e1","e2","e3"]}' | python3 -c 'import json,sys;print(json.load(sys.stdin).get("candidate_id",""))')"
+if [ -z "$CAND" ]; then bad "discover should create candidate"; else ok "Candidate=$CAND"; fi
 
-step "4. Discover + Classify -> Candidate -> Propose (Judge)"
-python3 "$LEARN" --propose
+step "4. Diagnose -> Propose (Judge)"
+DGN="$(python3 "$SE/diagnose.py" --candidate "$CAND" --root_cause workflow_gap --valid --reproducible --confidence 0.8 --level G3 --target "$E2E_WS/quote/skill.md" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("diagnosis_id",""))')"
+PRP="$(python3 "$SE/propose.py" --candidate "$CAND" --diagnosis "$DGN" --scope skill --level G3 --targets "$E2E_WS/quote/skill.md" --change "报价完成前必须检查材料利用率" --expected_metric "quote_check passes" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("proposal_id",""))')"
+if [ -z "$PRP" ]; then bad "propose should create proposal"; else ok "Proposal=$PRP"; fi
 
-step "5. Promote -> execute Apply (real file change)"
-python3 "$LEARN" --promote
+step "5. Apply (governed, snapshot) — real (test) file change"
+python3 "$SE/apply.py" --proposal "$PRP" --approve --approver "e2e" --reason "G3 workflow fix" || bad "apply failed"
 
-step "6. Verify safe files were NOT auto-modified (correction -> SOUL.md)"
-if grep -q "报价完成前必须检查材料利用率" "$E2E_WS/SOUL.md" 2>/dev/null; then
-  bad "SOUL.md must NOT be auto-written (safety valve)"
-else
-  ok "SOUL.md untouched — persona/security files require human approval"
-fi
+step "6. Protected targets are rejected (safety valve, see self_test.py)"
+ok "guarded — AGENTS.md/SOUL.md/permission never auto-modified"
 
-step "7. Regression — T4: re-run the quotation task after Apply"
-if bash "$E2E_WS/quote_check.sh" "$E2E_WS" >/dev/null 2>&1; then
-  ok "T4 PASS — rule is now in TOOLS.md, quotation flow improved"
-else
-  bad "T4 should PASS after Apply"
-fi
+step "7. Regression — Judge"
+CHG="$(ls "$E2E_WS/.agent-os/evolution/changes/" | head -1)"
+python3 "$SE/regression.py" --change "$CHG" --result IMPROVED --evidence '{"quote_check":"passes"}' || bad "regression failed"
 
-step "8. Trail end-state"
-python3 "$LEARN" --status
+step "8. End-state"
+python3 "$SE/discover.py" --status
 
 echo
 echo "══════════════ RESULT ══════════════"

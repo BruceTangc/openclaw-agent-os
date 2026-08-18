@@ -1,185 +1,121 @@
 ---
 name: self-evolution
-description: 受控发现重复问题、提出并验证改进、请求批准后应用；绝不自行改权限/安全/Runtime。经验沉淀时触发。
-metadata: { "openclaw": { "emoji": "🗂" }, "agent_os": { "protocol_version": "1.3", "layer": "core" } }
-version: 1.3.0
+description: 受控、有证据、可验证、可回滚的自我进化控制器。从真实 Evidence 发现可重复问题→Diagnose→Proposal→Governance→Test→Apply→Regression→Promote/Rollback。发现重复失败或重复纠正后触发；绝不自改权限/安全/Runtime。
+metadata:
+  openclaw:
+    emoji: "🧬"
+  agent_os:
+    protocol_version: "1.3"
+    layer: "core"
+version: 2.0.0
 ---
 
+# Self-Evolution (v2)
 
-# Self-Evolution
+> Evidence-driven 自我进化控制器。**不是另一个 Agent，不是并行 Runtime。**
 
 ## Purpose
 
-通过**受控的、有证据的**自我改进循环，把多 Agent 的 OpenClaw 安装变成一个协调的学习系统。核心：`Many Agents, one Learning OS`。循环：`Observe → Verify → Diagnose → Propose → Test → Evaluate → Approve → Apply → Regression check`。
+OpenClaw Agent 在长期运行中，如何从**真实 Evidence** 中发现可重复问题、形成改进方案、
+经治理与验证后**安全改变自身行为**、并**证明改变有效**。
 
-**边界铁律**：只做 `发现问题 → 提出改进 → 验证改进 → 请求批准 → 应用`。**绝不自改权限/安全/凭证/外部副作用规则/Runtime**。
+三层关系固定：
 
-## Scope
+```
+OpenClaw       → Agent Runtime / Session / Context / Tools / Skills / Workspace / Heartbeat / Cron
+Agent OS       → Goal/Task / Execution / Verification / Evaluation / Evidence / Permission / Governance
+Self-Evolution → Discover / Candidate / Diagnose / Proposal / Governance / Test / Apply / Regression / Promotion / Rollback
+```
 
-- 经验捕获（含中间态 near-miss/almost-failure/partial-success/delayed-failure）
-- 学习分类 + 作用域（TASK/AGENT/PROJECT/USER/GLOBAL，默认最窄）
-- 置信度 + 证据/时间衰减
-- 矛盾检测与解决、降级（demotion）、遗忘（forgetting）
-- Agent Registry + Learning Inbox（受控跨 Agent 学习）
-- Skill 进化（双向反馈）+ 决策记忆
-- 治理（auto-apply / proposal / approval）+ 验证 + 回滚
+**Self-Evolution 只消费 Evidence，不重新建立 Verification/Evaluation/Execution Record。**
 
-## Non-Goals
+## 生命周期（固定，不得设计第二套）
 
-- 不建独立 scheduler / event bus / task runtime / memory runtime / agent runtime（复用 OpenClaw）
-- 不单次未验证失败就改自己
-- 不削弱安全换完成率
-- 不自动批准自己的变更
-- 不静默覆盖已有策略
+```
+Evidence → Discover → Candidate → Diagnose → Proposal → Governance → Test → Apply → Regression → Promote/Rollback
+```
 
-## OpenClaw Boundary
+## 十二项核心设计原则
 
-复用 OpenClaw 原生 agent loop / session / memory / files / cron / hooks。**不创建自己的 Scheduler、Event Bus、Task Runtime、Memory Runtime、Agent Runtime**。存储走 workspace 的 memory 文件 + JSONL trail，是学习索引不是并行 runtime。脚本（learn.py/reflect.py/bus.py/agents.py/skillgen.py/dream.py/sync.py/migrate.py）在 `scripts/` 下。
+1. Evidence before Evolution
+2. Repeated evidence before Candidate
+3. Diagnosis before Proposal
+4. Proposal before Apply
+5. Test before Apply
+6. Regression before Promotion
+7. Rollback before continuing a failed evolution
+8. Smallest effective change
+9. Never invent evidence
+10. Security and authority changes require human approval
+11. Regression failure never automatically becomes a new Candidate
+12. Self-Evolution never becomes a parallel Agent Runtime
 
-## When to Activate
+## OpenClaw Boundary（绝不越界）
 
-本 Skill 有三种触发方式，载体不同（Agent OS 不自建 Scheduler，定时触发一律用 OpenClaw 原生 Trigger）：
+- **不创建**：Agent Runtime / Session Runtime / Context Runtime / Scheduler / Heartbeat / Cron / Event Bus / Permission Runtime / Memory Runtime
+- **不重新实现**：Verification / Evaluation / Execution Record（来自 Agent OS）
+- **不建**：Knowledge Graph / Vector DB / Embedding DB / PageRank / TF-IDF / Message Bus / Agent Registry / SQLite / Redis / 独立 Scheduler
+- 存储用简单 workspace artifact：`.agent-os/evolution/`（候选/诊断/提案/变更/回归/索引）——是治理 artifact，不是 Runtime
 
-| 触发方式 | 何时发生 | 载体 |
+## When to Activate（何时使用本 Skill）
+
+**使用（发现系统性、可证明可重复的问题）：**
+- 发现重复失败（同类任务连续 FAIL/PARTIAL）
+- 发现重复人工纠正（用户/Agent 多次修正同一问题）
+- 发现稳定行为缺陷（可复现）
+- 发现可验证的效率问题（长期重复劳动）
+- 发现系统性 workflow gap
+- 发现已有 Evidence 支持的改进机会（recurrence>=3 且 sessions>=2）
+
+**不使用：**
+- 单次失败 / 临时 API 故障 / 随机网络失败 / 第三方服务异常 / 单次工具故障
+- 用户一次性要求
+- 普通 Memory 写入、普通 Knowledge 更新、普通 Ontology 更新、普通任务执行
+
+## Evolution State（心跳巡检）
+
+Self-Evolution **不自己创建 cron/heartbeat/scheduler**。
+OpenClaw Heartbeat 唤醒 Agent → `Proactive` → 检查 Evolution State：
+
+```
+pending candidates / pending diagnoses / pending proposals / pending approvals / pending regressions / rollback required
+```
+
+无 → `NOOP`。有 → 只处理**当前最优先事项**，不每次跑完整 Pipeline。
+
+## Commands（脚本目录 scripts/）
+
+| 阶段 | 命令 | 说明 |
 |:--|:--|:--|
-| ① Candidate 事件（**主触发**） | verification / evaluation / proactive / 用户反馈产出 Evolution Candidate | 事件驱动，随任务流自然发生，**无需定时配置** |
-| ② Evidence 巡检（`learn.py --cycle`） | 低频扫描近期失败/纠正/低效 → Discover + Classify 产出 Candidate | **需外部 Trigger**：OpenClaw cron 或 heartbeat 定时驱动（见下方示例） |
-| ③ 到期验证 / 晋升检查（`--verify` / `--propose`） | 检查验证到期、晋升候选、矛盾、遗忘 | heartbeat 巡检携带（见 HEARTBEAT.md「学习系统巡检」段） |
+| Discover | `python3 scripts/discover.py --evidence '<json>'` | Evidence → Candidate（门槛/幂等/禁止外部环境） |
+| Diagnose | `python3 scripts/diagnose.py --candidate CAND-xxx --root_cause workflow_gap ...` | Candidate → Diagnosis（valid/reproducible/external/level） |
+| Propose | `python3 scripts/propose.py --candidate --diagnosis --change ...` | Diagnosis → Proposal（最小可执行修改） |
+| Apply | `python3 scripts/apply.py --proposal PRP-xxx --approve --approver ...` | Governance → Snapshot → Apply → Change Record |
+| Regression | `python3 scripts/regression.py --change CHG-xxx --result IMPROVED ...` | 最终裁判 Before vs After → Promote/Rollback |
+| Rollback | `python3 scripts/rollback.py --change CHG-xxx --reason ...` | REGRESSED → 恢复 Snapshot → ROLLED_BACK |
+| Migrate | `python3 scripts/migrate.py --dry-run` | 一次性从旧版迁移（迁移后归档） |
 
-**② Evidence 巡检配置示例（OpenClaw cron，低频）：**
+> **Apply 契约**：`apply.py` 负责 **Governance 校验 / Permission 拦截 / Snapshot 建立 / Change Record 生成**，
+> 它**不代为判断如何改文件**。真实写入 target 由调用方 Agent 严格按 proposal.change 的精确修改方案执行
+> （写完后才允许 regression）。这样保持 Apply “笨”，只做 Enforcement。
 
-```yaml
-# 每天 03:00 跑一次完整学习循环（10 Phase）
-# cron 触发 → learn.py --cycle：只做 Discover+Classify 产出 Candidate，不做 Judgment
-0 3 * * *  cd <workspace> && python3 skills/self-evolution/scripts/learn.py --cycle
+## 状态机（非法跳转被 Core 强制拒绝）
+
+```
+CANDIDATE → DIAGNOSED → PROPOSED → APPROVED → APPLIED → REGRESSION → PROMOTED
+失败路径：CANDIDATE→REJECTED / DIAGNOSED→UNRESOLVED / PROPOSED→REJECTED / APPLIED→REGRESSED→ROLLED_BACK
 ```
 
-> 频率建议：巡检低频（每日 1 次或每 6-12h），避免高频扫描制造噪音。
-> 巡检只是定时扫描，**产出 Candidate 不代表会 Apply**——晋升仍走 `--propose` + 审批门，
-> 确保 evolution 是 evidence-driven 而不是 schedule-driven。
+## 幂等 / 可追溯 / 安全
 
-- 收到 **Evolution Candidate**（来自 verification / evaluation / proactive / 用户反馈）——**主触发**
-- Evidence 巡检（learn.py --cycle）：低频扫描近期失败/纠正/低效，
-  **Discover + Classify → 产出 Candidate**（巡检可以做分类，但不能做 Evolution Judgment）
-  （evolution is evidence-driven, not schedule-driven——巡检不是定时进化）
-- 验证到期、晋升检查、遗忘检查、矛盾检测
-- 需要生成 Skill 改进提案 / 决策记忆 / 降级 / 回滚
-- 多 Agent 场景：各 Agent 上报 Operational Evidence（learning trail 事件），Global Cycle 聚合
+- **幂等**：同 scope+target+pattern_key → 不重复建 Candidate；同 Proposal 不重复 Apply；同 Change 不重复 Regression
+- **可追溯**：regression_id ↔ change_id ↔ proposal_id ↔ diagnosis_id ↔ candidate_id ↔ evidence_ids（`_core` evidence_chain）
+- **保护目标**：Permission/Security/Credentials/Secrets/Auth/Approval Rules/Runtime/Infrastructure/Global Authority/AGENTS.md/SOUL.md —— 永不自动修改，即使显式 --approve 也被拦截
+- **审批**：G1-G2 可走授权策略；G3 review；G4 review+人工；G5/G6 必须人工（强制）
 
-> **进料边界（v1.3）**：本 Skill 只消费 **Evolution Candidate**，不直接接受任意 Evidence。
-> 原始 Evidence（一次失败/纠正/观测）必须先过 Classification，判定“有进化价值”才成为 Candidate。
+## References
 
-## Inputs
-
-- Raw Observation / Evidence（correction/error/success/intermediate_state/feature_request/knowledge_gap，含来源分类）
-- 来源 agent、scope、confidence、evidence
-- 已有 learning trail、Agent Registry、Operational Evidence pending 事件
-
-## Core Procedure
-
-本 Skill 只负责生命周期末尾的 **Evolution（进化）** 节点：受控地判断“是否值得改变系统、改变什么”。
-系统其余节点由其他 Skill 承担，本 Skill 不跑完整 loop。
-
-0. **Gate（进料判定）**：只接受 Evolution Candidate；原始 Evidence 先分类——
-   有进化价值（重复失败/重复纠正/稳定新需求/流程低效/系统性漏洞/用户明确要求）→ 进；
-   一次性/噪音/无复用价值 → 拒（不触发修改）。
-1. **Obtain（捕获）**：收经验（含中间态），先入 candidate，不当作真理。
-2. **Detect（检测）**：correction/error/success/intermediate/feature/knowledge_gap。
-3. **Classify（分类）**：user_preference / user_constraint / project_fact / project_decision / agent_knowledge / tool_knowledge / workflow / behavior_rule / universal_principle / skill_improvement / temporary_context / intermediate_state / noise。
-4. **Scope Resolution（作用域）**：默认最窄（AGENT）；更宽需上下文独立性证据。
-5. **Confidence / Decay / Contradiction**：有效置信度 = base × recency × evidence_quality × (1 − contradiction_penalty)。
-6. **Govern（治理）**：auto-apply（低风险）/ proposal（行为变更）/ explicit approval（高风险）。
-7. **Promote / Demote / Revert / Forget**：按晋升规则；失败/回归 → demote 或 revert。
-8. **Apply（应用）**：仅限可授权变更；安全/权限/凭证/外部副作用/Runtime → 人工审批。
-9. **Regression check（回归检查）**：验证前后 metric 对比，失败回滚。
-
-完整循环 10 Phase 见 `references/learning-cycle.md`。
-
-## Decision Rules
-
-**进料（v1.3）**：只接受 Evolution Candidate；Evidence 必须先过 Classification（见 Core Procedure Gate）。
-
-**允许的进化证据**：已验证失败、重复用户纠正、重复评估弱点、反复低效、稳定新需求、Verification 系统性漏洞、用户明确要求改进。**单次未验证失败不得触发修改**。
-
-**允许修改目标**：Skill 指令、工作流、评估标准、检索优先级、安全配置的**建议**（仅建议）。
-
-**禁止自行修改（须人工审批）**：权限规则、安全策略、凭证处理、外部副作用规则、核心 Runtime 行为。**绝不为提高完成率削弱安全；绝不因减少上下文删除有用知识。**
-
-**作用域晋升**：recurrence≥3 ∧ sessions≥2 ∧ 无活跃矛盾 ∧（更宽作用域须上下文独立证明）。默认窄作用域最优；GLOBAL 最难晋升，需独立证据证明上下文无关。
-
-**冲突解决优先级**：1 当前明确用户指令（安全有效时）2 更新的已验证证据 3 更窄作用域 4 更高有效置信度+更强验证 5 仍无法→标 Unresolved，阻断自动应用，人工裁决。
-
-**降级**：GLOBAL→PROJECT / PROJECT→AGENT（发现上下文依赖时），降级优于删除（更窄仍有用）。
-
-**禁止**：发明记忆/决策、单次错误升原则、广播全部学习、覆盖他人私有记忆、静默改用户偏好/全局策略、建重复 Agent/Skill、忽略矛盾、无证据声称验证、存 Secret、用 exec 读 session 文件、不 read 就 edit。
-
-## Outputs
-
-- learning trail 条目（candidate/promoted/demoted/reverted/expired）
-- 提案（PROP-xxx：type/source/target scope/target/change/evidence/confidence/risk/impact/rollback/status）
-- 验证结果（baseline/metric/review/result/action）
-- 最终 summary（Entries/Changes/Verified/Promoted/Graph/Actions）
-
-## Interaction With Agent OS
-
-- 消耗 **proactive/orchestrator/task-manager** 上报的经验与指标，产出改进候选反哺。
-- 发现新概念/实体/关系 → 创建 **ontology** Proposal（不静默改本体）。
-- 经验记忆 → 走 **memory-governance**；可复用声明 → **knowledge-governance**。
-- 高置信带约束学习 → 建议升级为 Decision。
-- Skill 改变需过 **permission-security**（安全类）与 **verification-evaluation**（回归）。
-
-## Permission
-
-记录学习/低风险私有记忆 = L1 可自动。行为变更/共享记忆/降级（已晋升规则）= proposal。权限/凭证/外部通信/财务/删除/安全设置/自动交易/系统级/全局策略变更 = **显式人工审批**。遵守 OpenClaw native policy。
-
-## Verification
-
-- 每次重要晋升/降级/Skill 变更须带 baseline + metric + review period + result + action。
-- 动态验证期：低风险 3 天 / 正常 7 天 / 重要行为 14 天 / 核心架构 30 天。
-- PROJECT/GLOBAL 晋升须跨 Agent 验证（源 + 至少一个相关 Agent），防止专家错误变全局规则。
-
-## Failure Handling
-
-- 单次失败 → 记录，不修改。
-- 连续验证失败 → status=blocked_learning，需人工复核，不自动再晋升。
-- 变更导致回归/拒绝/工具失败/安全风险/指标变差 → 标记失败 + 回滚或降级 + 记因 + 降置信度 + 阻断同类自动晋升。
-
-## Memory / Knowledge Writeback
-
-学习候选先入 candidate → 验证 → 晋升到 durable；决策入 DECISIONS.md；用户偏好入 USER；项目事实入 PROJECT。经验与知识走 governance，不裸写。会话总结走 sessions。
-
-## Self-Evolution Feedback
-
-本模块是进化层本身：双向反馈——Skill 执行结果反哺学习置信度/重分类；学习变化触发 Skill 复用/改进/合并/新建决策。矛盾/降级通过 Learning Inbox 反向通知相关 Agent。
-
-## Safety / Anti-Loop
-
-- **只做**：发现问题→提出改进→验证改进→请求批准→应用。
-- **绝不自己做**：改权限/安全/凭证/外部副作用规则/Runtime（必须人工审批）。
-- **单次未验证失败不触发修改**；**不为提高完成率削弱安全**。
-- 不自动批准自己的变更；不绕过 Permission Gate 做「修复」。
-- Anti-loop：同学习反复失败 → blocked_learning，停止自动晋升。
-- **硬规则（v1.3，简版，与 EVOLUTION-PROTOCOL.md §10.1 一致）**：
-  - Change Cooldown：同一 target 修改后冷却 7 天，冷却期内不收同 target candidate。
-  - Same-target Dedup：candidate 入库前按 target+pattern 去重，重复合并不新增。
-  - Regression Failure Limit：同一 change 连续 2 次回归 FAIL → 自动回滚 + 标需人工。
-  - Max Evolution Depth：同一 pattern_key 累计 ≥3 次 change → 停止自动进化，转人工。
-  - **Regression FAIL 产生的 Evidence 只用于回滚决策，不得自动成为新 candidate 输入**（防止 Evolution 制造 Evidence 死循环）。
-- Anti-overfit：先问「一般?项目特有?Agent 特有?工具特有?用户特有?临时?上下文依赖?」，存最窄有效作用域。
-- 不建自己的 Scheduler/Event Bus/Task/Memory/Agent Runtime；复用 OpenClaw 原生。
-
-## Examples
-
-```bash
-python3 scripts/learn.py --cycle                              # 完整学习循环（10 Phase）
-python3 scripts/learn.py --status                            # 学习统计
-python3 scripts/learn.py --log error "行情 API 超时未重试"
-python3 scripts/learn.py --add-change skillgen "增加 --approve" "降低误装风险"
-python3 scripts/learn.py --add-principle "编辑文件前必须先读取当前内容"
-python3 scripts/learn.py --rollback <change_id>
-python3 scripts/learn.py --demote <entry_id> --to AGENT
-python3 scripts/bus.py --central --event learning_candidate --topic "..." --content "..." --scope AGENT --agent 厂长 --confidence 85
-python3 scripts/skillgen.py --scan && python3 scripts/skillgen.py --approve <name>
-```
-
-详细模型（分类/置信度/晋升/矛盾/记忆架构/治理/生命周期）见 `references/learning-model.md`、`references/governance-model.md`、`references/agents-and-bus.md`。全局学习循环 10 Phase 见 `references/learning-cycle.md`。
+- `references/evolution-model.md` — 核心模型、三层关系、状态机、十二原则
+- `references/candidate-policy.md` — Candidate 门槛、禁止错误学习、去重
+- `references/governance.md` — Apply 前安全闸门、Change Level、审批流、保护目标
+- `references/regression-policy.md` — Before/After 裁判、Promotion/Rollback、防死循环

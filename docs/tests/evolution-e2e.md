@@ -1,5 +1,9 @@
 # Evolution E2E — 端到端闭环测试
 
+> ⚠️ **SUPERSEDED（v1.3 历史记录）**：本文档描述的旧 `learn.py` E2E 流程已被
+> Self-Evolution v2 替换。当前演进回归请跑 `skills/self-evolution/scripts/self_test.py`（24 断言，隔离 workspace）。
+> 本文档保留为 v1.3 历史测试快照。
+
 > Agent OS v1.3。**目的：证明"Agent 实际运行时，真的能从 Evidence 一路走到
 > Evolution，再重新影响下一次任务"**——不是纸面流程，是可重复执行的真实闭环。
 

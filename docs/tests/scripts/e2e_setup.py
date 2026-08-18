@@ -5,7 +5,7 @@ Creates a throwaway workspace with a seeded learning trail simulating:
   T1 (2026-08-15): quotation task FAIL — material-utilization check missed
   T2 (2026-08-16): quotation task FAIL — same pattern, second session
 
-The real third failure (T3) is logged by the actual learn.py CLI in
+The real third failure (T3) is logged by the actual self-evolution v2 discover CLI in
 evolution-e2e.sh, which then triggers promotion -> apply -> regression.
 
 Reason for seeding history: pattern promotion requires >=3 occurrences

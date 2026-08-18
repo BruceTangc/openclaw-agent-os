@@ -1,5 +1,5 @@
 {
   "name": "self-evolution",
-  "version": "1.3.0",
-  "description": "多 Agent 学习操作系统（Agent OS v1.3 核心模块）。集中式经验捕获、作用域记忆、Learning Inbox、置信度+证据衰减、Skill 进化、治理与回滚。只做发现问题→提出改进→验证→请求批准→应用，绝不自改权限/安全/凭证/Runtime。"
+  "version": "2.0.0",
+  "description": "Evidence-driven 自我进化控制器（v2 重构）。消费 Agent OS 的 Evolution Evidence → Discover → Candidate → Diagnose → Proposal → Governance → Test → Apply → Regression → Promote/Rollback。小、可靠、可审计、可回滚；绝不自改权限/安全/凭证/Runtime，不建并行 Runtime/Scheduler/Bus。"
 }

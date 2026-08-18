@@ -13,7 +13,7 @@ Self-Evolution(Learning Bus) 的双向联动, 对应 SKILL.md §1 §56-58 §63-6
   result-to-task         : Orchestrator 执行结果 → verify → 任务状态更新
   sync-ontology          : 双向同步任务实体/关系到 Ontology
   sync-memory            : 每日任务摘要写入 memory/YYYY-MM-DD.md
-  sync-evolution         : 失败/异常模式 → Learning Bus 发布进化候选
+  sync-evolution         : 失败/异常模式 → Self-Evolution 发布进化候选
   all                    : 一键联动 (scan→proactive + sync-ontology + sync-evolution)
 
 用法示例:
@@ -41,7 +41,7 @@ TASK_MGR = os.path.join(BASE, "scripts", "task_manager.py")
 PROACTIVE = os.path.join(SKILLS_DIR, "proactive", "scripts", "proactive.py")
 ORCH = os.path.join(SKILLS_DIR, "orchestrator", "scripts", "orchestrator.py")
 ONTOLOGY = os.path.join(SKILLS_DIR, "ontology", "scripts", "ontology.py")
-BUS = os.path.join(SKILLS_DIR, "self-evolution", "scripts", "bus.py")
+DISCOVER = os.path.join(SKILLS_DIR, "self-evolution", "scripts", "discover.py")
 MEMORY_DIR = os.path.join(os.path.dirname(SKILLS_DIR), "memory")
 
 
@@ -415,6 +415,30 @@ def cmd_sync_memory(args):
 # ---------------------------------------------------------------------------
 # 7. Task → Self-Evolution (Learning Bus)
 # ---------------------------------------------------------------------------
+def publish_candidate(scope, pattern_key, problem, confidence, evidence_keyword):
+    """task-manager：作为 Discover+Classify 角色，把 learning_candidate 事件
+    规范化为 Candidate 记录，交给 Self-Evolution v2 的 discover.py --candidate。
+
+    仅在重复/系统性明显时才上报；discover 侧仍有幂等去重 + 状态机把关。
+    target 用 topic 作归并能粒度；若明确指向文件可在调用处传路径。"""
+    candidate = {
+        "scope": scope or "TASK",
+        "target": pattern_key,
+        "pattern_key": pattern_key,
+        "problem": problem,
+        "confidence": float(confidence or 0),
+        "evidence_refs": ["task-manager:" + evidence_keyword],
+        "recurrence": 1,
+        "sessions": 1,
+        "independent_sources": 1,
+        "systemic": True,
+        "impact": "medium",
+    }
+    rc2, out2, err2 = sh([DISCOVER, "--candidate",
+                          json.dumps(candidate, ensure_ascii=False)])
+    return rc2, out2, err2
+
+
 def cmd_sync_evolution(args):
     rc, out, err = tm(["metrics"])
     if rc != 0:
@@ -426,37 +450,25 @@ def cmd_sync_evolution(args):
     failed = int(metrics.get("failed", 0))
     total = int(metrics.get("total", 0))
 
-    # 失败任务存在 → 发布学习候选
+    # 失败任务存在 → 上报进化候选
     if failed > 0 and total > 0:
         rate = failed / total
         if rate >= 0.3:
-            payload = {
-                "event": "learning_candidate",
-                "topic": "task-manager:失败率过高",
-                "content": "任务失败率 %.0f%% (%d/%d), 建议复盘失败原因" % (rate * 100, failed, total),
-                "scope": "TASK",
-                "agent": "task-manager",
-                "confidence": min(95, int(rate * 100)),
-                "source_agent": "task-manager",
-            }
-            rc2, out2, err2 = sh([BUS, "--publish", json.dumps(payload, ensure_ascii=False)])
+            topic = "task-manager:失败率过高"
+            content = "任务失败率 %.0f%% (%d/%d), 建议复盘失败原因" % (rate * 100, failed, total)
+            rc2, out2, err2 = publish_candidate(
+                "TASK", topic, content, min(95, int(rate * 100)), "failed_rate")
             if rc2 == 0:
-                published.append(payload["topic"])
+                published.append(topic)
 
-    # 超期/阻塞多 → 发布
+    # 超期/阻塞多 → 上报
     if int(metrics.get("blocked", 0)) >= 3:
-        payload = {
-            "event": "learning_candidate",
-            "topic": "task-manager:阻塞堆积",
-            "content": "当前有 %d 个阻塞任务, 建议排查依赖/权限" % int(metrics.get("blocked", 0)),
-            "scope": "TASK",
-            "agent": "task-manager",
-            "confidence": 70,
-            "source_agent": "task-manager",
-        }
-        rc2, out2, err2 = sh([BUS, "--publish", json.dumps(payload, ensure_ascii=False)])
+        topic = "task-manager:阻塞堆积"
+        content = "当前有 %d 个阻塞任务, 建议排查依赖/权限" % int(metrics.get("blocked", 0))
+        rc2, out2, err2 = publish_candidate(
+            "TASK", topic, content, 70, "blocked")
         if rc2 == 0:
-            published.append(payload["topic"])
+            published.append(topic)
 
     print(json.dumps({
         "published": published,

@@ -29,7 +29,7 @@
 - 走 Agent OS 协议 10 节点（见下），每节点有可验证痕迹
 - 生成真实 Execution Record（`exec-*` id，含 trace 链）
 - 记录到 `memory/YYYY-MM-DD.md`（writeback）
-- 若任务失败 → 真实 Evidence 落盘 → 可被 learn.py 读到（前进化闭环）
+- 若任务失败 → 真实 Evidence 落盘 → 可被 self-evolution discover 读到（前进化闭环）
 
 ---
 
@@ -60,7 +60,7 @@
 
 - **exec-20260817-002**：学习系统健康检查（2026-08-17 09:07 实跑）
   - trace：`exec-20260817-002`（无 evidence，无 candidate——纯状态检查任务）
-  - Execution：`python3 skills/self-evolution/scripts/learn.py --status`
+  - Execution：`python3 skills/self-evolution/scripts/discover.py --status`
   - Verification：trail JSON 可解析 / entries=23 / changes=1 / verified_ok=0 / reverted=3 → **VERIFY PASS**
   - Evaluation：completed（非失败模式，无新 candidate）
   - Writeback：`memory/2026-08-17.md`「09:07 - 真实 E2E 首次实跑」
@@ -72,7 +72,7 @@
 
 选择**低风险、可验证、有明确完成定义**的主工作区任务，例如：
 
-- **任务 A**：学习系统健康检查（learn.py --status/--verify）
+- **任务 A**：学习系统健康检查（discover.py --status）
 - **任务 B**：生成一份交付文档（含格式校验）
 
 以任务 A 为例的完整跑法：
@@ -80,11 +80,11 @@
 ```
 1. 用户：给爸爸一个明确指令（或爸爸指定）
 2. Agent：Intake → Goal（输出交付物：状态报告 + 验证结果）
-3. Execution：python3 skills/self-evolution/scripts/learn.py --status
+3. Execution：python3 skills/self-evolution/scripts/discover.py --status
 4. Verification：输出包含 expected 字段（PASS 条件写在任务定义里）
 5. Evaluation：PASS/FAIL + 原因
 6. Writeback：记录到 memory
-7. 如果 FAIL → 生成真实 Evidence（learn.py --log）→ propose → 进入后半段
+7. 如果 FAIL → 生成真实 Evidence（discover.py）→ diagnose/propose → 进入后半段
 ```
 
 ---
@@ -103,7 +103,7 @@
 
 - 协议：`docs/AGENTS.md`、`docs/schemas/execution-record.md`
 - 后半段测试：`docs/tests/scripts/evolution-e2e.sh`（PASS=5, FAIL=0）
-- 学习引擎：`skills/self-evolution/scripts/learn.py`
+- 学习引擎：`skills/self-evolution/scripts/`（discover.py / diagnose.py / propose.py）
 - 生产 trail：`~/.openclaw/workspace/memory/.learning-trail.json`
 ---
 
@@ -117,8 +117,8 @@
 |:----|:----|:----|
 | Trigger | OpenClaw Heartbeat：`every: 10m`，06:00-22:00，target=last | ✅ 已启用 |
 | 唤醒打点 | `proactive.py state --op wake` | ✅ `{"wake": "ok"}` |
-| 巡检①到期验证 | `learn.py --verify` | ✅ `0 due, 1 monitoring` |
-| 巡检②晋升候选 | `learn.py --propose` | ✅ `No proposals` |
+| 巡检①候选状态 | `discover.py --status` | ✅ 无 pending 候选 |
+| 巡检②晋升候选 | `propose.py`/`regression.py` | ✅ 无待审批 |
 | 判定 | 有 due → 处理；有候选 → SUGGEST；都无 → HEARTBEAT_OK | ✅ HEARTBEAT_OK（不打扰） |
 
 ### 7.2 写入位置

@@ -1,7 +1,5 @@
 ## Description: <br>
-Self-Improvement (LLM Memory) gives agents a local memory and reflection workflow for logging experience, extracting lessons, tracking preferences, proposing behavior updates, and checking whether changes helped. <br>
-
-This skill is ready for commercial/non-commercial use. <br>
+Self-Evolution (v2) gives OpenClaw Agent OS an Evidence-driven, verifiable, rollback-able evolution controller. It consumes Agent OS Evolution Evidence (Verification/Evaluation/User Feedback/Observation), forms Candidates (recurrence>=3 & sessions>=2), Diagnoses root cause, Proposes minimal changes, gates via Governance, Snapshots before Apply, and Judges via Regression before Promotion/Rollback. <br>
 
 ## Publisher: <br>
 [brucetangc](https://clawhub.ai/user/brucetangc) <br>
@@ -9,37 +7,37 @@ This skill is ready for commercial/non-commercial use. <br>
 ### License/Terms of Use: <br>
 MIT-0 <br>
 
-
 ## Use Case: <br>
-Developers and agent operators use this skill when they want an agent to maintain local long-term memory, capture feedback, summarize sessions, extract recurring patterns, and propose or apply updates to local guidance files. <br>
+Operators use this skill when they want an agent to safely and verifiably improve its own behavior over time from repeated, real evidence — not from single failures or noise. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
 
-## Known Risks and Mitigations: <br>
-Risk: The skill keeps long-term local memory, including logs and preferences, which can retain sensitive or outdated information. <br>
-Mitigation: Review the memory directory before enabling the skill, periodically inspect or delete stored logs and preferences, and use it only when persistent local memory is intended. <br>
-Risk: Automatic learning cycles and promotions can change local guidance files and influence future agent behavior with too little user control. <br>
-Mitigation: Avoid or disable automatic cycles where possible, review proposed promotions before relying on them, and verify changes before deployment. <br>
-Risk: Backup ZIP import can restore untrusted memory data into the local workspace. <br>
-Mitigation: Import only trusted backups, prefer non-overwrite imports, and inspect restored memory files before running learning or promotion commands. <br>
+## What It Is NOT: <br>
+- Not a parallel Agent Runtime, Scheduler, Event Bus, or Memory Runtime.
+- Not a knowledge graph / vector DB / TF-IDF / PageRank store.
+- Not a replacement for Agent OS Verification/Evaluation/Execution Record.
 
+## Known Risks and Mitigations: <br>
+Risk: Self-modification could degrade behavior or touch sensitive files. <br>
+Mitigation: Regression judges every change (IMPROVED/NO_CHANGE/REGRESSED/UNKNOWN); REGRESSED auto-triggers Rollback from a pre-Apply Snapshot; Regression failure never auto-becomes a new Candidate (anti-loop). <br>
+Risk: Permission/Security/Runtime files could be changed. <br>
+Mitigation: Protected targets (Permission/Security/Credentials/Secrets/Auth/Approval Rules/Runtime/Infrastructure/Global Authority/AGENTS.md/SOUL.md) are hard-blocked even with explicit --approve; G5/G6 require mandatory human approval. <br>
+Risk: Automatic cycles reduce user control. <br>
+Mitigation: Default small effective changes; G3+ require review; G5/G6 require human; only IMPROVED promotes. <br>
 
 ## Reference(s): <br>
-- [ClawHub Skill Page](https://clawhub.ai/brucetangc/self-improvement-llm) <br>
-- [Reflection Frameworks](references/reflection_frameworks.md) <br>
-- [pskoett/self-improving-agent](https://clawhub.ai/pskoett/self-improving-agent) <br>
-- [Hermes Agent](https://github.com/NousResearch/hermes-agent) <br>
-
+- [Agent OS](https://github.com/BruceTangc/openclaw-agent-os) <br>
+- references/evolution-model.md · candidate-policy.md · governance.md · regression-policy.md <br>
 
 ## Skill Output: <br>
-**Output Type(s):** [text, markdown, code, shell commands, configuration, guidance] <br>
-**Output Format:** [Markdown guidance with inline shell commands and local file-change proposals] <br>
+**Output Type(s):** [text, json] <br>
+**Output Format:** JSON status records + governance artifacts under `.agent-os/evolution/` <br>
 **Output Parameters:** [1D] <br>
-**Other Properties Related to Output:** [May create or update local memory logs, indexes, generated skill drafts, and guidance files when its scripts are run.] <br>
+**Other Properties Related to Output:** May apply targeted, governed file changes (with Snapshot + Regression + Rollback). <br>
 
 ## Skill Version(s): <br>
-3.2.2 (source: public repository) <br>
+2.0.0 <br>
 
 ## Ethical Considerations: <br>
-Users should evaluate whether this skill is appropriate for their environment, review any generated or modified files before relying on them, and apply their organization's safety, security, and compliance requirements before deployment. <br>
+Users should review proposed changes before Apply, ensure G5/G6 human approval, and verify that Evolution operates under their organization's safety, security, and compliance requirements. <br>

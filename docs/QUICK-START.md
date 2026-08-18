@@ -62,13 +62,13 @@ openclaw config get agents.defaults.heartbeat.every   # 应已配置（如 10m�
 ### ⑤ Evolution 生效了吗？
 构造一次可复现的重复失败（如让一个检查脚本两次漏同一项），然后：
 ```bash
-python3 skills/self-evolution/scripts/learn.py --log error "..." --pattern-key "demo-xxx"
-python3 skills/self-evolution/scripts/learn.py --propose   # recurrence ≥3 ∧ sessions ≥2 后出现 candidate
-python3 skills/self-evolution/scripts/learn.py --status    # trail 产生条目
+python3 skills/self-evolution/scripts/discover.py --evidence \
+    '{"class":"verification","scope":"skill","target":"<skill.md>","pattern_key":"demo-xxx","problem":"重复漏项","recurrence":3,"sessions":2,"independent_sources":2,"systemic":true,"confidence":0.8,"evidence_refs":["e1","e2","e3"]}'
+python3 skills/self-evolution/scripts/discover.py --status   # 查看候选
 ```
-预期：单次失败 → 不会晋升（安全阀）；≥3 次 recurrence 且跨 ≥2 session → 出现 candidate，走审批。
-> 安全阀：recurrence < 3 或 sessions < 2 均不晋升（详见 self-evolution/SKILL.md）。
-> 完整 E2E：`docs/tests/scripts/evolution-e2e.sh`（PASS=5 FAIL=0）。
+预期：单次失败 → 不会晋升（安全阀）；≥3 次 recurrence 且跨 ≥2 session → 出现 candidate，走 Diagnose → Propose → Governance → Apply → Regression。
+> 安全阀：recurrence < 3 或 sessions < 2 均不晋升（详见 self-evolution/references/candidate-policy.md）。
+> 完整 E2E：`skills/self-evolution/scripts/self_test.py`（24 断言，回归自测）。
 
 ---
 

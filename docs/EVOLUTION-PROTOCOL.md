@@ -58,7 +58,7 @@ Evidence
 | 角色 | 职责 | 输出 |
 |:--|:--|:--|
 | Verification / Evaluation | 任务执行中发现失败/弱点 | Evidence |
-| Proactive / Heartbeat / learn.py 巡检 | **Discover + Classify**：扫描长期 Evidence，判定进化价值 | **Evolution Candidate** |
+| Proactive / Heartbeat / self-evolution discover 巡检 | **Discover + Classify**：扫描长期 Evidence，判定进化价值 | **Evolution Candidate** |
 | 用户反馈 | “你每次报价都漏材料利用率” | Evidence（由 Classification 判定） |
 | **Evolution** | **Judge + Propose + Apply**：判断“是否值得改变系统、应该改变什么” | Candidate → Proposal / Apply |
 
