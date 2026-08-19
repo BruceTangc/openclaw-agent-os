@@ -21,18 +21,50 @@ OpenClaw 原生 policy/approval 仍为最终拦截层, 本脚本仅做决策层�
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 
 # ---- 中央门 (C2 Permission 状态机) ----
 # 授权记录生命周期走 skills/_lib/transitions.py 中央门 (kind="permission")。
+# CRITICAL fix (C-2): 不硬编码绝对路径 —— 换机/容器路径不同会 import 失败
+# → 状态机静默降级、状态强制失效。改为从本文件相对推导到 _lib/:
+#   permission.py 位于 skills/permission-security/scripts/permission.py
+#   scripts -> permission-security(1) -> skills(2) -> 故向上两层到 skills/, 再 _lib
+_LIB = os.path.abspath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                 os.pardir, os.pardir, "_lib"))
 try:
-    _LIB = "/root/.openclaw/workspace/skills/_lib"
-    sys.path.insert(0, _LIB)
+    if _LIB not in sys.path:
+        sys.path.insert(0, _LIB)
     from transitions import transition as _perm_transition, valid_states as _perm_states
 except Exception:  # pragma: no cover - 中央门不可用时降级为无状态判定
     _perm_transition = None
     _perm_states = None
+
+# A-3 fix: 授权决策审计留痕 (复用 persistence.py atomic_write + JSONL)。
+# 不把"谁批准"当 Agent OS 的持久化责任 —— 批准动作由 OpenClaw Native Approval
+# 承接 (架构 #14); Agent OS 只落盘"决策了什么、依据什么"(架构 #19/#22)。
+_AUDIT_PATH = os.getenv("AGENTOS_PERM_AUDIT",
+    os.path.join(os.path.expanduser("~/.openclaw/workspace"),
+                 ".agent-os", "permissions", "audit.jsonl"))
+_append_atomic = None
+try:
+    from persistence import append_atomic as _append_atomic
+    from persistence import atomic_write_json as _atomic_write_json
+except Exception:  # pragma: no cover - 审计不可用时降级为仅内存决策
+    _append_atomic = None
+
+
+def _audit(entry):
+    """授权决策审计留痕 (append-only JSONL)。失败不阻断决策 (决策层降级)。"""
+    if _append_atomic is None:
+        return False
+    try:
+        _append_atomic(_AUDIT_PATH, entry)
+        return True
+    except Exception:
+        return False
 
 
 # 授权记录默认状态：创建即 REQUESTED（未审批）
@@ -74,13 +106,20 @@ DEFAULT_DENY = {0: False, 1: False, 2: False, 3: False, 4: True}
 
 
 def _perm_record(req):
-    """从 req 构造/定位授权记录。兼容两种形态：
-    - req["authorization"] 是 dict 且含 status → 已进状态机（有记录）
-    - 否则视为首次 check，无状态记录 → 退出状态强制（兼容无状态现状）
-    返回 (record, has_state)。
+    """从 req 构造/定位授权记录。兼容两种形态:
+    - req["authorization"] 是 dict 且含 status → 已进状态机(有记录)
+    - 否则视为"未审批", 不启状态强制但也不信任其放行。
+
+    A-1 fix (fail-closed): 只要提供了 authorization dict 却缺 status,
+    说明授权来源不完整/未走状态机 —— 不得退回旧布尔判定放行 (那会成为
+    绕过面: 去掉 status 即可绕过 CONSUMED/REVOKED)。返回 (record, has_state),
+    其中 has_state=False 时 check() 将把 authorized 视为不可用。
     """
     authz = req.get("authorization")
     if isinstance(authz, dict) and authz.get("status"):
+        return authz, True
+    if isinstance(authz, dict) and not authz.get("status"):
+        # 有 authorization 容器但无状态 → 不完整个授权, 状态强制视为"未批准"
         return authz, True
     return None, False
 
@@ -88,10 +127,13 @@ def _perm_record(req):
 def _perm_status_ok(record):
     """授权记录必须处于 APPROVED 且未消费/吊销/过期才视为有效。"""
     if record is None:
-        return True, None  # 无状态记录 → 交现有布尔判定
+        return True, None  # 无授权记录 → 交现有布尔判定 (整体未被授权依赖)
     st = record.get("status")
     if st == "APPROVED":
         return True, None
+    if st is None or st == "":
+        # fail-closed: 有 authorization 容器但无 status → 视为未审批, 不信任
+        return False, "authorization 无 status (fail-closed: 视为未审批)"
     reason = {
         "REQUESTED": "授权待审批 (REQUESTED)",
         "REJECTED": "授权已拒绝 (REJECTED)",
@@ -103,11 +145,19 @@ def _perm_status_ok(record):
 
 
 def request_permission(req):
-    """创建授权记录 (REQUESTED)。返回记录或 None(降级)。"""
+    """创建授权记录 (REQUESTED)。返回记录或 None(降级)。
+
+    A-2 fix: 支持一次性授权 + Action fingerprint 绑定 (架构 #15)。
+    - req["one_time"]=True → 标记一次性: 执行一次后即用尽 (CONSUMED)
+    - req["fingerprint"] 或 req["action_fingerprint"] → 授权绑定到具体 Action,
+      Action 变化 (指纹不同) 时必须重新判断, 不能"Task批准就什么都能做"
+    """
     rec = {
         "status": "REQUESTED",
         "action": req.get("action"),
         "scope": req.get("scope") or req.get("requested_scope"),
+        "one_time": bool(req.get("one_time", False)),
+        "fingerprint": req.get("fingerprint") or req.get("action_fingerprint") or "",
         "requested_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "history": [],
     }
@@ -240,6 +290,20 @@ def check(req):
         perm_status_ok, perm_status_problem = _perm_status_ok(perm_rec)
         if not perm_status_ok:
             auth_valid = False
+
+    # A-2 fix (架构 #15): Permission 绑定 Action。授权记录若带 fingerprint,
+    # 则本次 req 的 action_fingerprint 必须匹配, 否则视为"Action 已变化",
+    # 授权失效须重新判断 —— 不能 Task/授权批准了就什么都能做。
+    fp_problem = None
+    if perm_has_state and perm_rec and perm_rec.get("fingerprint"):
+        req_fp = req.get("action_fingerprint") or req.get("fingerprint") or ""
+        if req_fp and perm_rec["fingerprint"] != req_fp:
+            fp_problem = "授权绑定 fingerprint 不匹配: Action 已变化, 须重新判断"
+            auth_valid = False
+    # A-2: 一次性授权 (one_time) 语义 —— 已 CONSUMED 必须重新判断
+    one_time = perm_has_state and bool(perm_rec and perm_rec.get("one_time"))
+    already_consumed = perm_has_state and perm_status_ok is False \
+        and bool(perm_rec and perm_rec.get("status") == "CONSUMED")
     # PERM-01/修复: expiry 必须真正参与授权决策。过期授权视为无效，
     #   需重新确认(ask)，绝不静默 allow。
     expired = False
@@ -296,6 +360,28 @@ def check(req):
         decision = "ask" if level >= 1 else "deny"
         reason = "未知动作, 保守处理: " + reason
 
+    # A-2/A-3: 一次性授权语义: 若本次是 one_time 且允许, 返回 consumed 标记,
+    # 由执行层成功后调 consume_permission 落 CONSUMED (Action 用尽须重新判断)。
+    fp_bound = perm_has_state and bool(perm_rec and perm_rec.get("fingerprint"))
+    one_time_effective = one_time and decision == "allow"
+
+    # A-3 fix: 决策审计留痕 (append-only JSONL)。记录"谁、何时、允许了什么"。
+    decision_made = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "action": action,
+        "level": cls["level"],
+        "decision": decision,
+        "reason": reason,
+        "authorized_flag": bool(authorized),
+        "status": perm_rec.get("status") if perm_has_state else None,
+        "one_time": one_time,
+        "fp_bound": fp_bound,
+        "fp_problem": fp_problem,
+        "scope_ok": scope_ok,
+        "expired": expired,
+    }
+    _audit(decision_made)
+
     return {
         "decision": decision,
         "level": cls["level"],
@@ -313,6 +399,10 @@ def check(req):
             "expiry": auth_expiry,
             "status_ok": perm_status_ok,
             "status_problem": perm_status_problem,
+            "fp_bound": fp_bound,
+            "fp_problem": fp_problem,
+            "one_time": one_time,
+            "one_time_consumed": one_time_effective,
         },
         "native_policy_final": True,  # OpenClaw 原生 policy 仍是最终拦截
     }

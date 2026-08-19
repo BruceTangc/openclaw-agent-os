@@ -51,8 +51,14 @@ class AgentOSError(Exception):
         super().__init__(message)
         self.message = str(message)
         self.code = code or self.__class__.default_code
-        if retryable is not None:
-            self.retryable = retryable
+        # MAJOR fix (B-1): retryable 是类级契约, 不允许实例级覆写 ——
+        # 否则 StateError(..., retryable=True) 能把不可重试错误改成可重试,
+        # 诱导无限重试。只有类-派生的子类 (LockTimeoutError/SubprocessError)
+        # 能在类属性层面定义 retryable=True。
+        if retryable not in (None, self.__class__.retryable):
+            raise TypeError(
+                "retryable 是类级只读契约, 不可实例覆写 (class=%s, retryable=%s)"
+                % (self.__class__.__name__, retryable))
         self.details = details or {}
 
     def __repr__(self):

@@ -36,13 +36,16 @@ import os, sys
 
 # 统一错误分层 (C2): StateError / InvariantError 由本门抛出
 try:
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    # D-2 fix: errors.py 与 transitions.py 同在 skills/_lib/ 目录
+    # 之前用 dirname(__file__)/".." 指向 skills/, 自我路径永远解析不到 errors.py,
+    # 只能靠外部先改 sys.path -> 降级后 StateError 成裸 Exception, 不继承
+    # ValueError, 所有 except ValueError 抓不到中央门异常。改为同目录 import。
+    if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from errors import StateError, InvariantError
-except Exception:  # 降级: 中央门不依赖 errors.py 也能工作
-    class StateError(Exception):
-        pass
-    class InvariantError(Exception):
-        pass
+except Exception:  # 降级: errors 不可用时退回 ValueError (仍继承, 老捕获点不破坏)
+    StateError = ValueError
+    InvariantError = ValueError
 
 
 def _utcnow_iso():

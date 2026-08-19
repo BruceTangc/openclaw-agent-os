@@ -103,27 +103,24 @@ class TraceBuilder(object):
         return self
 
     def execution(self, execution_id=None, action_type=None, target=None):
+        # CRITICAL fix (C-1): 每次执行必须有唯一 id。同 goal/target 的多次执行
+        # (重试/幂等) 若用 deterministic hash 会生成相同 execution_id, 两条不同
+        # 执行不可区分。execution/action/observation 层是"每次发生的实例",
+        # 必须用 UUID; 确定性哈希仅用于可去重层 (goal/task 同目标可复现)。
         if not execution_id:
-            execution_id = deterministic_id("execution",
-                                            {"goal_id": self.trace["goal_id"],
-                                             "task_id": self.trace["task_id"],
-                                             "action_type": action_type,
-                                             "target": target})
+            execution_id = generate_id("execution")
         self.trace["execution_id"] = execution_id
         return self
 
     def action(self, action_id=None, action_type=None, target=None):
         if not action_id:
-            action_id = deterministic_id("action",
-                                         {"execution_id": self.trace["execution_id"],
-                                          "action_type": action_type, "target": target})
+            action_id = generate_id("action")
         self.trace["action_id"] = action_id
         return self
 
     def observation(self, observation_id=None, obs=None):
         if not observation_id:
-            observation_id = deterministic_id("obs", {"action_id": self.trace["action_id"],
-                                                      "obs": obs})
+            observation_id = generate_id("obs")
         self.trace["observation_id"] = observation_id
         return self
 
@@ -148,7 +145,22 @@ class TraceBuilder(object):
 
 
 def attach_trace(record, trace):
-    """把 trace 的链字段写入 record (只写非空 id, 不覆盖已存在的)。返回 record。"""
+    """把 trace 的链字段写入 record。返回 record。
+
+    MAJOR fix (C-2/C-3): 不再"不覆盖"静默接受过期/错误 id —— 若 record 已有子
+    id 且与新 trace 对应父 id 不一致, 说明 record 是在更早 goal/task 下写入的,
+    是真实断裂。改为检测冲突并落 _identity_conflict, 不静默掩盖。
+    """
+    conflicts = []
+    for k in CHAIN_ORDER + HOST_IDS:
+        existing = record.get(k)
+        incoming = trace.get(k)
+        if existing and incoming and existing != incoming:
+            conflicts.append(k)
+    if conflicts:
+        record["_identity_conflict"] = sorted(
+            set(record.get("_identity_conflict", [])) | set(conflicts))
+    # 只填缺失字段 (冲突的不覆盖, 但已标记)
     for k in CHAIN_ORDER + HOST_IDS:
         v = trace.get(k)
         if v and not record.get(k):
@@ -157,20 +169,29 @@ def attach_trace(record, trace):
 
 
 def verify_trace(trace):
-    """校验链完整性。返回 {complete, missing, present, chain}。
-    complete = 存在至少是"目标链"的连续子链 (goal...verification 或部分)。
-    判定: 若 verification_id 存在, 则 goal→...→verification 必须全链。
+    """校验链完整性。返回 {complete, missing, present, agent_id, session_id}。
+
+    MAJOR fix (C-2/C-3, 空洞检测算法): 区分三种形态, 避免误报/漏报:
+      1. 完整链   = 从 goal_id 到末端的连续全链 → complete=True
+      2. 短链     = 从某中间层开始的连续片段 (纯计算节点只产 evidence 不持
+                   全链) → 允许, complete=False 但 missing=[] (不误报)
+      3. 断裂     = 非空字段索引不连续(中间空洞) → 报 missing (不掩盖)
+
+    算法: 对 CHAIN_ORDER 中非空的字段收集索引, 若任意相邻非空索引间有空洞
+    (差值>1 且两者之间出现过 CHAIN_ORDER 同层级被跳过), 则该空洞是断裂。
+    前缀缺失 (最小非空索引>0) 视为短链, 不算断裂。
     """
-    missing = []
-    for i, field in enumerate(CHAIN_ORDER):
-        if trace.get(field):
-            # 若当前 id 存在, 所有父级 id 必须存在
-            for j in range(i):
-                parent = CHAIN_ORDER[j]
-                if not trace.get(parent):
-                    missing.append(parent)
     present = [f for f in CHAIN_ORDER if trace.get(f)]
-    complete = not missing and bool(trace.get("goal_id"))
+    missing = []
+    if present:
+        idxs = sorted(CHAIN_ORDER.index(f) for f in present)
+        # 断裂 = 非空索引序列内部有空洞 (非连续)
+        for a, b in zip(idxs, idxs[1:]):
+            if b - a > 1:
+                # 空洞出现在 a 和 b 之间, 标记被跳过的层
+                skipped = [CHAIN_ORDER[i] for i in range(a + 1, b)]
+                missing.extend("%s(被跳过)" % s for s in skipped)
+    complete = (len(present) == len(CHAIN_ORDER)) and not missing
     return {
         "complete": complete,
         "missing": sorted(set(missing)),
