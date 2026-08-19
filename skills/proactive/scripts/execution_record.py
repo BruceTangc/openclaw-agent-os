@@ -176,6 +176,9 @@ def check_action_loop(current_record, previous_record=None,
                      previous_record.get("strategy"))
     same_input = (current_record.get("input_hash") ==
                   previous_record.get("input_hash"))
+    # BE-3 (Action→Observation 对应): observation 变化 = 可观测结果变化, 算 progress。
+    same_observation = (current_record.get("observation_hash") ==
+                        previous_record.get("observation_hash"))
 
     prev_prog = previous_record.get("progress", {}) or {}
     cur_prog = current_record.get("progress", {}) or {}
@@ -185,6 +188,11 @@ def check_action_loop(current_record, previous_record=None,
     new_state_flag = cur_prog.get("new_state", False)
     same_artifact = (prev_prog.get("new_artifact", False) == new_artifact)
     same_goal_progress = (prev_prog.get("goal_progress", False) == goal_progress)
+    # BE-4 (Evidence→Verification 来源链): 验证来源独立变化也算 progress。
+    new_independent_verif = (current_record.get("verification", {}) or {}).get(
+        "independent_source", False)
+    prev_independent_verif = (previous_record.get("verification", {}) or {}).get(
+        "independent_source", False)
 
     if not same_action:
         return {
@@ -197,9 +205,11 @@ def check_action_loop(current_record, previous_record=None,
     has_progress = (
         not same_result or not same_evidence or not same_state
         or not same_strategy or not same_input
+        or not same_observation
         or new_artifact or not same_artifact
         or goal_progress or not same_goal_progress
         or new_state_flag
+        or new_independent_verif != prev_independent_verif
     )
 
     if has_progress:
@@ -214,12 +224,32 @@ def check_action_loop(current_record, previous_record=None,
     prev_count = prev_prog.get("no_progress", 0)
     new_count = prev_count + 1
 
-    if new_count >= 3:
+    # BE-6 (State-loop, L2): 状态振荡检测 — 同 action 下反复在同一状态对
+    #   (previous_state→current_state) 之间横跳, 即使每次 action 不同也可判定 stall。
+    prev_osc = prev_prog.get("state_oscillation", 0)
+    cur_state_pair = (str(previous_record.get("current_state", "")) +
+                      "->" + str(current_record.get("current_state", "")))
+    prev_state_pair = (prev_prog.get("cycle_signature", ""))
+    state_loop = (prev_state_pair == cur_state_pair)
+    new_osc = (prev_osc + 1) if state_loop else 0
+
+    # BE-5 (Goal Progress Vector, L3): 用 stall_count 记录无进展轮次, 供上层量化。
+    stall_count = prev_prog.get("stall_count", 0) + 1
+
+    if state_loop and new_osc >= 3:
+        decision = "ESCALATE"
+        reason = "State-loop: 在 %s 间振荡 %d 次无进展" % (cur_state_pair, new_osc)
+        new_count = new_osc
+    elif new_count >= 3:
         decision = "ESCALATE"
         reason = "连续 %d 次无进展" % new_count
     elif new_count >= 2:
         decision = "NOOP"
         reason = "连续 %d 次无进展" % new_count
+    elif state_loop:
+        decision = "WARN"
+        reason = "State-loop 第 %d 次振荡" % new_osc
+        new_count = new_osc
     else:
         decision = "WARN"
         reason = "第 %d 次无进展" % new_count
@@ -228,6 +258,9 @@ def check_action_loop(current_record, previous_record=None,
         "decision": decision,
         "reason": reason,
         "consecutive_no_progress": new_count,
+        "state_oscillation": new_osc,
+        "stall_count": stall_count,
+        "cycle_signature": cur_state_pair,
     }
 
 
@@ -250,12 +283,26 @@ def cmd_log(args):
     record.setdefault("parent_task_id", "")
     record.setdefault("attempt", 1)
     record.setdefault("retry_count", 0)
+    # BE-3 (Action→Observation 对应): observation 记录动作的可观测结果。
+    record.setdefault("observation", "")
+    record.setdefault("observation_hash", "")
+    # BE-4 (Evidence→Verification 来源链): verification 元数据(方法/来源/独立性)。
+    record.setdefault("verification", {
+        "method": "", "evidence_ref": "", "independent_source": False,
+    })
     record.setdefault("progress", {
         "new_evidence": False,
         "new_artifact": False,
         "new_state": False,
         "goal_progress": False,
         "no_progress": 0,
+        # BE-5 (Goal Progress Vector, L3): 更细的进展向量。
+        "stall_count": 0,
+        "cycle_signature": "",
+        "last_progress_at": "",
+        "progress_count": 0,
+        # BE-6 (State-loop, L2): 状态振荡检测计数。
+        "state_oscillation": 0,
     })
     record.setdefault("decision", "CONTINUE")
     record.setdefault("stop_reason", "")
