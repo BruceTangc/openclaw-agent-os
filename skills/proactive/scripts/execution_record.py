@@ -117,10 +117,21 @@ def append_record(record):
     CHAIN-03-B: 此处仅“记录与暴露”违规，不负责 Permission Runtime 层面的
     运行时阻断——阻断必须在 Permission/Runtime 边界完成；本层不自我声称阻断。
     违例不阻断追加写入，供上层追溯/安全处置。不造 Permission Runtime。
+
+    MA-1.0 (Integration 层): 补充 Multi-Agent 身份字段默认值 + 完整性校验元数据
+    ma_completeness(见 validate_ma_record)。只做创建/透传/持久化, 不参与任何
+    Core 判定, 不阻断写入。legacy 单 Agent 记录标记 legacy=True, 保持兼容。
     """
     record.setdefault("execution_id", "EXE-" + _hash_str(
         json.dumps(record, sort_keys=True) + utcnow_iso()))
     record.setdefault("timestamp", utcnow_iso())
+    record.setdefault("agent_id", "")
+    record.setdefault("session_id", "")
+    record.setdefault("operation_id", "")
+    record.setdefault("correlation_id", "")
+    record.setdefault("parent_task_id", "")
+    # MA-1.0: 完整性校验(仅元数据, 不阻断)。供审计追溯"这条结论是谁/哪次/哪个agent产生的"。
+    record["ma_completeness"] = validate_ma_record(record)
     if record.get("authorization"):
         binding = check_authorization_binding(record.get("authorization"))
         record["authorization_binding"] = binding
@@ -308,6 +319,64 @@ def check_authorization_binding(authorization):
 
 
 # ---------------------------------------------------------------------------
+# MA-1.0 Multi-Agent Identity/Correlation（Integration 层, 不改 Core 判定）
+# ---------------------------------------------------------------------------
+# Multi-Agent 执行身份字段：
+#   agent_id        — 哪个 Agent 执行
+#   session_id      — 哪个 OpenClaw Session
+#   execution_id    — 哪一次执行 (append 时由 Core 自动生成 EXE-*)
+#   task_id         — 属于哪个 Task
+#   parent_task_id  — 由哪个父 Task 派生 (delegation)
+#   operation_id    — 具体副作用操作的幂等身份(有具体 operation/action 则需填)
+#   correlation_id  — 整个横向协作链的关联 ID
+# legacy 单 Agent 记录允许缺省；Multi-Agent context 由 validate_ma_record 强制完整。
+# 这些字段只做创建/透传/持久化 + 完整性校验，不参与 check_action_loop / state /
+# permission / verification / DAG / self-evolution 任何 Core 判定。
+MA_IDENTITY_FIELDS = ["agent_id", "session_id", "execution_id", "task_id"]
+MA_REQUIRED_FIELDS = MA_IDENTITY_FIELDS + ["correlation_id"]
+
+
+def _is_ma_context(record):
+    """判断记录是否处于 Multi-Agent 执行上下文。
+
+    任一关键身份字段提供了非空值即视为 Multi-Agent context：
+    agent_id / session_id / correlation_id / parent_task_id 非空即可触发。
+    execution_id / task_id 在单 Agent 也会有, 不能作为触发器。
+    """
+    for f in ("agent_id", "session_id", "correlation_id", "parent_task_id"):
+        if str(record.get(f, "") or "").strip():
+            return True
+    return False
+
+
+def validate_ma_record(record):
+    """Multi-Agent Execution Record 完整性校验（MA-1.0 硬规则）。
+
+    单 Agent legacy 记录：允许缺字段，返回 legacy=True（不强制）。
+    Multi-Agent context：必须完整填充 agent_id / session_id / execution_id /
+    task_id / correlation_id；operation_id 仅当存在具体操作时要求。
+
+    返回 {valid: bool, ma: bool, missing: [field], legacy: bool}：
+      - valid : 是否通过校验
+      - ma    : 是否 Multi-Agent context
+      - legacy: 是否当作 legacy 单 Agent 记录
+    """
+    rec = record or {}
+    if not _is_ma_context(rec):
+        # 单 Agent legacy：不强制, 兼容 v1.3 旧记录
+        return {"valid": True, "ma": False, "missing": [], "legacy": True}
+
+    missing = [f for f in MA_REQUIRED_FIELDS if not str(rec.get(f, "") or "").strip()]
+    # operation_id: 仅当存在具体 side-effect 操作时要求(由调用方以 has_operation 标记)
+    return {
+        "valid": len(missing) == 0,
+        "ma": True,
+        "missing": missing,
+        "legacy": False,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Progress Gate（核心 Anti-loop 判断）
 # ---------------------------------------------------------------------------
 def check_action_loop(current_record, previous_record=None,
@@ -456,6 +525,17 @@ def cmd_log(args):
     record.setdefault("task_id", "")
     record.setdefault("cycle_id", "")
     record.setdefault("parent_task_id", "")
+    # MA-1.0 (Multi-Agent Integration v1): Agent 身份与横向协作关联字段。
+    #   agent_id        — 哪个 Agent 执行
+    #   session_id      — 哪个 OpenClaw Session
+    #   execution_id    — 哪一次执行 (append 时自动生成 EXE-*)
+    #   operation_id    — 具体副作用操作的幂等身份(有则填)
+    #   correlation_id  — 整个横向协作链的关联 ID
+    # legacy 记录允许缺省(空), Multi-Agent context 由 validate_ma_record 强制完整。
+    record.setdefault("agent_id", "")
+    record.setdefault("session_id", "")
+    record.setdefault("operation_id", "")
+    record.setdefault("correlation_id", "")
     record.setdefault("attempt", 1)
     record.setdefault("retry_count", 0)
     # BE-3 (Action→Observation 对应): observation 记录动作的可观测结果。

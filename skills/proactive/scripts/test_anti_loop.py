@@ -435,6 +435,105 @@ def test_binding_None_scope_semantics():
 
 
 # ===========================================================================
+# MA-1.0 Multi-Agent Identity/Correlation 测试（Integration 层）
+# ===========================================================================
+# 验证 execution_record 的 agent_id/session_id/operation_id/correlation_id 字段
+# 创建/透传/持久化 + 完整性校验; 不触碰 Core 判定(check_action_loop/state/permission
+# /verification/DAG/self-evolution)。
+
+def _clean_ma_records():
+    """每个 MA 测试独立跑, 清掉之前 append 的记录, 避免污染。"""
+    p = er._record_path()
+    if os.path.exists(p):
+        try: os.remove(p)
+        except OSError: pass
+    lock = p + ".lock"
+    if os.path.exists(lock):
+        try: os.remove(lock)
+        except OSError: pass
+
+
+def test_ma_legacy_compat():
+    print("\n=== Test 21: legacy 单 Agent 记录兼容 (不强制 MA 字段) ===")
+    r = er.validate_ma_record({"goal_id": "G1", "task_id": "T1",
+                               "action_type": "search"})
+    check("legacy → valid", r["valid"] is True, str(r))
+    check("legacy → legacy=True", r["legacy"] is True, str(r))
+    check("legacy → ma=False", r["ma"] is False, str(r))
+
+
+def test_ma_record_completeness():
+    print("\n=== Test 22: Multi-Agent record 完整性 (必须填充五字段) ===")
+    # 完整 → valid
+    r1 = er.validate_ma_record({"agent_id": "res", "session_id": "S1",
+                                "execution_id": "E1", "task_id": "T1",
+                                "correlation_id": "C1"})
+    check("MA 完整(无operation) → valid", r1["valid"] is True, str(r1))
+    check("MA → ma=True", r1["ma"] is True, str(r1))
+    check("MA → legacy=False", r1["legacy"] is False, str(r1))
+    # 缺字段 → invalid + 列出 missing
+    r2 = er.validate_ma_record({"agent_id": "res", "correlation_id": "C1"})
+    check("MA 缺 session/execution/task → invalid",
+          r2["valid"] is False, str(r2))
+    check("missing 含 session_id", "session_id" in r2["missing"], str(r2["missing"]))
+    check("missing 含 task_id", "task_id" in r2["missing"], str(r2["missing"]))
+
+
+def test_ma_parallel_correlation():
+    print("\n=== Test 23: 并行 Agent correlation 关联 ===")
+    _clean_ma_records()
+    rec1 = er.append_record({"goal_id": "G", "task_id": "T1",
+                             "agent_id": "research", "session_id": "S1",
+                             "correlation_id": "C001",
+                             "action_type": "search", "action_signature": "sg1"})
+    rec2 = er.append_record({"goal_id": "G", "task_id": "T2",
+                             "agent_id": "trading", "session_id": "S2",
+                             "correlation_id": "C001",
+                             "action_type": "analyze", "action_signature": "sg2"})
+    check("rec1 correlation=C001", rec1.get("correlation_id") == "C001")
+    check("rec2 correlation=C001", rec2.get("correlation_id") == "C001")
+    check("rec1 ma valid", rec1["ma_completeness"]["valid"] is True)
+    check("rec2 ma valid", rec2["ma_completeness"]["valid"] is True)
+    # crash 后重读: identity 保留
+    res = er.load_records(goal_id="G", limit=50)
+    prs = [(r.get("agent_id"), r.get("correlation_id"), r.get("session_id"),
+            r.get("task_id")) for r in res["records"]]
+    check("crash 后重读 identity 保留",
+          all(a and c and s and t for a, c, s, t in prs), str(prs))
+    _clean_ma_records()
+
+
+def test_ma_delegation_correlation():
+    print("\n=== Test 24: Delegation parent_task_id + correlation 关联 ===")
+    _clean_ma_records()
+    rec = er.append_record({"goal_id": "G", "task_id": "T2.1",
+                            "parent_task_id": "T2", "agent_id": "worker",
+                            "session_id": "S2", "correlation_id": "C001",
+                            "action_type": "write_draft", "action_signature": "sg3"})
+    check("delegation parent=T2", rec.get("parent_task_id") == "T2")
+    check("delegation corr=C001", rec.get("correlation_id") == "C001")
+    check("delegation ma valid", rec["ma_completeness"]["valid"] is True)
+    check("delegation 身份保留", rec.get("agent_id") == "worker"
+          and rec.get("session_id") == "S2")
+    _clean_ma_records()
+
+
+def test_ma_crash_identity_retained():
+    print("\n=== Test 25: crash/recovery 后 identity 保留 ===")
+    _clean_ma_records()
+    er.append_record({"goal_id": "G", "task_id": "T9", "agent_id": "agentX",
+                      "session_id": "S9", "correlation_id": "C009",
+                      "action_type": "read", "action_signature": "sg9"})
+    # 模拟 crash: 重新 load(等同重启后读取)
+    res = er.load_records(goal_id="G", limit=50)
+    r = res["records"][0]
+    check("重启后 agent_id 保留", r.get("agent_id") == "agentX")
+    check("重启后 correlation 保留", r.get("correlation_id") == "C009")
+    check("重启后 session 保留", r.get("session_id") == "S9")
+    _clean_ma_records()
+
+
+# ===========================================================================
 # Main
 # ===========================================================================
 if __name__ == "__main__":
@@ -459,6 +558,11 @@ if __name__ == "__main__":
     test_binding_type_mismatch_fail_closed()
     test_binding_structured_scope_fail_closed()
     test_binding_None_scope_semantics()
+    test_ma_legacy_compat()
+    test_ma_record_completeness()
+    test_ma_parallel_correlation()
+    test_ma_delegation_correlation()
+    test_ma_crash_identity_retained()
 
     print("\n" + "=" * 60)
     print(f"结果: {PASS} PASS / {FAIL} FAIL")
