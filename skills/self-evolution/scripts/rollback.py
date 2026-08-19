@@ -39,8 +39,13 @@ def do_rollback(change_id, reason, regression_id):
         try:
             _core.assert_transition(prp, "REJECTED", kind="proposal")
         except ValueError:
-            prp["status"] = "REJECTED"
-            prp["updated_at"] = _core.now_iso()
+            # v1.4 C1: 禁止 except 后暴力直改绕过门。若门拒绝此跳转，说明不合法，
+            #   保持原状并记入 history，不静默改成 REJECTED。
+            prp.setdefault("history", []).append({
+                "timestamp": _core.now_iso(), "actor": "system",
+                "action": "transition_denied", "from": prp.get("status"),
+                "to": "REJECTED", "reason": "rollback: 门拒绝 proposal 状态跳转"},
+            )
         _core._core_save_artifact("proposal", prp)
 
     # v2.3: 同步更新 candidate 状态（标记 regressed，不删除）
@@ -50,8 +55,15 @@ def do_rollback(change_id, reason, regression_id):
             _core.assert_transition(cnd, "DIAGNOSED", kind="candidate")
         except ValueError:
             pass
-        cnd["status"] = "REJECTED"
-        cnd["updated_at"] = _core.now_iso()
+        try:
+            # v1.4 C1: 全走门。若门拒绝 DIAGNOSED→REJECTED，记录而不静默直改。
+            _core.assert_transition(cnd, "REJECTED", kind="candidate")
+        except ValueError:
+            cnd.setdefault("history", []).append({
+                "timestamp": _core.now_iso(), "actor": "system",
+                "action": "transition_denied", "from": cnd.get("status"),
+                "to": "REJECTED", "reason": "rollback: 门拒绝 candidate 状态跳转"},
+            )
         _core._core_save_artifact("candidate", cnd)
 
     # v2.4: Rollback 产生 evolution_event Evidence（"这次修改失败"本身就是有价值信号）

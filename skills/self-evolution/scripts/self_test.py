@@ -284,6 +284,102 @@ finally:
     _core.change_dir = _orig_chdir
     shutil.rmtree(_BE7_TMP, ignore_errors=True)
 
+# ============ v1.4 C1: 中央门 transitions 回归断言 ============
+# 验证统一状态中央门：非法/合法跳转、事实不变量、audit、兼容别名。
+import sys as _sys, os as _os
+_LIB = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(
+    _os.path.abspath(__file__)))), "_lib")
+if _LIB not in _sys.path:
+    _sys.path.insert(0, _LIB)
+try:
+    from transitions import (transition as _t, transition_allowed as _tallow,
+                              assert_transition as _tassert)
+except Exception as _e:
+    check("C1 transitions import", False)
+    _t = _tallow = _tassert = None
+
+if _t is not None:
+    # 1) 合法跳转 task INBOX->READY
+    t1 = {"status": "INBOX", "history": []}
+    _t(t1, "READY", kind="task", actor="orchestrator", reason="test")
+    check("C1 task INBOX->READY 合法", t1["status"] == "READY")
+    # 2) audit event 写入 history
+    check("C1 transition 记录 audit event",
+          any(h.get("action") == "transition" and h.get("to") == "READY"
+              for h in t1["history"]))
+    # 3) 非法跳转拒绝
+    try:
+        _t({"status": "INBOX", "history": []}, "COMPLETED", kind="task")
+        check("C1 非法跳转 INBOX->COMPLETED 拒绝", False)
+    except ValueError:
+        check("C1 非法跳转 INBOX->COMPLETED 拒绝", True)
+    # 4) 事实不变量: COMPLETED 缺 completed_at 拒绝
+    t2 = {"status": "RUNNING", "started_at": "2026-01-01T00:00:00Z",
+          "history": []}
+    try:
+        _t(t2, "COMPLETED", kind="task")
+        check("C1 COMPLETED 缺 completed_at 拒绝", False)
+    except ValueError:
+        check("C1 COMPLETED 缺 completed_at 拒绝", True)
+    # 5) 带 completed_at 合法
+    t2["completed_at"] = "2026-01-01T01:00:00Z"
+    _t(t2, "COMPLETED", kind="task")
+    check("C1 带 completed_at 进 COMPLETED 合法", t2["status"] == "COMPLETED")
+    # 6) RUNNING 缺 started_at 拒绝
+    try:
+        _t({"status": "READY", "history": []}, "RUNNING", kind="task")
+        check("C1 RUNNING 缺 started_at 拒绝", False)
+    except ValueError:
+        check("C1 RUNNING 缺 started_at 拒绝", True)
+    # 7) FAILED 缺 failed_at 拒绝
+    try:
+        _t({"status": "RUNNING", "started_at": "x", "history": []},
+           "FAILED", kind="task")
+        check("C1 FAILED 缺 failed_at 拒绝", False)
+    except ValueError:
+        check("C1 FAILED 缺 failed_at 拒绝", True)
+    # 8) 兼容别名 assert_transition (change SNAPSHOTTED->APPLYING)
+    r = {"status": "SNAPSHOTTED", "history": []}
+    _tassert(r, "APPLYING", kind="change")
+    check("C1 assert_transition 兼容(change SNAPSHOTTED->APPLYING)",
+          r["status"] == "APPLYING")
+    # 9) proposal 非法跳转 APPROVED->PROMOTED 拒绝
+    try:
+        _t({"status": "APPROVED", "history": []}, "PROMOTED",
+           kind="proposal")
+        check("C1 proposal APPROVED->PROMOTED 拒绝", False)
+    except ValueError:
+        check("C1 proposal APPROVED->PROMOTED 拒绝", True)
+    # 10) src==dst 幂等
+    check("C1 transition_allowed(src==dst)=True",
+          _tallow("READY", "READY", "task"))
+    # 11) 未注册 kind 拒绝
+    try:
+        _t({"status": "x", "history": []}, "y", kind="nonsense")
+        check("C1 未注册 kind 拒绝", False)
+    except ValueError:
+        check("C1 未注册 kind 拒绝", True)
+    # 12) 非法目标状态拒绝
+    try:
+        _t({"status": "INBOX", "history": []}, "BOGUS", kind="task")
+        check("C1 非法目标状态 BOGUS 拒绝", False)
+    except ValueError:
+        check("C1 非法目标状态 BOGUS 拒绝", True)
+    # 13) extra 字段随转换写入
+    t3 = {"status": "RUNNING", "started_at": "2026-01-01T00:00:00Z",
+          "history": []}
+    _t(t3, "COMPLETED", kind="task",
+       completed_at="2026-01-01T01:00:00Z", note="done")
+    check("C1 extra 字段(completed_at/note)随转换写入",
+          t3.get("completed_at") == "2026-01-01T01:00:00Z" and t3.get("note") == "done")
+    # 14) execution kind 合法集合含 UNKNOWN (#5)
+    import transitions as _tr
+    check("C1 execution 含 UNKNOWN 状态(#5)",
+          "UNKNOWN" in _tr.valid_states("execution"))
+    # 15) regression kind 已注册
+    check("C1 regression kind 已注册",
+          "REGRESSION" in _tr.valid_states("regression"))
+
 shutil.rmtree(WS, ignore_errors=True)
 print("\n===== REGRESSION SUMMARY (v2.3) =====")
 print("PASS: {}\tFAIL: {}".format(PASS, FAIL))

@@ -68,8 +68,14 @@ def run_cross_artifact_consistency(apply=False):
                 try:
                     _core.assert_transition(prp, "APPLIED", kind="proposal")
                 except ValueError:
-                    prp["status"] = "APPLIED"
-                    prp["updated_at"] = _core.now_iso()
+                    # v1.4 C1: 去 except 后暴力直改。门拒绝则记 transition_denied,
+                    #   不静默改成 APPLIED(保持状态真实)。
+                    prp.setdefault("history", []).append({
+                        "timestamp": _core.now_iso(), "actor": "system",
+                        "action": "transition_denied", "from": prp.get("status"),
+                        "to": "APPLIED",
+                        "reason": "recovery: 门拒绝 proposal APPLIED 跳转",
+                    })
                 _core._core_save_artifact("proposal", prp)
                 fixed.append({"change_id": change_id, "proposal_id": proposal_id,
                               "fixed": True})

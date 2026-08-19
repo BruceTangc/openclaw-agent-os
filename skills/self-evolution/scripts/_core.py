@@ -29,6 +29,9 @@ if _LIB not in sys.path:
     sys.path.insert(0, _LIB)
 from id_utils import generate_id as _idutil_generate_id, file_fingerprint as _idutil_fingerprint
 from persistence import FileLock as _PFileLock, append_atomic as _PAppendAtmoic, atomic_write_json as _PAtomicWrite
+# v1.4 C1: 统一状态中央门。_core.assert_transition 收敛到 transitions.transition，
+#   全仓库 20+ 处状态变化自动走中央门（统一跳转校验 + 事实不变量 + audit）。
+from transitions import transition as _central_transition
 
 # ======================== 路径与 Workspace ========================
 
@@ -249,13 +252,18 @@ def transition_allowed(src, dst, kind="candidate"):
     targets = _get_transitions(src, kind)
     return dst in targets
 
-def assert_transition(record, dst, kind="candidate"):
-    src = record.get("status", "CANDIDATE")
-    if not transition_allowed(src, dst, kind):
-        raise ValueError("非法状态跳转 {} -> {}（{}/{}）".format(src, dst, kind, record.get("id", "?")))
-    record["status"] = dst
-    record["updated_at"] = now_iso()
-    return record
+def assert_transition(record, dst, kind="candidate", **extra):
+    """统一状态跳转入口 —— v1.4 C1 收敛到中央门 transitions.transition。
+
+    语义超集且向后兼容:_core 内 20+ 处调用 (diagnose/regression/propose/
+    recovery/apply/rollback) 全部经此转发, 统一获得:
+      1) 合法跳转校验 (非法 raise)
+      2) 状态-事实不变量校验 (#3: COMPLETED/FAILED/RUNNING 缺事实字段 raise)
+      3) audit event (who/when/from/to/reason) 写入 history
+    record 含 "history" 时写入 audit; 不含则静默跳过 (兼容旧对象)。
+    原 _core 实现仅做跳转校验+改 status/updated_at, 现为中央门薄封装。
+    """
+    return _central_transition(record, dst, kind=kind, **extra)
 
 
 # ======================== 保护目标与审批 ========================

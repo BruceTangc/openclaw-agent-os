@@ -113,8 +113,10 @@ def _apply_change_locked(prop, evo_id, approve, approver, reason):
                 pre_verify_ok = False
                 pre_mismatch.append((rel, fp, cur))
     if not pre_verify_ok:
-        change["status"] = "APPLY_FAILED"
-        change["apply_error"] = "baseline fingerprint 变化(外部修改)，拒绝覆盖: " + str(pre_mismatch[:5])
+        # v1.4 C1: 统一门。此前此处直改 change["status"]="APPLY_FAILED" 绕过门校验。
+        #   现改为调 assert_transition (SNAPSHOTTED→APPLY_FAILED)，error 作 extra 字段。
+        _core.assert_transition(change, "APPLY_FAILED", kind="change",
+                                apply_error="baseline fingerprint 变化(外部修改)，拒绝覆盖: " + str(pre_mismatch[:5]))
         _core.save_artifact("change", change)
         _core.restore_snapshot(cid)
         return None, "APPLY_FAILED: baseline 变化(外部已修改目标文件)，拒绝覆盖: " + str([m[0] for m in pre_mismatch])
@@ -130,9 +132,10 @@ def _apply_change_locked(prop, evo_id, approve, approver, reason):
     try:
         applied = _core.apply_patch(ops)
     except Exception as e:
-        change["status"] = "APPLY_FAILED"
-        change["apply_error"] = str(e)
-        _core.assert_transition(change, "APPLY_FAILED", kind="change")
+        # v1.4 C1: 统一门。此前直改 status 再 assert 会因 src==dst 幂等致门失效。
+        #   现去掉直改，error 作 extra，门真正校验 APPLYING→APPLY_FAILED。
+        _core.assert_transition(change, "APPLY_FAILED", kind="change",
+                                apply_error=str(e))
         _core.save_artifact("change", change)
         _core.restore_snapshot(cid)
         return None, "APPLY_FAILED + RESTORED: " + str(e)
@@ -144,17 +147,18 @@ def _apply_change_locked(prop, evo_id, approve, approver, reason):
     if not _verify_ok:
         # P1-7/修复: verify FAIL 不得 APPLIED。必须回滚到 APPLY_FAILED，
         #   而不是写了 verify_error 后 still APPLIED。
-        change["status"] = "APPLY_FAILED"
-        change["verify_error"] = "expected_fingerprint_mismatch: " + str(_mismatch)
-        change["verify"] = {"fingerprint_ok": False, "mismatches": _mismatch}
+        # v1.4 C1: 统一门。此前直改 status 绕过门，现调 assert_transition。
+        _core.assert_transition(change, "APPLY_FAILED", kind="change",
+                                verify_error="expected_fingerprint_mismatch: " + str(_mismatch),
+                                verify={"fingerprint_ok": False, "mismatches": _mismatch})
         _core.restore_snapshot(cid)
         _core.save_artifact("change", change)
         return None, "APPLY_FAILED + POST_VERIFY_MISMATCH + RESTORED: " + str(_mismatch)
     # #33: apply→verify→regression 链路，Apply 只推进到 APPLIED；后续 regression.py 负责
     #      APPLIED→MONITORING→VALIDATED/REGRESSED。verify 已在此完成指纹一致性确认。
-    change["status"] = "APPLIED"
-    change["verify"] = {"fingerprint_ok": True, "mismatches": []}
-    _core.assert_transition(change, "APPLIED", kind="change")
+    # v1.4 C1: 统一门。此前直改 status 再 assert 致门失效，确认无直改，verify 作 extra。
+    _core.assert_transition(change, "APPLIED", kind="change",
+                            verify={"fingerprint_ok": True, "mismatches": []})
     _core.save_artifact("change", change)
 
     # Proposal 状态推进
@@ -199,10 +203,11 @@ def _retry_from_change(change_id):
                         # F-RVW-002/修复: baseline 变化(中断期外部修改)是确定性失败，
                         #   需将 change 落盘为 APPLY_FAILED 并停止自动重试，
                         #   否则下次启动 recovery 会再次进入此分支形成无限重试循环。
-                        chg["status"] = "APPLY_FAILED"
-                        chg["verify_error"] = (
-                            "baseline 变化(Apply 中断期间目标文件已被外部修改)，拒绝覆盖: "
-                            + rel)
+                        # v1.4 C1: 统一门——不再直改 chg["status"]，校验 + 落事实字段。
+                        _core.assert_transition(chg, "APPLY_FAILED", kind="change",
+                                                verify_error=(
+                                                    "baseline 变化(Apply 中断期间目标文件已被外部修改)，拒绝覆盖: "
+                                                    + rel))
                         _core._core_save_artifact("change", chg)
                         return ("RETRY_FAILED: baseline 变化(Apply 中断期间目标文件已被外部"
                                 "修改)，拒绝覆盖: " + rel)
@@ -217,9 +222,10 @@ def _retry_from_change(change_id):
                 # SE-02/修复: recovery-retry 的 post-verify 失败必须同样收敛到
                 #    terminal failure(APPLY_FAILED)。否则下次启动 recovery 检测到
                 #   SAFE_TO_RETRY 会再次 apply，形成 retry 循环。
-                chg["status"] = "APPLY_FAILED"
-                chg["verify_error"] = (
-                    "post-verify fingerprint mismatch: " + str(mism))
+                # v1.4 C1: 统一门——不再直改 chg["status"]。
+                _core.assert_transition(chg, "APPLY_FAILED", kind="change",
+                                        verify_error=(
+                                            "post-verify fingerprint mismatch: " + str(mism)))
                 _core._core_save_artifact("change", chg)
                 return ("RETRY_FAILED + APPLY_FAILED: post-verify fingerprint mismatch: "
                         + str(mism))

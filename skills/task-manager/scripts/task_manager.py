@@ -40,6 +40,8 @@ if _LIB not in sys.path:
 from id_utils import generate_id
 from persistence import atomic_write_json
 from persistence import FileLock
+# v1.4 C1: Task 状态机也收敛到统一中央门（跳转校验 + 事实不变量 + audit）
+from transitions import transition as _task_transition
 
 # ---------------------------------------------------------------------------
 # 常量
@@ -182,7 +184,10 @@ def normalize_task(data):
         if st not in INITIAL_STATES:
             raise ValueError("task create 禁止直接以 %s 创建 (初始态仅限 %s)，"
                              "必须通过状态机转换到达" % (st, sorted(INITIAL_STATES)))
-        t["status"] = st
+        # v1.4 C1: 初始态也走统一中央门 (默认 INBOX → INBOX/PLANNED)。
+        #   门内做跳转校验 + audit；create 无派生事实字段需求。
+        _task_transition(t, st, kind="task", actor="system",
+                         reason="task create 初始态")
     # 记录初始历史
     t["history"].append({
         "timestamp": now, "actor": "system", "action": "created", "reason": "task_create",
@@ -417,13 +422,20 @@ def main():
                         ns = args.status.upper()
                         if ns not in VALID_STATUS:
                             raise ValueError("非法状态 %s" % ns)
-                        if ns != old and ns not in VALID_TRANSITIONS.get(old, set()):
-                            raise ValueError("非法转换 %s→%s" % (old, ns))
-                        t["status"] = ns
+                        # v1.4 C1: 状态变更改走统一中央门。
+                        #   transition() 内部做: 非法跳转 raise + 事实不变量校验
+                        #   (COMPLETED→completed_at / FAILED→failed_at / RUNNING→started_at)
+                        #   + 写入 audit event (history)。
+                        #   这里显式设置派生事实字段后交给门校验, 门拒绝则抛异常。
+                        extra = {}
                         if ns == "COMPLETED":
-                            t["completed_at"] = utcnow_iso()
-                        t["history"].append({"timestamp": utcnow_iso(), "actor": "system",
-                                             "action": "status_changed", "from": old, "to": ns})
+                            extra["completed_at"] = utcnow_iso()
+                        if ns == "FAILED":
+                            extra["failed_at"] = utcnow_iso()
+                        if ns == "RUNNING":
+                            extra["started_at"] = utcnow_iso()
+                        _task_transition(t, ns, kind="task", actor="system",
+                                         reason="task update CLI", **extra)
                         # BE-2 (I-014): 进入 RUNNING 时创建独立 execution/attempt 记录。
                         #   每次 RUNNING(含 RETRYING→RUNNING) 记一次 attempt, 编号 attempt# =
                         #   len(executions)+1, 与 status 字段解耦(不再被状态覆盖吞掉执行历史)。

@@ -48,12 +48,14 @@ def run_regression(change_id, result, evidence):
         _core.save_artifact("change", chg)
         _core.assert_transition(chg, "PROMOTED", kind="change")
         _core.save_artifact("change", chg)
-        rgr["status"] = "PROMOTED"
+        # v1.4 C1: regression 记录状态也走统一门 (REGRESSION→PROMOTED)
+        _core.assert_transition(rgr, "PROMOTED", kind="regression")
         _core.save_artifact("regression", rgr)
     elif result == "REGRESSED":
         _core.assert_transition(chg, "REGRESSED", kind="change")
         _core.save_artifact("change", chg)
-        rgr["status"] = "REGRESSED"
+        # v1.4 C1: regression 记录状态也走统一门 (REGRESSION→REGRESSED)
+        _core.assert_transition(rgr, "REGRESSED", kind="regression")
         _core.save_artifact("regression", rgr)
         # v2.4: Regression 产生 evolution_event Evidence（"这次修改失败"是重要信号）
         try:

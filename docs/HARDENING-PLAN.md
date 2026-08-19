@@ -203,7 +203,16 @@ I-015 UNKNOWN execution outcome 在可能产生外部副作用 (转账/发消息
 - BE-6 State-loop 检测 (L2) ✅ progress 加 state_oscillation, check 检测状态对振荡→ESCALATE
 - BE-7 UNKNOWN 副作用回收 (L-18) ✅ recover_apply 副作用边界: type!=file_patch→VERIFY(不自动 retry)
 - BE-8 crash recovery 完整 ✅ 修 recover_apply 三元优先级 bug(mism=[] 返字符串而非元组)
-**C 类不动**: Windows stale lock / scope 复杂继承 / 多主机 / 自造 scheduler / event bus / model runtime / memory runtime
+**C 类不动 (原定义，永久冻结)**: Windows stale lock / scope 复杂继承 / 多主机 / 自造 scheduler / event bus / model runtime / memory runtime
+**C1 批已验证落地 (分支 fix/v1.4-hardening-c1) — 统一 State Transition 中央门 ✅**
+> 父批"先做c1"：#1 统一 transition 门 + #2 状态/事实分离 + #3 派生字段不变量 + #5 UNKNOWN 正式 Execution 状态。C2/C3 延后。
+- ✅ **中央门 `skills/_lib/transitions.py` (新建)** `transition(obj,to,kind,actor,reason,**extra)`：五套跳转表(task/proposal/change/candidate/execution+regression) + 事实不变量(COMPLETED→completed_at/FAILED→failed_at/RUNNING→started_at 必填) + audit event 写 history + status/updated_at。17 项行为测试 PASS。
+- ✅ **#1 全局强制**: `_core.assert_transition` 转发中央门（加 \*\*extra 透传），全仓库 20+ 处调用(apply/rollback/regression/recovery/propose/diagnose)自动走门。消灭"先直改 status 再调门→src==dst 幂等失效"的隐蔽绕过：apply.py 6 处、rollback.py 2 处、regression.py 2 处、recovery.py 1 处全部改纯调门+extra 传参/transition_denied。
+- ✅ **#3 Task 状态机收敛**: task_manager update/create 走中央门，COMPLETED/FAILED/RUNNING 派生事实字段强制。
+- ✅ **#5 UNKNOWN**: execution 合法状态集合含 UNKNOWN（已是一等公民，固化断言）。
+- ✅ **#2 状态/事实分离**: execution decision 由 check_action_loop 推导，不硬编码状态。
+- ✅ **回归固化**: self_test 加 15 项 C1 断言 → 62+15=77 PASS / anti_loop 14 PASS / test_orchestrator 6 PASS / py_compile 全过。
+- ⏳ **C2 待办 (延后)**: proactive queue item status(轻量标记非正式状态机,对应 ChatGpt #14 queue terminal)、ontology entity/relation 7 处实体状态、Permission action 指纹/TOCTOU、commit≠promotion。
 
 ### 结论
 与第一轮一致: 全部是 hardening/状态机/持久化/故障语义, 无架构错误, 不需要 OS2。跨模块闭环的核心发现: L1 Anti-loop 已覆盖"重复动作", 但缺 L2 State-loop / L3 Goal Progress Vector——这是"模型偶尔陷入循环"(A→B→C→D 每步不重复但 goal 无进展)的底层根源, 属 B 类增强而非当前 A 类必修。
