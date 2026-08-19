@@ -403,6 +403,7 @@ def check(req):
             "fp_problem": fp_problem,
             "one_time": one_time,
             "one_time_consumed": one_time_effective,
+            "already_consumed": bool(already_consumed),
         },
         "native_policy_final": True,  # OpenClaw 原生 policy 仍是最终拦截
     }
