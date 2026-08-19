@@ -568,6 +568,24 @@ def validate_ma_consistency(record, existing=None):
                     "detail": "parent_task_id=%r 在 correlation=%r 链内无对应父任务记录"
                     % (parent_task_id, corr)}
 
+    # P2-01 (审计修复): operation_id 跨 agent/execution 去重 —— 同一副作用操作
+    #   (operation_id) 不得因 agent 不同/execution 不同而变成"新操作"被再次执行。
+    #   幂等由 operation_id 唯一性保证：若历史已存在相同 operation_id 且非本记录
+    #   续写，判为 duplicate_operation（记录与暴露, 不阻断——对齐 CHAIN-03-B）。
+    op_id = _field(rec, "operation_id")
+    if op_id:
+        my_eid = eid
+        for prev in (existing or []):
+            if not _field(prev, "operation_id") == op_id:
+                continue
+            # 同一 execution_id 的 operation 续写(crash 恢复) → 接受, 不算新操作
+            if _field(prev, "execution_id") == my_eid:
+                continue
+            # 跨 execution 复用同一 operation_id → 重复副作用操作
+            return {"consistent": False, "issue": "duplicate_operation",
+                    "detail": "operation_id=%r 已被 execution=%r 使用"
+                    % (op_id, _field(prev, "execution_id"))}
+
     return {"consistent": True, "issue": "", "detail": ""}
 
 

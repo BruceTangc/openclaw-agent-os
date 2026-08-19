@@ -449,6 +449,63 @@ def verify_result(result, level="V1"):
 
 
 # ---------------------------------------------------------------------------
+# Conflict Detection（MA-1.0 P2-02 修复：跨 Agent 结论冲突检测）
+# ---------------------------------------------------------------------------
+def detect_result_conflict(results):
+    """跨 Agent 结果冲突检测（Integration 层, 不改 Core 判定）。
+
+    多个平级 Agent 返回结论后，检查是否存在不可静默合并的冲突：
+      - 同一 question/子目标得到不同 answer → CONFLICT
+      - 结论来源 (agent_id) 必须保留，不得 A+B 静默合并为 True
+
+    results: [ {agent_id, question, answer}, ... ]
+
+    返回 {
+      conflict: bool,
+      conflict_pairs: [{agent_a, agent_b, question, answer_a, answer_b}],
+    }
+
+    本函数是 Integration 能力；orchestrator 是纯协调器。发现 conflict 时交由
+    上层（Main Agent）resolve / 补 evidence / ASK，本层不静默覆盖结论。
+    """
+    conflict_pairs = []
+    by_q = {}
+    for r in (results or []):
+        q = str(r.get("question", "") or "").strip()
+        if not q:
+            continue
+        ans = r.get("answer")
+        agent = str(r.get("agent_id", "") or "?").strip()
+        by_q.setdefault(q, []).append((agent, ans))
+    for q, items in by_q.items():
+        # 同一 question 下不同 answer → 冲突 (不同 agent 给不同结论)
+        # 相同 answer 是共识, 不冲突。同一 agent 重复同答案不算冲突。
+        distinct_answers = {}
+        for agent, ans in items:
+            key = str(ans)
+            distinct_answers.setdefault(key, set()).add(agent)
+        if len(distinct_answers) >= 2:
+            # 找出至少两个不同答案(且来自不同 agent)
+            ans_list = list(distinct_answers.items())
+            conflict_pairs.append({
+                "agent_a": sorted(ans_list[0][1])[0],
+                "agent_b": sorted(ans_list[1][1])[0],
+                "question": q,
+                "answer_a": ans_list[0][0],
+                "answer_b": ans_list[1][0],
+            })
+    # 去重（按 agent pair + question）
+    seen2 = set()
+    unique = []
+    for cp in conflict_pairs:
+        key = (cp["agent_a"], cp["agent_b"], cp["question"])
+        if key not in seen2:
+            seen2.add(key)
+            unique.append(cp)
+    return {"conflict": len(unique) > 0, "conflict_pairs": unique}
+
+
+# ---------------------------------------------------------------------------
 # Orchestration Result (文档 §55)
 # ---------------------------------------------------------------------------
 def orchestration_result(req, plan, status="completed", summary=""):
