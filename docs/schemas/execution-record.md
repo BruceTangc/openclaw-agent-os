@@ -103,6 +103,41 @@ audit:
   operation_id: "op_xxx"      # 副作用操作的幂等 id
   actual_vs_authorized: "within"   # within | exceeded → Security Incident
   notified_user: true         # 高风险操作后是否已通知
+
+## Provenance（跨 Agent 硬约束，v1.3.1）
+
+> 任何跨 Agent 操作不得丢失 origin。A → B → C 委托链中，最终记录必须能追溯回 origin。
+> 对应 PROTOCOL.md §8.2。
+
+```yaml
+# 当前执行者（必填）
+agent_id: "agent-c"                # 当前执行 Agent
+session_id: "ses_xxx"             # 当前 OpenClaw session
+
+# 当前执行的实体 id（必填）
+execution_id: "exec_xxx"
+task_id: "task_xxx"               # 当前任务 id
+operation_id: "op_xxx"            # 副作用幂等 id（跨 agent 去重用）
+correlation_id: "corr_xxx"         # 关联 id：串联一次业务请求的多次执行
+parent_task_id: "task_xxx"         # 上级任务 id（委托/子任务时必填）
+
+# 跨 Agent delegation chain（任意一层有跨 Agent 委托时必填）
+origin_agent: "agent-a"           # 最初的发起者
+parent_agent: "agent-b"           # 直接上级（若无则同 origin）
+delegation_chain: ["agent-a", "agent-b", "agent-c"]  # A → B → C
+current_agent: "agent-c"          # 当前执行者
+
+# 校验（MA-1.0 validate_ma_consistency）
+provenance_complete: true          # origin/parent/current 齐全
+cross_agent_ok: true               # 委托链完整、未丢失 origin
+```
+
+**约束**：
+- 无跨 Agent 场景（单 Agent 独立执行）：`origin_agent = current_agent`，chain 可省略。
+- 有跨 Agent 场景：`origin_agent` / `delegation_chain` / `current_agent` 必填，缺失视为 provenance 不完整 → 审计点。
+- `correlation_id` 用于把 A→B→C 的多段 Execution Record 串联成一条业务链路；禁止中间层新建 correlation 而丢弃原始关联。
+- `parent_task_id` 记录每一层的直接上级，用于还原 delegation 树。
+- 应经 `validate_ma_consistency`（execution_record 代码）校验 cross_agent / cross_task / duplicate_operation / parent_forgery。
 ```
 
 ## 使用规则

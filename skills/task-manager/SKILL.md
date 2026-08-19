@@ -187,3 +187,7 @@ python3 scripts/link.py all [--min-level P1]
 ```
 
 详细模型（状态机/优先级/依赖/checkpoint/联动/指标）见 `references/task-model.md`、`references/lifecycle-model.md`。
+
+## Multi-Agent Contract（PROTOCOL.md §8）
+
+对齐统一 10 项契约，本 Skill 涉及: 1,2,3,4,6,7,8,9,10（agent owner/assignee；check_agent_isolation；task 隔离）。不重写已有机制；跨 Agent 场景以 PROTOCOL.md §8 总规则 + 本 SKILL.md 对应章节为准。

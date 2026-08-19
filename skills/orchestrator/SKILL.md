@@ -151,3 +151,7 @@ python3 scripts/orchestrator.py evol --category skill --problem "..." --change "
 ```
 
 详细模型（Goal/Task/DAG/执行计划/路由/重试/checkpoint）见 `references/execution-model.md`。
+
+## Multi-Agent Contract（PROTOCOL.md §8）
+
+对齐统一 10 项契约，本 Skill 涉及: 1,2,4,6,7,8,9,10（编排/委派须保留 provenance；Child 权限只减不增）。不重写已有机制；跨 Agent 场景以 PROTOCOL.md §8 总规则 + 本 SKILL.md 对应章节为准。

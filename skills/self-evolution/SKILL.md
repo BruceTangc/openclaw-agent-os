@@ -132,3 +132,7 @@ CANDIDATE → DIAGNOSED → PROPOSED → APPROVED → APPLIED → REGRESSION →
 - `references/candidate-policy.md` — Candidate 门槛、禁止错误学习、去重
 - `references/governance.md` — Apply 前安全闸门、Change Level、审批流、保护目标
 - `references/regression-policy.md` — Before/After 裁判、Promotion/Rollback、防死循环
+
+## Multi-Agent Contract（PROTOCOL.md §8）
+
+对齐统一 10 项契约，本 Skill 涉及: 1,2,3,5,6,10（Evolution State 按 Agent 隔离；跨 Agent 须升级治理）。不重写已有机制；跨 Agent 场景以 PROTOCOL.md §8 总规则 + 本 SKILL.md 对应章节为准。

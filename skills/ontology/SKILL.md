@@ -135,3 +135,7 @@ python3 scripts/ontology.py --relate --from AGT-short-term-trader --pred WORKS_O
 python3 scripts/ontology.py --impact AGT-short-term-trader --depth 3
 python3 scripts/ontology.py --propose --change_type create_entity --subject "CON-market-data-freshness" --reason "..." --evidence "..."
 ```
+
+## Multi-Agent Contract（PROTOCOL.md §8）
+
+对齐统一 10 项契约，本 Skill 涉及: 1,2,3,4,5,6,10（Shared Ontology 须经 scope/governance；Agent-local 默认隔离）。不重写已有机制；跨 Agent 场景以 PROTOCOL.md §8 总规则 + 本 SKILL.md 对应章节为准。

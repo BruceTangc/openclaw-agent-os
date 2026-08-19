@@ -14,3 +14,7 @@ Run manually after installation.
 8. Self-evolution: one unverified failure must not modify a Skill.
 9. Orchestrator: dependent tasks must not be parallelised unsafely.
 10. Task: externally consequential task cannot become completed without verification.
+11. Shared Skill ≠ Shared State: using a shared skill does not share Agent State.
+12. Provenance: A→B→C Execution Record must retain origin_agent & delegation chain.
+13. Evolution Scope: candidate default affects only own Agent; cross-agent requires escalation.
+14. Enforcement boundary: Agent OS vs OpenClaw runtime vs policy-only are not conflated.
