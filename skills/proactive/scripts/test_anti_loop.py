@@ -758,6 +758,101 @@ def test_ma_attack_legacy_not_break_core():
 
 
 # ===========================================================================
+# MA-1.0 P1 端到端：build_ma_context 接入 append_record 生产入口
+# ===========================================================================
+# 验证 Runtime → append_record → persisted record 真实链路。
+
+def test_e2e_runtime_identity_append():
+    print("\n=== Test 36 (端到端A): Runtime identity 注入 append_record ===")
+    _clean_ma_records()
+    rec = er.append_record({"task_id": "T1", "correlation_id": "C1",
+                            "agent_id": "", "session_id": "",
+                            "action_type": "search", "action_signature": "s1"},
+                           runtime_agent_id="research", runtime_session_id="S001")
+    check("agent_id == research", rec.get("agent_id") == "research",
+          str(rec.get("agent_id")))
+    check("session_id == S001", rec.get("session_id") == "S001",
+          str(rec.get("session_id")))
+    # 持久化后重读仍保留
+    res = er.load_records(limit=10)["records"]
+    r = res[0]
+    check("持久化后 agent_id 保留", r.get("agent_id") == "research")
+    check("持久化后 session_id 保留", r.get("session_id") == "S001")
+    _clean_ma_records()
+
+
+def test_e2e_runtime_identity_anti_spoof():
+    print("\n=== Test 37 (端到端B): Runtime 身份防伪造 ===")
+    _clean_ma_records()
+    # 调用方传 fake 身份, Runtime 给真实身份 → Runtime 优先
+    rec = er.append_record({"task_id": "T1", "correlation_id": "C1",
+                            "agent_id": "fake-agent", "session_id": "fake-session",
+                            "action_type": "search", "action_signature": "s1"},
+                           runtime_agent_id="research", runtime_session_id="S001")
+    check("agent_id 不被伪造覆盖 → research",
+          rec.get("agent_id") == "research", str(rec.get("agent_id")))
+    check("session_id 不被伪造覆盖 → S001",
+          rec.get("session_id") == "S001", str(rec.get("session_id")))
+    check("非 fake-agent", rec.get("agent_id") != "fake-agent")
+    _clean_ma_records()
+
+
+def test_e2e_ma_completeness_append():
+    print("\n=== Test 38 (端到端C): MA 完整链 append ===")
+    _clean_ma_records()
+    rec = er.append_record({"task_id": "T1", "correlation_id": "C1",
+                            "action_type": "search", "action_signature": "s1"},
+                           runtime_agent_id="research", runtime_session_id="S001")
+    mc = rec["ma_completeness"]
+    check("ma_completeness.ma == True", mc.get("ma") is True, str(mc))
+    check("ma_completeness.valid == True", mc.get("valid") is True, str(mc))
+    check("agent_id 存在", bool(rec.get("agent_id")))
+    check("session_id 存在", bool(rec.get("session_id")))
+    check("task_id 存在", bool(rec.get("task_id")))
+    check("correlation_id 存在", bool(rec.get("correlation_id")))
+    _clean_ma_records()
+
+
+def test_e2e_legacy_append():
+    print("\n=== Test 39 (端到端D): Legacy append 保持兼容 ===")
+    _clean_ma_records()
+    # 不提供 Runtime identity + record 含 MA 字段 → 仍 MA(因有 correlation)
+    # 完全 legacy: 无任何 MA 字段
+    rec = er.append_record({"goal_id": "G", "action_type": "search",
+                            "action_signature": "legacy_sig"})
+    check("legacy agent_id 为空", rec.get("agent_id") == "")
+    check("ma_completeness.legacy == True",
+          rec["ma_completeness"]["legacy"] is True, str(rec["ma_completeness"]))
+    check("legacy ma == False", rec["ma_completeness"]["ma"] is False)
+    # Core decision 不破坏
+    r = er.check_action_loop({"goal_id": "G", "action_signature": "legacy_sig",
+                              "result_hash": "r1", "current_state": "RUNNING"})
+    check("legacy Core decision 正常", r["decision"] in
+          ("CONTINUE", "WARN", "NOOP", "ESCALATE", "UNKNOWN"), str(r))
+    _clean_ma_records()
+
+
+def test_e2e_horizontal_agents():
+    print("\n=== Test 40 (端到端E): 横向 Agent research/trading ===")
+    _clean_ma_records()
+    r1 = er.append_record({"task_id": "T1", "correlation_id": "C1",
+                           "action_type": "search", "action_signature": "s1"},
+                          runtime_agent_id="research", runtime_session_id="S001")
+    r2 = er.append_record({"task_id": "T1", "correlation_id": "C1",
+                           "action_type": "analyze", "action_signature": "s2"},
+                          runtime_agent_id="trading", runtime_session_id="S002")
+    check("research agent_id", r1.get("agent_id") == "research")
+    check("research session S001", r1.get("session_id") == "S001")
+    check("trading agent_id", r2.get("agent_id") == "trading")
+    check("trading session S002", r2.get("session_id") == "S002")
+    check("同 correlation C1", r1.get("correlation_id") == "C1"
+          and r2.get("correlation_id") == "C1")
+    check("execution_id 不同", r1.get("execution_id") != r2.get("execution_id"))
+    check("agent 不串", r1.get("agent_id") != r2.get("agent_id"))
+    _clean_ma_records()
+
+
+# ===========================================================================
 # Main
 # ===========================================================================
 if __name__ == "__main__":
@@ -797,6 +892,11 @@ if __name__ == "__main__":
     test_build_ma_context()
     test_operation_id_conditional()
     test_append_consistency_metadata()
+    test_e2e_runtime_identity_append()
+    test_e2e_runtime_identity_anti_spoof()
+    test_e2e_ma_completeness_append()
+    test_e2e_legacy_append()
+    test_e2e_horizontal_agents()
 
     print("\n" + "=" * 60)
     print(f"结果: {PASS} PASS / {FAIL} FAIL")

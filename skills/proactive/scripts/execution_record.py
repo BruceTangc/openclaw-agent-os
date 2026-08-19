@@ -108,12 +108,15 @@ def histories_available(goal_id=None):
     return len(res.get("records", [])) > 0
 
 
-def append_record(record):
+def append_record(record, runtime_agent_id="", runtime_session_id=""):
     """追加一条记录 (v1.3 #9: 文件锁 + append-only)。
 
-    CHAIN-03: 若 record 含 authorization 快照（planned/authorized/actual 三态），
-    在写入时执行 binding 一致性校验，违例以 binding_violation 标记。
+    runtime_agent_id / runtime_session_id: OpenClaw Runtime 提供的真实身份，
+    由 Integration Layer 传入；优先级高于 record 里的 caller-supplied 字段
+    （Runtime 是可信身份来源，防调用方伪造）。MA-1.0 接线：首步调用
+    build_ma_context() 把 Runtime 身份注入，再补默认字段与校验。
 
+    CHAIN-03: ...
     CHAIN-03-B: 此处仅“记录与暴露”违规，不负责 Permission Runtime 层面的
     运行时阻断——阻断必须在 Permission/Runtime 边界完成；本层不自我声称阻断。
     违例不阻断追加写入，供上层追溯/安全处置。不造 Permission Runtime。
@@ -122,6 +125,12 @@ def append_record(record):
     ma_completeness(见 validate_ma_record)。只做创建/透传/持久化, 不参与任何
     Core 判定, 不阻断写入。legacy 单 Agent 记录标记 legacy=True, 保持兼容。
     """
+    # MA-1.0 P1 接线: 首步把 Runtime 身份注入 (Runtime > caller, 防篡改)
+    record = build_ma_context(
+        record,
+        runtime_agent_id=runtime_agent_id,
+        runtime_session_id=runtime_session_id,
+    )
     record.setdefault("execution_id", "EXE-" + _hash_str(
         json.dumps(record, sort_keys=True) + utcnow_iso()))
     record.setdefault("timestamp", utcnow_iso())
@@ -354,9 +363,10 @@ def build_ma_context(record=None, runtime_agent_id="", runtime_session_id=""):
     被当成 legacy"的问题：只要进入 MA 调度 (runtime_agent_id 非空或 record 含
     MA 字段)，就自动绑定 Runtime 身份。
 
-    优先级：record 显式字段 > runtime 提供的身份（Runtime 是可信来源，防止
-    调用方篡改 agent_id）。correlation_id 若 record 提供则保留（协作链 ID 由
-    调度层生成）。
+    优先级：Runtime 身份 > caller-supplied record identity —— Runtime 是可信身份
+    来源，record 里的 agent_id/session_id 若与 Runtime 冲突以 Runtime 为准
+    （防调用方伪造身份）。correlation_id 由 Orchestrator/Integration 调度层
+    生成，本函数只保留不伪造。
 
     返回合并后的 record（含 agent/session/execution/task/correlation 默认值）。
     """
@@ -761,7 +771,9 @@ def cmd_log(args):
     record.setdefault("decision", "CONTINUE")
     record.setdefault("stop_reason", "")
 
-    result = append_record(record)
+    result = append_record(record,
+                           runtime_agent_id=getattr(args, "runtime_agent", ""),
+                           runtime_session_id=getattr(args, "runtime_session", ""))
     print(json.dumps({"logged": True, "execution_id": result["execution_id"]},
                      ensure_ascii=False))
 
@@ -834,6 +846,8 @@ def main():
 
     p_log = sub.add_parser("log", help="写入一条记录")
     p_log.add_argument("--json", required=True, help="记录 JSON")
+    p_log.add_argument("--runtime-agent", default="", help="OpenClaw Runtime 提供的 agent_id (MA-1.0)")
+    p_log.add_argument("--runtime-session", default="", help="OpenClaw Runtime 提供的 session_id (MA-1.0)")
 
     p_check = sub.add_parser("check", help="判断是否 no-progress loop")
     p_check.add_argument("--json", required=True, help="当前 record JSON")
