@@ -777,7 +777,12 @@ def recover_apply(change_id):
         ok, mism = verify_fingerprints(change_id)
         if ok or not chg.get("_expected_fingerprints"):
             return "VERIFY", "文件已完整修改，需验证"
-        return "ROLLBACK", "指纹不一致，回滚: " + str([r[0] for r in mism][:5]) if mism else "指纹不一致"
+        # BE-8: 三元整体括进首参，避免 mism 为空列表时返回字符串而非元组。
+        #   原写法 `"..." + str(...) if mism else "..."` 会被解析为
+        #   `(return "ROLLBACK", (...)) if mism else "..."`，空列表时解包炸裂。
+        return "ROLLBACK", (
+            "指纹不一致，回滚: " + str([r[0] for r in mism][:5])
+            if mism else "指纹不一致")
     else:
         return "ROLLBACK", "文件部分修改，回滚到 snapshot"
 
