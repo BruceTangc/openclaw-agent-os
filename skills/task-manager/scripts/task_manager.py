@@ -137,7 +137,10 @@ def normalize_task(data):
             "type": data.get("source_type", data.get("source", {}).get("type", "user")),
             "id": data.get("source_id") or (data.get("source", {}).get("id") if isinstance(data.get("source"), dict) else None),
         },
-        "goal_id": data.get("goal_id"),
+        # BE-1 (I-013): 自主任务必须能追溯到恰一个 active Goal 或显式 standalone。
+        #   goal_id 若提供则必须非空字符串; 空串/None 视作 standalone(人工一次性任务)。
+        #   source=user 不强制 I-013 (人工任务豁免); 其余 source 保持宽松(由调方保证 goal 存在), 仅拒绝非法空引用。
+        "goal_id": data.get("goal_id", ""),
         "project_id": data.get("project_id"),
         "parent_task_id": data.get("parent_task_id"),
         "type": data.get("type", ["action"]) if isinstance(data.get("type", ["action"]), list) else [data["type"]],
@@ -160,6 +163,9 @@ def normalize_task(data):
         "completed_at": None,
         "history": data.get("history", []),
         "retry_count": data.get("retry_count", 0),
+        # BE-2 (I-014): 独立 Execution # 历史 (attempt 级), 与 status 覆盖解耦。
+        #   executions 记录每次进入 RUNNING 的执行尝试; attempt# = len(executions)+1。
+        "executions": data.get("executions", []),
         "recurrence": data.get("recurrence"),
     }
     # 优先级 hint → level
@@ -418,6 +424,28 @@ def main():
                             t["completed_at"] = utcnow_iso()
                         t["history"].append({"timestamp": utcnow_iso(), "actor": "system",
                                              "action": "status_changed", "from": old, "to": ns})
+                        # BE-2 (I-014): 进入 RUNNING 时创建独立 execution/attempt 记录。
+                        #   每次 RUNNING(含 RETRYING→RUNNING) 记一次 attempt, 编号 attempt# =
+                        #   len(executions)+1, 与 status 字段解耦(不再被状态覆盖吞掉执行历史)。
+                        if ns == "RUNNING":
+                            execs = t.setdefault("executions", [])
+                            execs.append({
+                                "attempt": len(execs) + 1,
+                                "started_at": utcnow_iso(),
+                                "from_status": old,
+                                "ended_at": None,
+                                "outcome": None,
+                            })
+                        # BE-2 (I-014): 离开 RUNNING 时关闭当前 open attempt (record outcome)。
+                        #   RUNNING→终态/等待/失败, 把最近一条 started_at 且未 ended 的 attempt 收口。
+                        if old == "RUNNING" and ns != "RUNNING":
+                            execs = t.setdefault("executions", [])
+                            for ex in reversed(execs):
+                                if ex.get("ended_at") is None:
+                                    ex["ended_at"] = utcnow_iso()
+                                    out_map = {"COMPLETED": "SUCCESS", "FAILED": "FAILURE"}
+                                    ex["outcome"] = out_map.get(ns, "INTERRUPTED")
+                                    break
                     if args.title:
                         t["title"] = args.title
                     extra = read_stdin_or_json(args.json, "extra") if args.json else {}
