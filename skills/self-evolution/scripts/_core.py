@@ -273,6 +273,35 @@ def is_protected_target(target):
 def signature(scope, target, pattern_key):
     return "{}|{}|{}".format(str(scope), str(target), str(pattern_key))
 
+
+def classify_skill_scope(target, agent_workspace_skills=()):
+    """MA-1.0 Integration#4: 判定 Skill target 是 Agent-specific 还是 Shared。
+
+    依据目标路径归属：
+      - 目标落在任一 Agent 专属 workspace skills 目录 → agent (Agent-specific)
+      - 否则 → shared (共享)
+
+    agent_workspace_skills: 当前 Agent 的专属 skill 目录前缀（如
+    ["research", "~/workspace-research/skills"]）或直接传 skill 名。
+
+    返回 {"kind": "agent" | "shared", "matched_by": str}。
+    单 Agent / 未知目标 → shared（保守，shared 需更高审批）。
+    """
+    t = str(target or "").strip().lower()
+    if not t:
+        return {"kind": "shared", "matched_by": ""}
+    # 规范化：取 skill 名（去掉路径前后缀）；路径形式含 / 时逐段匹配
+    t_norm = t.replace("\\", "/")
+    t_segments = [s for s in t_norm.split("/") if s]
+    for entry in (agent_workspace_skills or ()):
+        e = str(entry)
+        en = e.replace("\\", "/").split("/")[-1].lower().strip()
+        if not en:
+            continue
+        # 匹配：skill 名作为路径段出现（含 target 直接等于 skill 名、子路径、或含该段）
+        if en in t_segments or t_norm == en or t_norm.startswith(en + "/"):
+            return {"kind": "agent", "matched_by": e}
+    return {"kind": "shared", "matched_by": ""}
 def find_candidate(scope, target, pattern_key):
     for cid in _list_ids("candidate"):
         rec = load_artifact("candidate", cid)
@@ -326,6 +355,15 @@ def register_evidence(rec):
     if source not in EVIDENCE_WRITE_SOURCES:
         raise ValueError("Evidence 写入被拒绝：source '{}' 不在允许列表内。"
                          "允许的来源：{}".format(source, ", ".join(sorted(EVIDENCE_WRITE_SOURCES - {"evolution_event"}))))
+    # MA-1.0 Integration#2: Evidence agent 归属透传（不参与 source 合法性判定）。
+    #   保留多 Agent 执行身份字段，使 Evolution 能回答“这条 Evidence 是哪个
+    #   Agent/哪次执行/哪个 Task 产生的”；单 Agent legacy 允许缺省。
+    for _f in ("agent_id", "session_id", "execution_id", "task_id",
+               "operation_id", "correlation_id"):
+        rec.setdefault(_f, "")
+    if rec.get("source") == "operational" and rec.get("agent_id"):
+        # operational 来源若带 agent_id，回填 source_agent 便于 compute_stats 归因
+        rec.setdefault("source_agent", rec.get("agent_id"))
     rec.setdefault("id", gen_id("EVID") if "EVID" in str(rec.get("id", "")) else rec.get("id") or "EVID-" + __import__("hashlib").sha256(json.dumps(rec, sort_keys=True).encode()).hexdigest()[:12])
     # L-02: Evidence 走原子追加（带锁），避免崩溃/并发产生半行导致 source-of-truth 静默丢失
     _PAppendAtmoic(evidence_store_path(), rec)

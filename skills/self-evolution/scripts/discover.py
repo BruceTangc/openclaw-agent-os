@@ -51,7 +51,8 @@ def _meets_threshold(stats, n_verified):
 
 
 def build_candidate(stats, evidence_refs, problem, scope, target, pattern_key,
-                    confidence, impact):
+                    confidence, impact, agent_id=None, session_id=None,
+                    execution_id=None, task_id=None):
     evo_id = _core.gen_evolution_id()
     cand = {
         "status": "CANDIDATE",
@@ -61,6 +62,13 @@ def build_candidate(stats, evidence_refs, problem, scope, target, pattern_key,
         "pattern_key": pattern_key,
         "problem": problem,
         "evidence_refs": evidence_refs,
+        # MA-1.0 Integration#3: Candidate Agent 归属。保留"这个问题是谁发现的",
+        #   供 Evolution 判断 Agent-specific vs Shared 及 scope 越权（Research 只能改
+        #   自己的 Skill）。单 Agent/legacy 允许缺省。
+        "agent_id": str(agent_id or ""),
+        "session_id": str(session_id or ""),
+        "execution_id": str(execution_id or ""),
+        "task_id": str(task_id or ""),
         "observation_count": stats.get("observation_count", 0),
         "unique_executions": stats.get("unique_executions", 0),
         "unique_sessions": stats.get("unique_sessions"),

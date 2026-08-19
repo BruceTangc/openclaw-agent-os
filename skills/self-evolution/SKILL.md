@@ -99,6 +99,19 @@ pending candidates / pending diagnoses / pending proposals / pending approvals /
 > 它**不代为判断如何改文件**。真实写入 target 由调用方 Agent 严格按 proposal.change 的精确修改方案执行
 > （写完后才允许 regression）。这样保持 Apply “笨”，只做 Enforcement。
 
+> **MA-1.0 Integration#5（Skill 变更接 OpenClaw Workshop）**：
+> Skill 作为 live capability 的实际创建/修改默认走 **OpenClaw Skill Workshop**（Agent 只能生成
+> PROPOSAL.md，apply 才写入；更新绑定目标当前 hash，目标被改后 proposal 变 stale；apply 前重新安全扫描）。
+> Agent OS self-evolution **不直接用 apply_patch 写 Skill**——它负责到 Proposal/治理边界为止；真实 Skill
+> 写入由 OpenClaw Workshop 执行（Proposal → Review → Security Scan → Apply）。apply_patch 仅保留用于
+> 非 Skill 的 governance 类变更（如配置文件/脚本的非 skill 修改），且仍受 protected targets 硬约束。
+> 这样不新建 Skill Update Runtime，Agent OS 负责治理，OpenClaw 负责 Skill 实际生命周期。
+
+> **MA-1.0 Integration#6（Apply 后 Verification/Record）**：
+> Workshop/apply_patch 的写入**不代表进化完成**。Apply 后必须回到 Agent OS 做 validate_applied_files
+> （指纹一致）、regression（behavior test）、security 检查；全部通过 → VERIFIED → Execution Record；
+> 任一失败 → ROLLBACK（恢复 snapshot）。见 `apply.py _apply_change_locked` 的 apply→verify→regression 链路。
+
 ## 状态机（非法跳转被 Core 强制拒绝）
 
 ```
