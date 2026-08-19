@@ -270,8 +270,12 @@ def is_protected_target(target):
             return True
     return False
 
-def signature(scope, target, pattern_key):
-    return "{}|{}|{}".format(str(scope), str(target), str(pattern_key))
+def signature(scope, target, pattern_key, agent_id=None):
+    """MA-1.0 Integration#2 (P2-2): signature 加入 agent_id, 使 Candidate 去重
+    区分到 Agent 维度（同 scope+target+pattern_key 不同 agent 不误合并）。
+    agent_id 缺省时保持向后兼容（空串不改变去重指纹）。"""
+    return "{}|{}|{}|{}".format(str(scope), str(target), str(pattern_key),
+                                 str(agent_id or ""))
 
 
 def classify_skill_scope(target, agent_id=None, agent_workspace=None, shared_root=None,
@@ -326,12 +330,18 @@ def classify_skill_scope(target, agent_id=None, agent_workspace=None, shared_roo
     if agent_workspace:
         workspace_root = os.path.realpath(os.path.expanduser(str(agent_workspace)))
     abs_candidate = None
-    if os.path.isabs(raw) or raw.startswith("./"):
-        abs_candidate = os.path.realpath(os.path.expanduser(raw))
+    # P2-3: 统一规范化 ./ 前缀，避免 ./<abs> 被误当相对路径
+    norm_raw = raw
+    if norm_raw.startswith("./"):
+        norm_raw = norm_raw[2:]
+    if os.path.isabs(norm_raw):
+        abs_candidate = os.path.realpath(os.path.expanduser(norm_raw))
+    elif norm_raw.startswith("./"):
+        abs_candidate = os.path.realpath(os.path.expanduser(norm_raw[2:]))
     else:
         # 相对路径（非单一 skill 名的一般路径）：尝试基于 agent workspace 规范化
-        if workspace_root and "/" in raw:
-            abs_candidate = os.path.realpath(os.path.join(workspace_root, raw))
+        if workspace_root and "/" in norm_raw:
+            abs_candidate = os.path.realpath(os.path.join(workspace_root, norm_raw))
     # symlink 已经由 realpath 解析；shared_root 亦 realpath
     shared_root_p = os.path.realpath(os.path.expanduser(shared_root)) if shared_root else None
     agent_skills_root = None
@@ -366,11 +376,12 @@ def classify_skill_scope(target, agent_id=None, agent_workspace=None, shared_roo
 
     # --- 其它无法可靠解析的情形 → SHARED fail-safe ---
     return {"kind": "SHARED", "matched_by": "", "deny": False}
-def find_candidate(scope, target, pattern_key):
+def find_candidate(scope, target, pattern_key, agent_id=None):
     for cid in _list_ids("candidate"):
         rec = load_artifact("candidate", cid)
         if rec and signature(rec.get("scope"), rec.get("target"),
-                             rec.get("pattern_key")) == signature(scope, target, pattern_key):
+                             rec.get("pattern_key"), rec.get("agent_id")) == \
+                signature(scope, target, pattern_key, agent_id):
             return rec
     return None
 
@@ -407,8 +418,14 @@ EVIDENCE_WRITE_SOURCES = {"verification", "evaluation", "operational", "user_fee
 # v2.4: evolution_event 只能通过 register_evolution_event() 写入，不允许普通 register_evidence() 使用
 ALLOWED_EVENT_TYPES = {"regression", "rollback"}
 
-def register_evidence(rec):
-    """登记 Evidence。v2.3: 验证来源合法性（Discover/Candidate/Proposal/Apply/Rollback 不允许自造 Evidence）。"""
+def register_evidence(rec, runtime_agent_id=None, runtime_session_id=None, runtime_execution_id=None, runtime_task_id=None):
+    """登记 Evidence。v2.3: 验证来源合法性（Discover/Candidate/Proposal/Apply/Rollback 不允许自造 Evidence）。
+
+    MA-1.0 Integration#2 (P2-1 增强): Evidence 层不信任调用方 JSON 里的身份字段，
+    而以 Runtime 提供的真实身份为准。当传入 runtime_* 身份时，强制覆盖 rec 中的
+    agent/session/execution/task 字段（Runtime 可信，防伪造 Evidence 身份）；
+    不传（legacy 单 Agent）则保留 rec 原值。
+    """
     source = str(rec.get("source", "")).strip().lower()
     if not source:
         raise ValueError("Evidence 写入被拒绝：source 必须存在且非空。"
@@ -425,6 +442,15 @@ def register_evidence(rec):
     for _f in ("agent_id", "session_id", "execution_id", "task_id",
                "operation_id", "correlation_id"):
         rec.setdefault(_f, "")
+    # P2-1: Runtime 身份优先——若提供，覆盖 rec 中的身份字段（防 Evidence 层伪造）。
+    if runtime_agent_id:
+        rec["agent_id"] = runtime_agent_id
+    if runtime_session_id:
+        rec["session_id"] = runtime_session_id
+    if runtime_execution_id:
+        rec["execution_id"] = runtime_execution_id
+    if runtime_task_id:
+        rec["task_id"] = runtime_task_id
     if rec.get("source") == "operational" and rec.get("agent_id"):
         # operational 来源若带 agent_id，回填 source_agent 便于 compute_stats 归因
         rec.setdefault("source_agent", rec.get("agent_id"))

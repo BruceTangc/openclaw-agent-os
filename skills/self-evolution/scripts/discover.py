@@ -80,7 +80,8 @@ def build_candidate(stats, evidence_refs, problem, scope, target, pattern_key,
         "diagnosis_id": None,
         "_stats_source": "computed",
     }
-    existing = _core.find_candidate(scope, target, pattern_key)
+    existing = _core.find_candidate(scope, target, pattern_key,
+                                    agent_id=cand.get("agent_id"))
     if existing:
         cand["id"] = existing["id"]
         cand["status"] = existing.get("status", "CANDIDATE")
@@ -201,8 +202,10 @@ def cmd_candidate(raw):
         "impact": data.get("impact", "medium"),
         "diagnosis_id": None,
         "_via": "candidate_handoff",
+        "agent_id": str(data.get("agent_id", "") or ""),
     }
-    existing = _core.find_candidate(scope, target, pattern_key)
+    existing = _core.find_candidate(scope, target, pattern_key,
+                                    agent_id=cand.get("agent_id"))
     if existing:
         cand["id"] = existing["id"]
         cand["status"] = existing.get("status", "CANDIDATE")
