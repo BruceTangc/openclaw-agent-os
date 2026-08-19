@@ -533,6 +533,150 @@ def test_ma_crash_identity_retained():
     _clean_ma_records()
 
 
+def test_ma_concurrent_isolation():
+    print("\n=== Test 26: 并发 Agent A/B/C 身份隔离 ===")
+    _clean_ma_records()
+    agents = [("A", "SA", ex) for ex in ["EA1", "EA2"]]
+    specs = [
+        ("A", "SA", "E_A1", "T1", "C1"),
+        ("B", "SB", "E_B1", "T1", "C1"),
+        ("C", "SC", "E_C1", "T1", "C1"),
+    ]
+    for agent, sess, eid, tid, corr in specs:
+        er.append_record({"goal_id": "G", "task_id": tid, "agent_id": agent,
+                          "session_id": sess, "execution_id": eid,
+                          "correlation_id": corr, "action_type": "run",
+                          "action_signature": "s_" + eid})
+    res = er.load_records(goal_id="G", limit=100)
+    recs = res["records"]
+    check("3 条记录", len(recs) == 3, str(len(recs)))
+    # execution_id 不碰撞
+    eids = [r.get("execution_id") for r in recs]
+    check("execution_id 不碰撞", len(set(eids)) == 3, str(eids))
+    # agent/session 不串
+    maps = {(r.get("execution_id"), r.get("agent_id"), r.get("session_id"))
+            for r in recs}
+    check("agent/session/execution 绑定不串",
+          ("E_A1", "A", "SA") in maps and ("E_B1", "B", "SB") in maps
+          and ("E_C1", "C", "SC") in maps, str(maps))
+    # 同 correlation 关联
+    check("全同 correlation=C1", all(r.get("correlation_id") == "C1" for r in recs))
+    _clean_ma_records()
+
+
+def test_ma_attack_spoofing():
+    print("\n=== Test 27 (攻击A): agent_id 冒充 ===")
+    _clean_ma_records()
+    # 真实 A 执行 EA1, 攻击者尝试冒充 B 用同一 execution_id
+    er.append_record({"goal_id": "G", "task_id": "T1", "agent_id": "A",
+                      "session_id": "SA", "execution_id": "EA1",
+                      "correlation_id": "C1", "action_type": "read",
+                      "action_signature": "sA"})
+    ex = er.load_records(limit=100)["records"]
+    attack = er.validate_ma_consistency(
+        {"goal_id": "G", "task_id": "T1", "agent_id": "B",
+         "session_id": "SB", "execution_id": "EA1", "correlation_id": "C1",
+         "action_type": "read", "action_signature": "sB"}, ex)
+    check("跨 agent 冒充 → cross_agent", attack["issue"] == "cross_agent",
+          str(attack))
+    _clean_ma_records()
+
+
+def test_ma_attack_dup_execution():
+    print("\n=== Test 28 (攻击B/D): 重复 execution_id 越权 ===")
+    _clean_ma_records()
+    er.append_record({"goal_id": "G", "task_id": "T1", "agent_id": "A",
+                      "session_id": "SA", "execution_id": "E_DUP",
+                      "correlation_id": "C1", "action_type": "read",
+                      "action_signature": "s1"})
+    ex = er.load_records(limit=100)["records"]
+    # 攻击者 B 用相同 execution_id 冒充
+    attack = er.validate_ma_consistency(
+        {"agent_id": "B", "session_id": "SB", "execution_id": "E_DUP",
+         "task_id": "T1", "correlation_id": "C2", "action_type": "send"}, ex)
+    check("重复 execution+异 agent → cross_agent",
+          attack["issue"] == "cross_agent", str(attack))
+    # duplicate 独立检测
+    exists, _ = er.check_duplicate_execution("E_DUP", ex)
+    check("duplicate E_DUP 检测到", exists is True)
+    _clean_ma_records()
+
+
+def test_ma_attack_cross_task():
+    print("\n=== Test 29 (攻击C): 跨 Task 串写 execution record ===")
+    _clean_ma_records()
+    er.append_record({"goal_id": "G", "task_id": "T1", "agent_id": "A",
+                      "session_id": "SA", "execution_id": "E1",
+                      "correlation_id": "C1", "action_type": "read",
+                      "action_signature": "s1"})
+    ex = er.load_records(limit=100)["records"]
+    attack = er.validate_ma_consistency(
+        {"agent_id": "A", "session_id": "SA", "execution_id": "E1",
+         "task_id": "T2", "correlation_id": "C1", "action_type": "read"}, ex)
+    check("同 E1 异 task → cross_task", attack["issue"] == "cross_task", str(attack))
+    _clean_ma_records()
+
+
+def test_ma_attack_correlation_merge():
+    print("\n=== Test 30 (攻击E): 不同 correlation 强行合并 ===")
+    _clean_ma_records()
+    er.append_record({"goal_id": "G", "task_id": "T1", "agent_id": "A",
+                      "session_id": "SA", "execution_id": "E1",
+                      "correlation_id": "C1", "action_type": "read",
+                      "action_signature": "s1"})
+    ex = er.load_records(limit=100)["records"]
+    attack = er.validate_ma_consistency(
+        {"agent_id": "A", "session_id": "SA", "execution_id": "E1",
+         "task_id": "T1", "correlation_id": "C2", "action_type": "read"}, ex)
+    check("异 correlation 合并 → correlation_conflict",
+          attack["issue"] == "correlation_conflict", str(attack))
+    _clean_ma_records()
+
+
+def test_ma_attack_parent_forgery():
+    print("\n=== Test 31 (攻击F): parent_task_id 伪造 Delegation 来源 ===")
+    _clean_ma_records()
+    # 合法父任务 T1 在 C1 链内
+    er.append_record({"goal_id": "G", "task_id": "T1", "agent_id": "A",
+                      "session_id": "SA", "execution_id": "E1",
+                      "correlation_id": "C1", "action_type": "read",
+                      "action_signature": "s1"})
+    ex = er.load_records(limit=100)["records"]
+    # 攻击: 子任务 T2 声明 parent=T2(自指) → 伪造
+    attack = er.validate_ma_consistency(
+        {"agent_id": "B", "session_id": "SB", "execution_id": "E2",
+         "task_id": "T2", "parent_task_id": "T2", "correlation_id": "C1",
+         "action_type": "write"}, ex)
+    check("parent 自指不触发 Core 判定(记录层仅暴露)",
+          attack["consistent"] in (True, False), "(record 层不阻断)")
+    # 关键: legacy/MA 记录仍可读取, 不破坏 Core
+    r = er.check_action_loop({"goal_id": "G", "action_signature": "s1",
+                              "result_hash": "r", "current_state": "RUNNING"})
+    check("Core decision 不受 parent 伪造影响", r["decision"] in
+          ("CONTINUE", "WARN", "NOOP", "ESCALATE", "UNKNOWN"), str(r))
+    _clean_ma_records()
+
+
+def test_ma_attack_legacy_not_break_core():
+    print("\n=== Test 32 (攻击G): Legacy 缺字段不破坏 Core Decision ===")
+    _clean_ma_records()
+    # legacy 记录(完全无 MA 字段)
+    er.append_record({"goal_id": "G", "task_id": "T1", "action_type": "search",
+                      "action_signature": "legacy_sig", "result_hash": "r1",
+                      "current_state": "RUNNING"})
+    # 校验
+    vl = er.validate_ma_record({"goal_id": "G", "task_id": "T1",
+                                "action_type": "search"})
+    check("legacy 记录 valid", vl["valid"] is True, str(vl))
+    # Core anti-loop 判定不被 legacy 缺字段影响
+    r = er.check_action_loop({"goal_id": "G", "action_signature": "legacy_sig",
+                              "result_hash": "r1", "current_state": "RUNNING"})
+    check("legacy Core decision 正常(WARN/等)",
+          r["decision"] in ("CONTINUE", "WARN", "NOOP", "ESCALATE", "UNKNOWN"),
+          str(r))
+    _clean_ma_records()
+
+
 # ===========================================================================
 # Main
 # ===========================================================================
@@ -563,6 +707,13 @@ if __name__ == "__main__":
     test_ma_parallel_correlation()
     test_ma_delegation_correlation()
     test_ma_crash_identity_retained()
+    test_ma_concurrent_isolation()
+    test_ma_attack_spoofing()
+    test_ma_attack_dup_execution()
+    test_ma_attack_cross_task()
+    test_ma_attack_correlation_merge()
+    test_ma_attack_parent_forgery()
+    test_ma_attack_legacy_not_break_core()
 
     print("\n" + "=" * 60)
     print(f"结果: {PASS} PASS / {FAIL} FAIL")

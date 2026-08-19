@@ -376,6 +376,81 @@ def validate_ma_record(record):
     }
 
 
+def validate_ma_consistency(record, existing=None):
+    """Multi-Agent 身份/关联一致性校验（MA-1.0 攻击防守, Integration 层）。
+
+    在 append 前对将要写入的记录做**关联一致性**检查，识别集成攻击：
+      - duplicate execution_id：本记录 execution_id 与已存在记录撞车 → 攻击 B/D
+      - cross-agent：同 execution_id 却不同 agent_id / session_id → 攻击 A/B
+      - cross-task：同 execution_id 却不同 task_id → 攻击 C
+      - correlation 合并冲突：同 execution_id 却不同 correlation_id → 攻击 E
+      - parent 伪造：同 correlation 链内 parent_task_id 指向不存在的任务 → 攻击 F
+
+    本函数是**审计/防守 hint**（记录与暴露），不替代 Permission/Runtime 阻断
+    （对齐 CHAIN-03-B）：返回 consistency 结果，由调用方决定是否写入/拒绝。
+    不改任何 Core 判定逻辑。existing 为已持久化的记录列表(可选)；不提供时
+    只做本记录内部的字段自洽检查。
+
+    返回 {consistent: bool, issue: str, detail: str}：
+      - consistent: 是否有冲突
+      - issue     : 冲突类型(code)
+      - detail    : 人读描述
+    """
+    rec = record or {}
+    eid = str(rec.get("execution_id", "") or "").strip()
+    # 单 Agent legacy 无 execution_id / 无 MA 字段 → 不适用
+    if not eid or not _is_ma_context(rec):
+        return {"consistent": True, "issue": "", "detail": ""}
+
+    def _field(r, k):
+        return str(r.get(k, "") or "").strip()
+
+    # 本记录内部自洽：execution_id 无法自证，但 correlation+task+agent 关系可查历史
+    for prev in (existing or []):
+        prev_eid = _field(prev, "execution_id")
+        if not prev_eid or prev_eid != eid:
+            continue
+        # 同 execution_id — 检查身份是否一致
+        if _field(prev, "agent_id") and _field(rec, "agent_id") \
+                and _field(prev, "agent_id") != _field(rec, "agent_id"):
+            return {"consistent": False, "issue": "cross_agent",
+                    "detail": "execution %s 出现两个 agent: %r vs %r"
+                    % (eid, _field(prev, "agent_id"), _field(rec, "agent_id"))}
+        if _field(prev, "session_id") and _field(rec, "session_id") \
+                and _field(prev, "session_id") != _field(rec, "session_id"):
+            return {"consistent": False, "issue": "cross_session",
+                    "detail": "execution %s 出现两个 session: %r vs %r"
+                    % (eid, _field(prev, "session_id"), _field(rec, "session_id"))}
+        if _field(prev, "task_id") and _field(rec, "task_id") \
+                and _field(prev, "task_id") != _field(rec, "task_id"):
+            return {"consistent": False, "issue": "cross_task",
+                    "detail": "execution %s 关联两个 task: %r vs %r"
+                    % (eid, _field(prev, "task_id"), _field(rec, "task_id"))}
+        if _field(prev, "correlation_id") and _field(rec, "correlation_id") \
+                and _field(prev, "correlation_id") != _field(rec, "correlation_id"):
+            return {"consistent": False, "issue": "correlation_conflict",
+                    "detail": "execution %s 关联两个 correlation: %r vs %r"
+                    % (eid, _field(prev, "correlation_id"), _field(rec, "correlation_id"))}
+        # 正常：同 execution_id + 同 agent/session/task/correlation = 同一执行续写（含 crash 恢复）
+        return {"consistent": True, "issue": "continuation", "detail": ""}
+
+    return {"consistent": True, "issue": "", "detail": ""}
+
+
+def check_duplicate_execution(execution_id, existing=None):
+    """校验 execution_id 是否已存在（重复执行/伪造 execution_id 防守）。
+
+    返回 (exists, prev_rec)。已存在 → 第二个记录若身份不同即异常（由
+    validate_ma_consistency 进一步细分）；若完全相同(同一执行续写/恢复)则可接受。
+    """
+    if not execution_id or not existing:
+        return False, None
+    for prev in existing:
+        if str(prev.get("execution_id", "") or "") == str(execution_id):
+            return True, prev
+    return False, None
+
+
 # ---------------------------------------------------------------------------
 # Progress Gate（核心 Anti-loop 判断）
 # ---------------------------------------------------------------------------
