@@ -811,7 +811,7 @@ def _measure_progress(change_id):
     数据源 = apply 后置 fingerprint 校验（verify_fingerprints）的真实结果，不是
     Action changed 就视为 Goal progressed。
     返回 0.0~1.0 之间浮点；无法测量(无 targets/无 fingerprint)时返回 None，表示
-    「无 Progress 信号」——交由决策器映射为 STALL_DETECTED。
+    「无 Progress 信号」——交由决策器映射为 UNKNOWN（不误判为 STALL）。
     """
     chg = load_artifact("change", change_id)
     if not chg:
@@ -860,6 +860,7 @@ def assess_progress(change_id):
         "progress_delta": delta,
         "current_progress": current,
         "previous_progress": previous,
+        "progress_state": "UNKNOWN" if current is None else ("PROGRESS" if current > 0 else "STALL"),
         "last_action_time": chg.get("updated_at"),
         "change_id": change_id,
     }
@@ -883,9 +884,17 @@ def detect_goal_loop(change_id, max_stall=STALL_THRESHOLD):
     sig = assess_progress(change_id)
     stall = sig.get("consecutive_stall_count", 0)
     cur = sig.get("current_progress")
-    # Goal Progress 始终为 0 或无 Progress 信号，且连续停滞达到阈值 → LOOP
-    no_goal_motion = (cur is None or cur <= 0)
-    is_loop = no_goal_motion and stall >= max_stall
+    # L3 三态修复（UNKNOWN/STALL 分离）：
+    #   cur is None = 无 Progress 信号（暂时无法测量：API 不可用/验证数据未产生/无 fingerprint），
+    #                 归为 UNKNOWN，不判 loop（不误停）——交由决策器映射 WAIT/VERIFY/ASK。
+    #   只有「真零进展(cur<=0) 且 连续停滞(stall>=max_stall)」才是 STALL → LOOP。
+    #   看 BUG：旧逻辑 no_goal_motion=(cur is None or cur<=0) 把 UNKNOWN 与 STALL 合并，
+    #   当 stall 计数因别的原因已涨起时，会把「无法测量」误判成「换动作空转」→ 误 STOP。
+    if cur is None:
+        is_loop = False  # UNKNOWN：无法测量 ≠ 零进展，不构成 loop
+    else:
+        no_goal_motion = (cur <= 0)
+        is_loop = no_goal_motion and stall >= max_stall
     return {
         "loop_type": "GOAL",
         "is_loop": is_loop,
@@ -893,6 +902,7 @@ def detect_goal_loop(change_id, max_stall=STALL_THRESHOLD):
         "consecutive_stall_count": stall,
         "progress_delta": sig.get("progress_delta"),
         "current_progress": cur,
+        "progress_state": "UNKNOWN" if cur is None else ("PROGRESS" if cur > 0 else "STALL"),
         "change_id": change_id,
     }
 

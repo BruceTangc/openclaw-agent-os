@@ -57,10 +57,12 @@ def progress_gate(change_id):
 
     # 决策链：Evaluation（达标）优先，其次 Progress（进展），最后 stall 处理。
     if cur is None:
-        # 无 Progress 信号 → STALL_DETECTED → Stop / Change Strategy / Ask
-        decision = "ASK"   # 信息不足，需人工/补充测量推进
+        # L3 三态：UNKNOWN（无 Progress 信号，暂时无法测量）→ WAIT/VERIFY/ASK，
+        # 不误判为 STALL/STOP。归因为测量不可用（API/验证数据/无 fingerprint），
+        # 交集出给上层：信息不足需人工/补充测量推进，而非判「换动作空转」停止。
+        decision = "ASK"   # UNKNOWN：信息不足，需人工/补充测量推进
         req = {"kind": "change", "dst": "MONITORING",
-               "reason": "progress_gate: 无 Progress 信号(STALL_DETECTED)",
+               "reason": "progress_gate: UNKNOWN（无 Progress 信号，无法测量）",
                "decision": decision}
     elif delta is None:
         # 首次评估：有当前进度但无基线。有进展信号则 Continue。

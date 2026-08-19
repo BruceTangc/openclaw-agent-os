@@ -336,6 +336,28 @@ try:
     check("L3_no_false_loop_without_baseline", gl.get("is_loop") is False)
     _core._measure_progress = _orig_measure
 
+    # 场景 6: UNKNOWN（无法测量 cur=None）但停滞计数已≥阈值 → 不误判 loop（三态修复核心）
+    # 旧逻辑 no_goal_motion=(cur is None or cur<=0) 会把「无法测量」误当成「换动作空转」
+    # 在 stall 已涨起时误 STOP；新逻辑 cur is None → UNKNOWN，不判 loop。
+    _fake_chg = {"id": "CHG-L3F", "status": "MONITORING", "targets": ["a.md"],
+                 "_expected_fingerprints": {"a.md": "hash"}, "_previous_progress": None,
+                 "consecutive_stall_count": 3}
+    _core._measure_progress = lambda cid: None
+    gl = _core.detect_goal_loop("CHG-L3F")
+    check("L3_unknown_not_loop_when_unmeasurable", gl.get("is_loop") is False)
+    check("L3_unknown_progress_state", gl.get("progress_state") == "UNKNOWN")
+    _core._measure_progress = _orig_measure
+
+    # 场景 7: 真零进展(cur<=0) + stall 达标 → STALL 态 + is_loop（确认 STALL 仍正常工作）
+    _fake_chg = {"id": "CHG-L3G", "status": "MONITORING", "targets": ["a.md"],
+                 "_expected_fingerprints": {"a.md": "hash"}, "_previous_progress": 0.0,
+                 "consecutive_stall_count": 3}
+    _core._measure_progress = lambda cid: 0.0
+    gl = _core.detect_goal_loop("CHG-L3G")
+    check("L3_stall_loop_still_works", gl.get("is_loop") is True)
+    check("L3_stall_progress_state", gl.get("progress_state") == "STALL")
+    _core._measure_progress = _orig_measure
+
     # 场景 4: record_progress_assessment 维护连续停滞计数 (delta==0 自增)
     _fake_chg = {"id": "CHG-L3D", "status": "MONITORING", "consecutive_stall_count": 1}
     _core.record_progress_assessment("CHG-L3D", {"current_progress": 0.0,

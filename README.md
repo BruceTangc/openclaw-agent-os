@@ -63,8 +63,9 @@
                            Verification                  Execution Record
                                    │                    （旁路审计层：谁执行谁创建；
                                    ▼                      Full Path/L2+/Evolution Apply MUST）
-                            Evaluation → Writeback?(条件) → Evidence
-                                   │
+                            Evaluation → Progress Assessment?(条件) → Autonomy Decision
+                                   │              （仅 Full/自主/长任务；
+                                   │               PROGRESS/STALL/UNKNOWN 三态）
                                    ▼
                         Evolution Candidate（有证据才触发）
 ```
@@ -73,7 +74,7 @@
 > 挂在 Execution 旁，回答“这次行为是否符合 Agent OS Protocol、从哪来到哪去”。
 
 **两个闭环**：
-1. **主任务闭环**：Trigger → Context → Goal/Task → (Fast|Full) → Permission → Execution → Verification → Evaluation → Writeback
+1. **主任务闭环**：Trigger → Context → Goal/Task → (Fast|Full) → Permission → Execution → Verification → Evaluation → (Progress Assessment → Autonomy Decision，仅 Full/自主/长任务) → Writeback
 2. **Evolution 闭环**：Evidence → Discover+Classify → Candidate → Judge → Proposal → Governance → Apply → Regression → Observe → New Evidence
    两环通过 **Verification/Evaluation → Evidence** 连接。
 

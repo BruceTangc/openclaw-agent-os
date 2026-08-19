@@ -113,6 +113,7 @@ def parse_request(req):
         "id": now_req.get("id") or generate_id("request"),
         "source": now_req.get("source", "user"),
         "objective": now_req.get("objective", now_req.get("goal", "")),
+        "success_condition": now_req.get("success_condition", now_req.get("success_criteria", [])),
         "context": now_req.get("context", {}),
         "constraints": now_req.get("constraints", []),
         "deadline": now_req.get("deadline"),

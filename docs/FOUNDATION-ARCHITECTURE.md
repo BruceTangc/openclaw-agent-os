@@ -263,7 +263,7 @@ Task → Action → Action Fingerprint → Permission → OpenClaw Policy → Ex
 ## 17. Progress Gate
 
 不能"Action changed"就认为"Goal progressed"。须比较 current vs previous progress。
-无 Progress → STALL_DETECTED → Stop / Change Strategy / Ask（而非无限运行）。
+无 Progress → UNKNOWN（无法测量，不误判 STALL）→ Wait/Verify/Ask；真零进展则 STALL → Stop / Change Strategy / Ask（而非无限运行）。
 
 > **Progress Decision / Autonomy Decision（Architecture Contract v1.4，核心协议）**：
 > Control Plane 的顶层决策不是"Evaluation 通过就继续"，而是必须形成一条明确的决策链：

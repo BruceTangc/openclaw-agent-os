@@ -65,6 +65,8 @@ Trigger (OpenClaw: user / heartbeat / cron / hook)
   → OpenClaw Native Execution
   → Verification (verification-evaluation)    ← 工具成功 ≠ 任务成功
   → Evaluation
+  → Progress Assessment (条件节点，见 §3.2/§17) ← 仅 Full/自主/长任务
+  → Autonomy Decision → Transition Gate (#13)     ← 仅自主，决策≠状态转换
 ```
 
 ### 3.2 Conditional 节点（按任务类型进入）
@@ -95,12 +97,19 @@ Trigger → Context → Goal/Task Semantics → Direct Skill → Permission Gate
 
 ```
 Trigger → Intake → Context → Goal/Task → Decision(如自主) → Orchestrator
-  → Permission → Execution → Verification → Evaluation → Writeback(如需要) → Evolution(如证据)
+  → Permission → Execution → Verification → Evaluation
+  → Progress Assessment → Autonomy Decision → Transition Gate
+  → Complete / Continue / Change Strategy / Ask / Stop
+  → Writeback(如需要) → Evolution(如证据)
 ```
 
 - 适用：自动经营项目、多 Agent 研究、自动报价/交易分析、长期任务、
   主动发现问题并处理、多步骤外部操作。
 - 需要：完整生命周期 + 编排 + 权限门 + 验证 + 治理。
+- **Progress Assessment 是 Conditional 节点**（对齐 §17 + FOUNDATION §17）：
+  仅 Full Path / 自主 / 长时运行 / 多步任务进入；Fast Path 不跑，防止官僚化。
+  Progress Assessment → Autonomy Decision → Transition Gate 三层分工：
+  检测器（#16）→ 决策器（#17）→ 状态门（#13），决策词禁直改 status。
 
 **判定原则**：能 Fast 不 Full；但风险升级时 Fast 必须升级 Full（No-Overengineering + 权限底线）。
 
@@ -129,6 +138,15 @@ Permission Gate (permission-security, 所有路径必经)
 - Verification：有没有真的做到（结果是否存在、是否完整、是否匹配成功条件）。
 - Evaluation：做得好不好（质量、是否满足业务目标、有无重复/副作用）。
 - 两者都要证据；Evaluation 通过才写 writeback，有证据的弱点才进 Evolution。
+
+> **Evaluation ≠ Progress Gate（固定术语，对齐 FOUNDATION §17）**：
+> Evaluation 判断「这次结果对 Goal 是否有价值/是否达标」；
+> Progress Assessment 比较「Goal 当前 vs 之前 progress」是否真在逼近 success criteria。
+> 二者不可混为一个「过得去就继续」的开关——否则换动作空转（每次 Task 不同、Evaluation 觉得「有产出」），
+> 但 Goal Progress=0 持续很久，L3 也难检测。
+> **Progress 三态**：PROGRESS（delta>0）/ STALL（delta==0 连续达阙）/ UNKNOWN（无信号，不误判为 STALL）。
+> **Autonomy Decision ≠ State Transition**：决策词（Continue/Stop/Change Strategy/Ask）必须先产出
+> Transition Request，再经 #13 Transition Gate 落地，禁直改 status。
 
 ## 4. 业务 Skill 接入协议
 
