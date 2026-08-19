@@ -166,9 +166,16 @@ def normalize_task(data):
     hint = data.get("priority_hint") or data.get("priority", {}).get("level")
     if hint in PRIORITY_LEVELS:
         t["priority"]["level"] = hint
-    # 状态
+    # 状态 (AE-7/L-16): create 只允许初始态, 禁止绕过状态机直接落到终态/执行态。
+    #   初始态限 INBOX/PLANNED (其余一律走状态机显式转换)。
     st = data.get("status")
-    if st in VALID_STATUS:
+    INITIAL_STATES = {"INBOX", "PLANNED"}
+    if st is not None:
+        if st not in VALID_STATUS:
+            raise ValueError("非法状态 %s" % st)
+        if st not in INITIAL_STATES:
+            raise ValueError("task create 禁止直接以 %s 创建 (初始态仅限 %s)，"
+                             "必须通过状态机转换到达" % (st, sorted(INITIAL_STATES)))
         t["status"] = st
     # 记录初始历史
     t["history"].append({

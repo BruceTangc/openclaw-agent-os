@@ -22,9 +22,11 @@ def do_rollback(change_id, reason, regression_id):
     # 恢复文件
     restored = _core.restore_snapshot(change_id)
 
-    # 更新 change 状态
-    chg["status"] = "ROLLED_BACK"
-    chg["updated_at"] = _core.now_iso()
+    # AE-4: change 状态经状态机跳转 (REGRESSED/APPLIED/APPLY_FAILED → ROLLED_BACK)
+    try:
+        _core.assert_transition(chg, "ROLLED_BACK", kind="change")
+    except ValueError as e:
+        return None, "rollback 状态跳转被拒: {}".format(e)
     chg["rollback"] = {
         "change_id": change_id, "rollback_at": _core.now_iso(),
         "reason": reason or "", "regression_id": regression_id or "",

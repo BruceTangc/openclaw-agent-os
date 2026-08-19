@@ -88,11 +88,14 @@ def utcnow_iso():
 def load_json(path, default):
     if not os.path.isfile(path):
         return default
+    # AE-5 (I-008): 损坏状态(CORRUPTED) ≠ 空状态(NOT_FOUND)。文件存在但无法解析 → 抛错，
+    # 让调用方 (如 _atomic_mutate_*) 在锁内回滚不写盘，避免 corrupt→default→overwrite 静默丢数据。
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return default
+            data = json.load(f)
+    except Exception as e:
+        raise ValueError("CORRUPTED: {} 无法解析 ({}), 拒绝当作空状态".format(path, e))
+    return data
 
 
 def save_json(path, data):

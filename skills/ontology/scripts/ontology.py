@@ -39,7 +39,7 @@ _LIB = os.path.join(os.path.dirname(BASE), "_lib")
 if _LIB not in sys.path:
     sys.path.insert(0, _LIB)
 from id_utils import generate_id
-from persistence import atomic_write_json
+from persistence import atomic_write_json, append_atomic
 
 SCHEMA_FILE = os.path.join(DATA, "schema.json")
 ENTITIES_FILE = os.path.join(DATA, "entities.jsonl")
@@ -200,9 +200,9 @@ def read_log(path):
 
 
 def append_log(path, obj):
-    ensure_dirs()
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(obj, ensure_ascii=False) + chr(10))
+    # AE-10 (L-17): source-of-truth (entities/relations/proposals/changelog) 用原子追加，
+    #   避免崩溃/并发产生损坏半行导致 read_log 静默跳过 → 实体静默丢失。
+    append_atomic(path, obj)
 
 
 def append_changelog(change):

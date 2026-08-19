@@ -112,3 +112,93 @@ Phase 9 回归测试
 > 已确认关闭: P1-1~P1-5, P1-7, P2-1, P2-2, P1-9(基础结构)。
 > 可后置 (P2): PERM-02 具体 scope 与 TASK/AGENT/PROJECT 层级关系; LOCK-01 Windows stale .stamp recovery (当前 fail-safe: 宁可 ASK 不错 ALLOW, 主运行于 Linux)。
 > 终验后建议进入全项目最终验收, 不再无限加修复项。
+
+---
+
+## 底层正确性审查轮 (2026-08-19) — 语义层/状态机/故障模型 (ChatGPT 深审, 基线 a40b914)
+> 父引入更严格标准: 不只查"字段缺了", 而是审查语义层/状态机/故障模型。核心结论:**架构方向正确, 不需要 OS2 / Agent Runtime / Scheduler / Event Bus / Memory Runtime / Context Runtime**。全部问题属于 Implementation Hardening / State Machine Enforcement / Persistence Correctness / Failure Semantics / Long-running。以下为逐项核实记录。
+
+### 审查结论
+架构 🟢 正确: OpenClaw Runtime → Agent OS Control Plane → Policy/Governance/Verification/Evidence → OpenClaw Native Execution。README 已正确分开 Execution Model 与 Control Plane 两图。OpenClaw 官方 Runtime 已含 agent loop/tool wiring/prompt assembly/session，Agent OS 绝不再做 Agent Runtime。**这条原则永久冻结**。
+
+### 逐项核实表 (按重要性排序)
+
+| # | 问题 (ChatGPT 断言) | 核实 | 精确定位 | 处置建议 |
+|----|------|------|---------|---------|
+| L-01 | save_artifact 非事务 (artifact JSON + index.jsonl 无统一锁/事务) | 🔴 属实 | _core.py save_artifact: `open(path,"w")` + `open(index,"a")`, 无锁无事务。崩溃 → artifact/index 不一致; 并发会乱 | 事务化 + Index=Derived View 强不变量 (丢失可从 artifact rebuild) |
+| L-02 | Evidence JSONL 未统一 append_atomic | 🔴 属实 | _core.py register_evidence 直接 `open(evidence.jsonl,"a")` 手写, 未走 persistence.append_atomic; 而 Execution Record 已用 append_atomic → 两处不一致 | 统一走 persistenc.append_atomic |
+| L-03 | evolution_id 不一致却 pass | 🔴 属实 | _core.py L373-376 register_evolution_event: `if cnd.evolution_id != evo_id and cnd.id != evo_id: pass` (注释"放宽"但没 reject) | 改成 REJECT (I-012) |
+| L-04 | Rollback 部分绕过状态机 | 🔴 属实 | _core.py rollback_full_state: `chg["status"]="ROLLED_BACK"` 直接写绕过 assert_transition; `_safe_transition` 内 `except ValueError: pass` | 走 assert_transition, 失败则真失败(I-009) |
+| L-05 | Proactive JSON 损坏 → 默认空 → 覆盖 | 🔴 属实 | proactive.py load_json(QUEUE_PATH, []) / state 同; 损坏读回 []→save 覆盖全 queue | 区分 NOT_FOUND / CORRUPTED, 损坏不覆盖(I-008) |
+| L-06 | Orchestrator load_json 损坏 → 默认值 | 🔴 属实(轻) | orchestrator.py load_json(path, default) except→default | Control Plane 数据不静默降级, 区分 NOT_FOUND/CORRUPTED |
+| L-07 | Task create 可绕过状态机 (直接 COMPLETED) | 🔴 属实 | task_manager.py normalize_task: `st=data.get("status"); if st in VALID_STATUS: t["status"]=st` → create 可直进 COMPLETED 且 completed_at=None | create 只允许 INBOX(或 creation-rule 合法初始), 走状态机 |
+| L-08 | Self-Evolution apply 未重做 realpath/symlink 防护 | 🔴 属实 | _core.py allowed_ops 用 is_within_workspace(含 realpath) 检查; 但 apply_patch 写文件 `path=ws_abs(rel)` 未重做 realpath → Proposal→Apply 间 symlink 替换 TOCTOU | Apply 时重新 realpath/symlink 检查(I-安全边界) |
+| L-09 | Goal-level A→B→C→A loop (Anti-loop 局部动作级) | 🟡 需长期验证 | execution_record 主比较 action/result/evidence 局部 | Anti-loop 正确性缺口, 建议 long-running 验证非本轮修 |
+| L-10 | Snapshot 对 create 文件无完整 crash recovery 语义 | 🟡 需长期验证 | take_snapshot 跳过 os.path.exists=False; apply_patch 单次异常有内存回滚, 但多步中途崩溃在 create 上无 delete 语义 | long-running test 佐证 |
+| L-11 | Task ID / Orchestrator Task ID namespace 不统一 | 🟡 后置 | orchestrator T1/T2 vs task_manager task_UUID | 明确 plan_task_id / persistent_task_id 语义 |
+| L-12 | Verification independence (LLM 伪造 evidence) | 🟡 后置 | source=verification 不能自证独立 | 检查 verification_method/evidence_ref/execution_id/independent_source 闭环 |
+
+> 注: L-01/02/03/04/05/07/08 共 8 项经我方 clone 源码核实**属实**; L-06 属实但偏轻; L-09/10 为长期验证; L-11/12 后置。
+
+### 第二轮深审 (2026-08-19) — 跨模块调用链走查新增点 (父选择 C)
+> 照“Persistence → State Machine → Execution Record → Anti-loop → Permission → Verification → Ontology → Self-Evolution → Crash Recovery”走了一遍跨模块调用链。重点找“单文件无恙、接合处断裂”。以下为新增核实点（补充上表，不重复）。
+
+| # | 问题 | 核实 | 精确定位 | 处置建议 |
+|----|------|------|---------|---------|
+| L-13 | link.py 重复实现一套并行 Anti-loop (retry_count/escalation) | 🔴 属实 | task-manager/scripts/link.py cmd_result_to_task: 自己 `retry_count+1`、`>=3 escalation`、`escalated_at` 去重 —— 与 execution_record.check_action_loop (v1.3 P1-1 统一的那套) 平行。同 goal 下两套各自计数, 可能重复 escalation / 计数不一致 | 统一走 execution_record, link 层只做状态回填不再自算 retry |
+| L-14 | link.py sync-memory 裸 append 未走原子写/锁 | 🟡 较轻 | link.py cmd_sync_memory: `open(mem_file,"a")` 直接写; 与其它写 memory 的模块并发会交错 | 统一走 persistence.append_atomic, 或写入前加锁 |
+| L-15 | link.py 全 subprocess 无事务边界 → 半完成状态 | 🟡 较轻 | link.py cmd_result_to_task: 先 update RUNNING 成功, 再 update target 失败 → task 悬在 RUNNING; 跨子进程无事务 | 需可重入/幂等的状态回程, 或失败补尝置回 |
+| L-16 | Task Manager update 有状态机保护, create 泄漏 (L-07 补充确认) | 🔴 证实 | update: `if ns not in VALID_TRANSITIONS.get(old,set()): raise` ✅ 有保护; create: normalize_task 只 `if st in VALID_STATUS` 直接放行 → 唯 create 可绕过 | 只修 create (限定初始态), update 已没问题 |
+| L-17 | Ontology entities/relations.jsonl (source of truth) 裸 append + read_log 静默跳损坏行 | 🔴 属实 | ontology.py append_log 全用裸 `open("a")` (未走 append_atomic); read_log `except json.JSONDecodeError: continue` 静默跳过 → read_entities 靠重放重建, 崩溃半行/并发交错导致实体静默丢失。比 L-02 更严重: 这是 ontology 的 source of truth 本身 | entities/relations 改 append_atomic; read_log 损坏行向 status/metrics 暴露 corruption 计数而非静默跳 |
+
+> 深审结论与 ChatGPT 一致: 全是 hardening/状态机/持久化/故障语义, 无架构错误, 不需要 OS2。跨模块接合处出现的断裂 (L-13 两套 anti-loop、L-15 无事务) 正是“单文件无恙、接起来断裂”的实证。
+
+### 建议冻结的 12 条底层不变量 (作为 Agent OS 底线宪法, 以后任何 commit 先回归)
+
+I-001 OpenClaw owns Runtime. Agent OS never owns the Agent Loop.
+I-002 OpenClaw Native Policy/Approval 是最终执行边界.
+I-003 Agent OS Permission 是 fail-closed.
+I-004 Tool success ≠ Task success.
+I-005 Verification 不能由产生该 claim 的同一执行自证.
+I-006 Execution Record 是 append-only observability, 不是 Runtime.
+I-007 Mutable state 用事务级 read-modify-write locking.
+I-008 损坏状态(CORRUPTED) ≠ 空状态(NOT_FOUND).
+I-009 每个状态转换必须过状态机.
+I-010 Self-Evolution 不能制造 Evidence.
+I-011 Self-Evolution 不能绕过 Permission/Approval/Verification.
+I-012 Evolution artifacts 必须保持一条一致的 evolution_id 链.
+I-013 Every autonomous Task (Proactive/Self-Evolution/Autonomous 创建) 必须能追溯到恰一个 active Goal, 或显式声明为 standalone (人工一次性任务不强制).
+I-014 Task state 由 execution history 派生或用状态机显式控制, 绝不通过破坏性覆盖 execution history 达成.
+I-015 UNKNOWN execution outcome 在可能产生外部副作用 (转账/发消息/下单/删除/commit Git/改生产文件) 时 MUST NOT 被自动 retry.
+
+## 自主闭环审查轮 (2026-08-19) — Goal→Task→Execution→Action→Observation→Evidence→Verification→Transition→Completion (ChatGPT 第二轮)
+> 审查对象从"找字段 bug"升级为整个 Agent OS 核心自主闭环。核心结论: 自我循环的真正源不是"重复 action"(L1 已防), 而是"Goal 无进展仍在推进当前 Action"(L3 Goal-loop, A→B→C→D 每步不重复但 goal_progress=0)。不要求新架构, 要求把现有机制硬化。(基线 a40b914)
+
+### 跨模块闭环与三个新不变量 (I-013/014/015) 核实
+
+| 不变量/论断 | 核实 | 源码证据 | 现状 |
+|----|------|---------|------|
+| I-013 Task→Goal 强制溯源 | 🔴 属实(缺口) | task_manager.py normalize_task: `goal_id: data.get("goal_id")` 无任何强制校验; proactive/link 创建的任务带 goal_id 但系统不验证其存在/active | goal_id 只是 metadata, 非不变量; 自主创建的任务无 goal provenance 强制 |
+| I-014 Task vs Execution 分离 | 🔴 属实(缺口) | task_manager.py 只有 `history`(状态变更列表)+`retry_count`, 无独立 Execution #; orchestrator plan 纯生成不持久化每次 execution; `Task.status=RUNNING` 覆盖执行信息 | 无 Execution # 概念, 无 attempt 级历史; Anti-loop/成本/Self-Evolution 缺可靠数据 |
+| I-015 UNKNOWN 不自动 retry | 🟢 已防护(部分) | link.py L253-271: `unknown→WAITING` + `execution_state=UNKNOWN` + reason="不自动重试" (即 v1.3 早修的 #14) | 主路径已满足; 剩余: Recovery scanner 对"副作用已发生"的 UNKNOWN 判定 (见 L-18) |
+| Anti-loop L1 Action | ✅ 已有 | execution_record.check_action_loop 主比较 action/result/evidence/state/strategy/input | 已统一 (P1-1) |
+| Anti-loop L2 State | 🟡 缺 | 无 RUNNING↔WAITING 等状态振荡检测 | 增强项 |
+| Anti-loop L3 Goal | 🟡 仅布尔 | execution_record 有 `goal_progress` 布尔 (v1.3 #11), 无 Progress Vector (stall_count/cycle_signature/last_progress_at/progress_count) | 增强项: Goal Progress Vector |
+| Recovery Scanner | 🟢 已有雏形 | recovery.py run_crash_recovery 检测 APPLYING 中断; 复用 CLI/heartbeat 触发, 未自造 scheduler | 方向正确; 副作用判定见 L-18 |
+
+### 新增审查项
+
+| # | 问题 | 核实 | 处置 |
+|----|------|------|------|
+| L-18 | Recovery 需先判断"副作用是否已发生"再决定 RETRY/VERIFY (删除/提交等可能已执行的副作用) | 🟡 属实(需补) | recovery/recover_apply 对可能有副作用的 operation 返回人工 VERIFY, 不盲 RETRY (I-015 落地) |
+
+### A/B/C 三类清单 (ChatGPT 建议 + 我方核实)
+**A 类必修**: AE-1 save_artifact 事务化 (=L-01) / AE-2 Evidence append_atomic (=L-02) / AE-3 evolution_id 不一致 REJECT (=L-03) / AE-4 rollback 过状态机 (=L-04) / AE-5 Proactive 损坏≠空 (=L-05) / AE-6 Orchestrator 损坏≠空 (=L-06) / AE-7 Task create 不绕状态机 (=L-16) / AE-8 apply 重做 path/symlink (=L-08)
+**B 类增强** (增量, I-013/014/L2/L3/L-18): BE-1 Goal→Task provenance (I-013) / BE-2 Task↔Execution 分离 (I-014) / BE-3 Action→Observation 对应 / BE-4 Evidence→Verification 来源链 / BE-5 Goal Progress Vector (L3) / BE-6 State-loop 检测 (L2) / BE-7 UNKNOWN 副作用回收 (L-18) / BE-8 crash recovery 完整
+**C 类不动**: Windows stale lock / scope 复杂继承 / 多主机 / 自造 scheduler / event bus / model runtime / memory runtime
+
+### 结论
+与第一轮一致: 全部是 hardening/状态机/持久化/故障语义, 无架构错误, 不需要 OS2。跨模块闭环的核心发现: L1 Anti-loop 已覆盖"重复动作", 但缺 L2 State-loop / L3 Goal Progress Vector——这是"模型偶尔陷入循环"(A→B→C→D 每步不重复但 goal 无进展)的底层根源, 属 B 类增强而非当前 A 类必修。
+
+### 下一阶段重点 (ChatGPT 建议 + 我方认同)
+不是继续加功能, 而是把底层逻辑证明到足够可靠: Persistence → State Machine → Execution Record → Anti-loop → Permission → Verification → Ontology → Self-Evolution → Crash Recovery, 再走一遍全部跨模块调用链 (单独每文件无恙, 两模块接合可能出现语义断裂)。

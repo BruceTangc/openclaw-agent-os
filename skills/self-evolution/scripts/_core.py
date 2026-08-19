@@ -28,6 +28,7 @@ _LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
 if _LIB not in sys.path:
     sys.path.insert(0, _LIB)
 from id_utils import generate_id as _idutil_generate_id, file_fingerprint as _idutil_fingerprint
+from persistence import FileLock as _PFileLock, append_atomic as _PAppendAtmoic, atomic_write_json as _PAtomicWrite
 
 # ======================== 路径与 Workspace ========================
 
@@ -127,8 +128,24 @@ def subdir(name):
 def index_path():
     return os.path.join(evo_dir(), "index.jsonl")
 
+
+def _append_index_line(line):
+    """带锁裸行追加到 index.jsonl（index 是 tab 分隔裸行，非 JSONL，不能走 append_atomic）。"""
+    p = index_path()
+    with _PFileLock(p) as _lk:
+        d = os.path.dirname(p)
+        if d and not os.path.isdir(d):
+            os.makedirs(d, exist_ok=True)
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(line)
+            f.flush()
+            os.fsync(f.fileno())
+
 def save_artifact(kind, record):
-    """写 artifact + append index。"""
+    """写 artifact + append index。
+    L-01: artifact 文件写与 index append 包进同一把锁，形成事务一致：
+    要么两者都发生，要么都不发生（锁内两写，异常不 commit）。
+    """
     prefix = {"candidate": "CAND", "diagnosis": "DGN", "proposal": "PRP",
               "change": "CHG", "regression": "RGR"}[kind]
     ident = record.get("id") or gen_id(prefix)
@@ -136,10 +153,11 @@ def save_artifact(kind, record):
     record.setdefault("updated_at", now_iso())
     sub = subdir(kind_dir(kind))
     path = os.path.join(sub, ident + ".json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(record, f, ensure_ascii=False, indent=2)
-    with open(index_path(), "a", encoding="utf-8") as f:
-        f.write("{}\t{}\t{}\n".format(ident, kind, _index_summary(record)))
+    with _PFileLock(path) as _lk:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(record, f, ensure_ascii=False, indent=2)
+        with open(index_path(), "a", encoding="utf-8") as f:
+            f.write("{}\t{}\t{}\n".format(ident, kind, _index_summary(record)))
     return ident
 
 def load_artifact(kind, ident):
@@ -206,7 +224,7 @@ TRANSITIONS_PROPOSAL = {
 TRANSITIONS_CHANGE = {
     "SNAPSHOTTED": {"APPLYING"},
     "APPLYING": {"APPLIED", "APPLY_FAILED"},
-    "APPLIED": {"MONITORING"},
+    "APPLIED": {"MONITORING", "ROLLED_BACK"},   # AE-4: 回滚也可直接从 APPLIED 走状态机
     "MONITORING": {"VALIDATED", "REGRESSED"},
     "VALIDATED": {"PROMOTED"},
     "APPLY_FAILED": set(),
@@ -319,11 +337,10 @@ def register_evidence(rec):
         raise ValueError("Evidence 写入被拒绝：source '{}' 不在允许列表内。"
                          "允许的来源：{}".format(source, ", ".join(sorted(EVIDENCE_WRITE_SOURCES - {"evolution_event"}))))
     rec.setdefault("id", gen_id("EVID") if "EVID" in str(rec.get("id", "")) else rec.get("id") or "EVID-" + __import__("hashlib").sha256(json.dumps(rec, sort_keys=True).encode()).hexdigest()[:12])
-    os.makedirs(os.path.dirname(evidence_store_path()), exist_ok=True)
-    with open(evidence_store_path(), "a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    with open(index_path(), "a", encoding="utf-8") as f:
-        f.write("{}\t{}\t{}\n".format(rec["id"], "evidence", rec.get("pattern_key", "")))
+    # L-02: Evidence 走原子追加（带锁），避免崩溃/并发产生半行导致 source-of-truth 静默丢失
+    _PAppendAtmoic(evidence_store_path(), rec)
+    # index.jsonl 是 tab 分隔裸行（非 JSONL），需裸行带锁追加
+    _append_index_line("{}\t{}\t{}\n".format(rec["id"], "evidence", rec.get("pattern_key", "")))
     return rec["id"]
 
 def load_evidence(evids=None):
@@ -373,8 +390,12 @@ def register_evolution_event(event_type, change_id, reason="", regression_id=Non
     if not cnd:
         raise ValueError("Change {} 缺少 candidate_id，无法确认 evolution 链路".format(change_id))
     if cnd.get("evolution_id") != evo_id and cnd.get("id") != evo_id:
-        # candidate 自身可能有 evolution_id 链路，未直接持有则放宽（保底以 chg.evolution_id 为准）
-        pass
+        # L-03: evolution_id/eid 不匹配必须 REJECT（v1.3 hardening），不再 pass。
+        #   保底只允许 candidate.id 本身等于 evo_id（顶层实体），其余不匹配一律拒绝。
+        raise ValueError(
+            "Change {} 的 evolution_id={} 与 Candidate {} 的 evolution_id={}/id={} 不一致，"
+            "无法确认 evolution 链路".format(change_id, evo_id, cnd_id,
+                                              cnd.get("evolution_id"), cnd.get("id")))
     
     prp_id = chg.get("proposal_id", "")
     prp = load_artifact("proposal", prp_id) if prp_id else None
@@ -435,11 +456,9 @@ def register_evolution_event(event_type, change_id, reason="", regression_id=Non
     # 复用 register_evidence 的写入逻辑，但跳过 source 检查（已验证）
     rec.setdefault("id", "EVID-" + __import__("hashlib").sha256(
         json.dumps(rec, sort_keys=True).encode()).hexdigest()[:12])
-    os.makedirs(os.path.dirname(evidence_store_path()), exist_ok=True)
-    with open(evidence_store_path(), "a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    with open(index_path(), "a", encoding="utf-8") as f:
-        f.write("{}\t{}\t{}\n".format(rec["id"], "evidence", rec.get("pattern_key", "")))
+    # L-02: Evidence 走原子追加（带锁）
+    _PAppendAtmoic(evidence_store_path(), rec)
+    _append_index_line("{}\t{}\t{}\n".format(rec["id"], "evidence", rec.get("pattern_key", "")))
     return rec["id"]
 
 def query_evidence(pattern_key=None, scope=None, target=None):
@@ -598,13 +617,19 @@ def allowed_ops(operations, targets):
     return (len(bad) == 0), bad
 
 def apply_patch(operations):
-    """执行结构化 operations，内存回滚保证原子性。"""
+    """执行结构化 operations，内存回滚保证原子性。
+    AE-8 (L-08): 写入前对每个文件重做 realpath 边界检查，消除 allowed_ops 检查后的
+    TOCTOU 窗口（symlink 可能在 proposal 检查与 apply 写入之间被替换指向 workspace 外）。
+    """
     originals = {}
     done = []
     try:
         for op in operations:
             rel = op["file"]
             path = ws_abs(rel)
+            # AE-8: 写入时重做 workspace 边界检查（resolve 当前真实路径）
+            if not is_within_workspace(path):
+                raise ValueError("apply 时路径越出 workspace: " + rel)
             o = op.get("op")
             if rel not in originals:
                 originals[rel] = _read_file(path) if os.path.exists(path) else None
@@ -762,9 +787,11 @@ def rollback_full_state(change_id, reason="", regression_id=None):
     # 恢复文件
     restored = restore_snapshot(change_id)
 
-    # 更新 change 状态
-    chg["status"] = "ROLLED_BACK"
-    chg["updated_at"] = now_iso()
+    # AE-4: change 状态经状态机跳转 (REGRESSED/APPLIED → ROLLED_BACK)
+    try:
+        assert_transition(chg, "ROLLED_BACK", kind="change")
+    except ValueError as e:
+        return None, "rollback 状态跳转被拒: {}".format(e)
     chg["rollback"] = {
         "change_id": change_id,
         "rollback_at": now_iso(),
