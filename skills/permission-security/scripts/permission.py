@@ -24,6 +24,20 @@ import json
 import sys
 from datetime import datetime, timezone
 
+# ---- 中央门 (C2 Permission 状态机) ----
+# 授权记录生命周期走 skills/_lib/transitions.py 中央门 (kind="permission")。
+try:
+    _LIB = "/root/.openclaw/workspace/skills/_lib"
+    sys.path.insert(0, _LIB)
+    from transitions import transition as _perm_transition, valid_states as _perm_states
+except Exception:  # pragma: no cover - 中央门不可用时降级为无状态判定
+    _perm_transition = None
+    _perm_states = None
+
+
+# 授权记录默认状态：创建即 REQUESTED（未审批）
+PERMISSION_REQUIRES_STATE = True  # C2: check() 强制校验授权记录状态
+
 # L0-L4 动作分类
 ACTION_LEVELS = {
     # L0 Observe
@@ -57,6 +71,82 @@ REQUIRES_APPROVAL = {0: False, 1: False, 2: True, 3: True, 4: True}
 REVERSIBILITY = {0: "reversible", 1: "reversible", 2: "partially_reversible",
                  3: "irreversible_or_high_impact", 4: "irreversible"}
 DEFAULT_DENY = {0: False, 1: False, 2: False, 3: False, 4: True}
+
+
+def _perm_record(req):
+    """从 req 构造/定位授权记录。兼容两种形态：
+    - req["authorization"] 是 dict 且含 status → 已进状态机（有记录）
+    - 否则视为首次 check，无状态记录 → 退出状态强制（兼容无状态现状）
+    返回 (record, has_state)。
+    """
+    authz = req.get("authorization")
+    if isinstance(authz, dict) and authz.get("status"):
+        return authz, True
+    return None, False
+
+
+def _perm_status_ok(record):
+    """授权记录必须处于 APPROVED 且未消费/吊销/过期才视为有效。"""
+    if record is None:
+        return True, None  # 无状态记录 → 交现有布尔判定
+    st = record.get("status")
+    if st == "APPROVED":
+        return True, None
+    reason = {
+        "REQUESTED": "授权待审批 (REQUESTED)",
+        "REJECTED": "授权已拒绝 (REJECTED)",
+        "EXPIRED": "授权已过期 (EXPIRED)",
+        "REVOKED": "授权已吊销 (REVOKED)",
+        "CONSUMED": "一次性授权已消费 (CONSUMED)",
+    }.get(st, "授权状态异常 (%s)" % st)
+    return False, reason
+
+
+def request_permission(req):
+    """创建授权记录 (REQUESTED)。返回记录或 None(降级)。"""
+    rec = {
+        "status": "REQUESTED",
+        "action": req.get("action"),
+        "scope": req.get("scope") or req.get("requested_scope"),
+        "requested_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "history": [],
+    }
+    return rec
+
+
+def _permission_transition(rec, to, actor="system", reason=""):
+    """经中央门变更授权记录状态；门不可用时退化直接写(仍记录)。"""
+    if _perm_transition is not None:
+        _perm_transition(rec, to, kind="permission", actor=actor, reason=reason)
+    else:
+        rec["status"] = to
+        rec.setdefault("history", []).append({
+            "event": "transition", "to": to, "actor": actor, "reason": reason,
+            "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        })
+    return rec
+
+
+def approve_permission(rec, actor="system", reason="approval"):
+    """REQUESTED→APPROVED。"""
+    return _permission_transition(rec, "APPROVED", actor=actor, reason=reason)
+
+
+def reject_permission(rec, actor="system", reason="rejected"):
+    return _permission_transition(rec, "REJECTED", actor=actor, reason=reason)
+
+
+def consume_permission(rec, actor="execution", reason="consumed"):
+    """APPROVED→CONSUMED (一次性授权已执行)。"""
+    return _permission_transition(rec, "CONSUMED", actor=actor, reason=reason)
+
+
+def revoke_permission(rec, actor="system", reason="revoked"):
+    return _permission_transition(rec, "REVOKED", actor=actor, reason=reason)
+
+
+def expire_permission(rec, actor="system", reason="expired"):
+    return _permission_transition(rec, "EXPIRED", actor=actor, reason=reason)
 
 
 def classify(action, resource_type="internal", side_effect="NONE", scope=None):
@@ -142,6 +232,14 @@ def check(req):
                 scope_ok = False
                 scope_problem = "requested scope %s 与 authorized scope %s 不匹配" % (r, a)
     auth_valid = bool(authorized) and bool(authorization or auth_scope or auth_expiry or auth_source)
+    # C2 (Permission 状态机): 若授权记录已进状态机，状态必须 APPROVED 才视为有效。
+    perm_rec, perm_has_state = _perm_record(req)
+    perm_status_ok = True
+    perm_status_problem = None
+    if perm_has_state:
+        perm_status_ok, perm_status_problem = _perm_status_ok(perm_rec)
+        if not perm_status_ok:
+            auth_valid = False
     # PERM-01/修复: expiry 必须真正参与授权决策。过期授权视为无效，
     #   需重新确认(ask)，绝不静默 allow。
     expired = False
@@ -213,6 +311,8 @@ def check(req):
             "source": auth_source,
             "scope": auth_scope,
             "expiry": auth_expiry,
+            "status_ok": perm_status_ok,
+            "status_problem": perm_status_problem,
         },
         "native_policy_final": True,  # OpenClaw 原生 policy 仍是最终拦截
     }

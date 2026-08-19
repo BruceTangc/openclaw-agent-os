@@ -112,6 +112,18 @@ _CANDIDATE_TRANSITIONS = {
     "ROLLED_BACK": set(),
 }
 
+# --- Permission (授权记录生命周期; 见冻结方案 #7 执行护栏) ---
+# REQUESTED → APPROVED → EXPIRED/REVOKED/CONSUMED；CONSUMED = 一次性授权已用
+_PERMISSION_TRANSITIONS = {
+    "REQUESTED": {"APPROVED", "REJECTED", "EXPIRED", "REVOKED"},
+    "APPROVED": {"CONSUMED", "EXPIRED", "REVOKED"},
+    "REJECTED": set(),
+    "EXPIRED": set(),
+    "REVOKED": set(),
+    "CONSUMED": set(),
+}
+
+
 # --- Execution (decision 驱动的轻状态机; 见 C1 #2 状态=事实推导) ---
 _EXECUTION_STATES = ["CONTINUE", "WARN", "NOOP", "ESCALATE", "UNKNOWN"]
 # Execution 的 decision 由 check_action_loop 推导，不落传统 state 跳转表；
@@ -140,6 +152,7 @@ _GATES["change"] = (_all_states(_CHANGE_TRANSITIONS), _CHANGE_TRANSITIONS)
 _GATES["candidate"] = (_all_states(_CANDIDATE_TRANSITIONS), _CANDIDATE_TRANSITIONS)
 _GATES["execution"] = (_EXECUTION_STATES, {"_": set()})
 _GATES["regression"] = (_REGRESSION_STATES, _REGRESSION_TRANSITIONS)
+_GATES["permission"] = (_all_states(_PERMISSION_TRANSITIONS), _PERMISSION_TRANSITIONS)
 
 
 def register_gate(kind, states, transitions):
