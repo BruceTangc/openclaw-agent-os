@@ -121,6 +121,31 @@ version: 1.3.0
 - 不静默覆盖知识；不删除历史（标 obsolete 代替）。
 - 不因减少上下文而删除有用知识。
 
+## Multi-Agent Knowledge Contract（MA-1.0）
+
+多 Agent 横向协作时，知识治理必须保留 Agent 来源并做 scope 隔离（对齐规格第 10 条）。
+
+### 10.1 Knowledge Provenance
+
+每条声明除 subject/claim/evidence 外，跨 Agent 时必须额外保留：
+`source_agent_id / source_task_id / source_execution_id / source_evidence / confidence / freshness`。
+Agent B 引用 Agent A 的知识时，不得抹掉来源、不得把 A 的声明当成 B 自己验证过的事实。
+
+### 10.2 Agent-local Knowledge
+
+默认 `scope = AGENT`、`owner_id = 当前 agent`。Agent-local 知识不被其它 Agent 隐式读取。
+
+### 10.3 Shared Knowledge 走 Governance
+
+跨 Agent 共享（PROJECT/USER/GLOBAL scope）必须：
+`Agent A → Knowledge Candidate → Contradiction Check → Provenance Check → Governance → PROJECT/USER/GLOBAL`。
+禁止 Agent A 直接写 GLOBAL。
+
+### 10.4 Conflict 不静默覆盖
+
+Research 声称 X、Trading 声称 Y 时：不得静默 A+B=TRUE，必须 `CONFLICT` + 保留双方
+（标 disputed）+ 交上层 resolve 或补证据。
+
 ## Examples
 
 - 「API X 返回字段 Y 需校验时间戳」→ 声明（source_stated + evidence）→ active。

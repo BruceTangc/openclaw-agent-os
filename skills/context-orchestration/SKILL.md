@@ -123,6 +123,34 @@ version: 1.3.0
 - 不因压缩而抹平矛盾或删关键证据。
 - 不外泄无关上下文（隐私最小化）。
 
+## Multi-Agent Context Contract（MA-1.0）
+
+多 Agent 横向协作时，上下文组装必须遵守以下隔离与溯源规则（对齐 OpenClaw 原生
+per-agent workspace/session 隔离，不另建 Agent Registry）。
+
+### 7.1 Context 必须带 Scope
+
+检索/组装时，上下文选择必须绑定：`agent_id` / `task_id` / `project_id` / `scope`。
+默认只取 **当前 Agent 自身 scope** 内的上下文（`TASK < AGENT < PROJECT < USER < GLOBAL`）。
+不因 Shared Knowledge/Ontology 存在就自动扩大检索到其它 Agent 的私有作用域。
+
+### 7.2 禁止 Context Leakage
+
+- Agent A **不得**自动加载 Agent B 的 private memory / private state / 未授权的 Task 上下文。
+- 共享知识（GLOBAL/PROJECT scope 且经 governance 授权）可读；Agent-local（AGENT scope）默认隔离。
+- 禁止 `Agent A → Context → Agent B private state` 的隐式透传。
+
+### 7.3 Cross-Agent Context 只走显式委托
+
+仅当存在明确 Delegation（Agent A 委托 Agent B）时，才把 **Selected Context**（最小交接包）
+传给 B，而非 B 读取 A 的全部上下文。交接包应含：目标 + 必要事实 + 必要约束，不含 A 的私有噪音。
+
+### 7.4 Provenance 保留
+
+所有跨 Agent 上下文片段必须保留来源：`source_agent_id` / `source_task_id` /
+`source_execution_id` / `source_scope`。下游消费时不得抹掉来源、不得把他人上下文
+当成自己验证过的事实。
+
 ## Examples
 
 - 「研究 AI Agent 方向」→ 取当前项目、相关目标、近期相关 memory、ontology 依赖，排除无关项目历史。

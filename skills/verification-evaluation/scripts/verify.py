@@ -84,6 +84,10 @@ def verify(result, level="V1"):
     indep = bool(v3.get("independently_verified") or result.get("independently_verified"))
     has_evidence_list = isinstance(evidence_refs, (list, tuple, set)) and len(evidence_refs) > 0
     v3_ok = bool(method) and bool(verified_by) and has_evidence_list and indep
+    # MA-1.0 (规格 11.3/11.4): producer/verifier 分离 —— 只透传 provenance,
+    #   不改变 v3_ok 判定。producer=产生结果的 Agent, verifier=独立复核的 Agent。
+    producer_agent_id = v3.get("producer_agent_id") or result.get("producer_agent_id") or ""
+    verifier_agent_id = v3.get("verifier_agent_id") or result.get("verifier_agent_id") or ""
     checks.append({
         "check": "V3 independent_verified",
         "ok": v3_ok,
@@ -92,6 +96,8 @@ def verify(result, level="V1"):
             "evidence_refs_count": len(evidence_refs) if has_evidence_list else 0,
             "verified_by": verified_by,
             "independent": indep,
+            "producer_agent_id": producer_agent_id,
+            "verifier_agent_id": verifier_agent_id,
         },
     })
     if level == "V3":

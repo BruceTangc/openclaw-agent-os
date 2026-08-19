@@ -508,8 +508,17 @@ def detect_result_conflict(results):
 # ---------------------------------------------------------------------------
 # Orchestration Result (文档 §55)
 # ---------------------------------------------------------------------------
-def orchestration_result(req, plan, status="completed", summary=""):
-    """Proactive/上层拿到的标准返回."""
+def orchestration_result(req, plan, status="completed", summary="",
+                          handoff=None):
+    """Proactive/上层拿到的标准返回。
+
+    MA-1.0 (规格 5.4 Result Handoff): handoff 可选，记录结果来源 provenance，
+    供下游 Agent 识别"这是谁的结论、哪个执行/任务产生、证据与置信度"，
+    不把上游结论当成自己验证过的事实。
+    handoff = {source_agent_id, source_execution_id, source_task_id,
+               evidence_refs, confidence, timestamp}
+    """
+    h = handoff or {}
     return {
         "request_id": req.get("id"),
         "status": status,  # completed|partial|failed|waiting
@@ -520,6 +529,15 @@ def orchestration_result(req, plan, status="completed", summary=""):
         "artifacts": [],
         "next_action": None,
         "confidence": 0.0,
+        # MA-1.0 Result Handoff provenance
+        "provenance": {
+            "source_agent_id": h.get("source_agent_id", ""),
+            "source_execution_id": h.get("source_execution_id", ""),
+            "source_task_id": h.get("source_task_id", ""),
+            "evidence_refs": h.get("evidence_refs", []),
+            "confidence": h.get("confidence", 0.0),
+            "timestamp": h.get("timestamp", ""),
+        },
     }
 
 

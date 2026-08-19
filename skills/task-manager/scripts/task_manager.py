@@ -221,6 +221,30 @@ def find_duplicate(tasks, task):
     return None
 
 
+def check_agent_isolation(task, agent_id, delegated=False):
+    """MA-1.0 (规格 6.3 Agent Isolation): 校验当前 Agent 是否有权修改该 Task。
+
+    - agent_id 为空 → 不启用隔离 (legacy 兼容)
+    - delegated=True → 显式委托, 放行
+    - Task 的 owner/assignee 若绑定到别的 agent (type=agent 且 id != 当前 agent)
+      → 拒绝 (Agent A 不能直接改 Agent B 的 Task)
+
+    返回 (allowed: bool, reason: str)。
+    """
+    if not agent_id:
+        return True, ""
+    if delegated:
+        return True, ""
+    for role in ("assignee", "owner"):
+        r = task.get(role) or {}
+        if str(r.get("type", "") or "") == "agent":
+            oid = str(r.get("id", "") or "").strip()
+            if oid and oid != agent_id:
+                return False, "跨 Agent 隔离: task {} 的 {} 归属 {}，当前 {} 无权修改" \
+                    .format(task.get("id"), role, oid, agent_id)
+    return True, ""
+
+
 def ordered_dedup(items):
     """#16: 保序去重 (list of hashable)。"""
     seen = set()
@@ -353,12 +377,16 @@ def main():
     p_update.add_argument("--status", help="目标状态")
     p_update.add_argument("--title")
     p_update.add_argument("--json", help="附加字段 JSON")
+    p_update.add_argument("--agent", default="", help="MA-1.0: 当前执行 Agent 身份，跨 Agent 隔离校验")
+    p_update.add_argument("--delegated", action="store_true", help="MA-1.0: 本次为显式委托操作")
 
     p_assign = sub.add_parser("assign", help="分配")
     p_assign.add_argument("--id", required=True)
     p_assign.add_argument("--role", choices=["owner", "assignee"], default="assignee")
     p_assign.add_argument("--type", default="agent")
     p_assign.add_argument("--to", required=True)
+    p_assign.add_argument("--agent", default="", help="MA-1.0: 当前执行 Agent 身份")
+    p_assign.add_argument("--delegated", action="store_true", help="MA-1.0: 本次为显式委托操作")
 
     p_scan = sub.add_parser("scan", help="健康扫描")
 
@@ -417,6 +445,12 @@ def main():
         def _update(tasks):
             for t in tasks:
                 if t["id"] == args.id:
+                    # MA-1.0 (规格 6.3): 跨 Agent 隔离校验
+                    allowed, reason = check_agent_isolation(
+                        t, getattr(args, "agent", ""),
+                        delegated=getattr(args, "delegated", False))
+                    if not allowed:
+                        raise ValueError(reason)
                     old = t["status"]
                     if args.status:
                         ns = args.status.upper()
@@ -487,6 +521,12 @@ def main():
         def _assign(tasks):
             for t in tasks:
                 if t["id"] == args.id:
+                    # MA-1.0 (规格 6.3): 跨 Agent 隔离校验
+                    allowed, reason = check_agent_isolation(
+                        t, getattr(args, "agent", ""),
+                        delegated=getattr(args, "delegated", False))
+                    if not allowed:
+                        raise ValueError(reason)
                     t[args.role] = {"type": args.type, "id": args.to}
                     t["updated_at"] = utcnow_iso()
                     t["history"].append({"timestamp": utcnow_iso(), "actor": "system",

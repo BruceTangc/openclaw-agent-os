@@ -336,18 +336,20 @@ def _atomic_mutate_queue(mutator):
         return result
 
 
-def _save_state(st):
+def _save_state(st, path=None):
     # v1.3 #8: State 并发写入 atomic
-    atomic_write_json(STATE_PATH, st)
+    atomic_write_json(path or STATE_PATH, st)
 
 
-def _atomic_mutate_state(mutator):
+def _atomic_mutate_state(mutator, path=None):
     """P1-2/修复: State 的 read→modify→write 放进同一 FileLock 事务。
-    mutator(st) 返回 (new_st, result)；异常则锁内回滚不写盘。"""
-    with FileLock(STATE_PATH):
-        st = load_json(STATE_PATH, _default_state())
+    mutator(st) 返回 (new_st, result)；异常则锁内回滚不写盘。
+    path 可选(MA-1.0 per-agent state)；默认 STATE_PATH。"""
+    p = path or STATE_PATH
+    with FileLock(p):
+        st = load_json(p, _default_state())
         new_st, result = mutator(st)
-        _save_state(new_st)
+        _save_state(new_st, p)
         return result
 
 
@@ -406,6 +408,15 @@ STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "..", "memory", "state.json")
 
 
+def _state_path(agent_id=None):
+    """MA-1.0 (规格 14.1 Agent-local State): 有 agent_id 时用 per-agent 状态文件，
+    避免多 Agent 共享同一 proactive 状态相互污染；无 agent_id 时用默认全局 state.json。"""
+    if agent_id:
+        base = os.path.dirname(STATE_PATH)
+        return os.path.join(base, "state-%s.json" % str(agent_id))
+    return STATE_PATH
+
+
 def _default_state():
     return {
         "last_wake_at": None,
@@ -433,8 +444,10 @@ def _default_state():
 
 def state_cmd(sub, args):
     now = utcnow_iso()
+    # MA-1.0 (规格 14.1): per-agent state 隔离
+    sp = _state_path(getattr(args, "agent", None))
     if sub == "show":
-        return load_json(STATE_PATH, _default_state())
+        return load_json(sp, _default_state())
     if sub == "wake":
         # v1.3 Anti-loop: wake cooldown check (default 60s)
         WAKE_COOLDOWN_SEC = 60
@@ -466,7 +479,7 @@ def state_cmd(sub, args):
             return st, {"wake": "ok", "last_wake_at": now}
 
         # P1-2: read→modify→save 同一锁事务
-        return _atomic_mutate_state(_wake)
+        return _atomic_mutate_state(_wake, sp)
     if sub == "bump":
         # 计数一个指标
         key = args.key
@@ -480,7 +493,7 @@ def state_cmd(sub, args):
                 return st, {"metrics": st["metrics"]}
             return st, None
 
-        res = _atomic_mutate_state(_bump)
+        res = _atomic_mutate_state(_bump, sp)
         if res is None:
             return {"error": "未知指标 %s" % key}
         return res
@@ -488,7 +501,7 @@ def state_cmd(sub, args):
         def _go(st):
             st["current_goal"] = {"id": args.goal, "alignment": args.alignment or 0.0}
             return st, st["current_goal"]
-        return _atomic_mutate_state(_go)
+        return _atomic_mutate_state(_go, sp)
     return {"error": "未知子命令 %s" % sub}
 
 
@@ -547,6 +560,7 @@ def main():
     p_state.add_argument("--delta", type=int)
     p_state.add_argument("--goal")
     p_state.add_argument("--alignment", type=float)
+    p_state.add_argument("--agent", default="", help="MA-1.0: per-agent state 隔离")
 
     p_evol = sub.add_parser("evol", help="生成 Evolution Candidate")
     p_evol.add_argument("--problem", required=True)

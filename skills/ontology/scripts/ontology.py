@@ -366,12 +366,32 @@ def cmd_status(args):
         print("  By type:   {0}".format(", ".join("{0}={1}".format(k, v) for k, v in sorted(types.items()))))
 
 
+def _visible_to(ent, agent_id):
+    """MA-1.0 (规格 8.3 Cross-Agent Read): 判断实体对当前 agent 是否可见。
+
+    scope=AGENT 且 owner_id 非空且 != 当前 agent → 默认 DENY（隔离）。
+    scope ∈ TASK/PROJECT/USER/GLOBAL 或 owner_id 为空/匹配 → 可见。
+    """
+    if not agent_id:
+        return True  # 未声明身份 → 不启用隔离（legacy 兼容）
+    scope = str(ent.get("scope", "") or "").upper()
+    if scope == "AGENT":
+        oid = str(ent.get("owner_id", "") or "").strip()
+        if oid and oid != agent_id:
+            return False
+    return True
+
+
 def cmd_entity(args):
     entities = read_entities()
     e = entities.get(args.entity)
     if not e:
         print("实体不存在: {0}".format(args.entity))
         return 1
+    # MA-1.0: 跨 Agent 读隔离
+    if not _visible_to(e, args.agent):
+        print("拒绝读取（跨 Agent 隔离，scope=AGENT 且非本 Agent）: {0}".format(args.entity))
+        return 3
     print(json.dumps(e, ensure_ascii=False, indent=2))
     return 0
 
@@ -380,6 +400,7 @@ def cmd_search(args):
     entities = read_entities()
     q = args.search.lower()
     hits = []
+    hidden = 0
     for eid, e in entities.items():
         blob = " ".join(str(v) for v in [
             e.get("name", ""), e.get("description", ""),
@@ -387,10 +408,16 @@ def cmd_search(args):
             json.dumps(e.get("tags", [])),
         ]).lower()
         if q in blob or q in eid.lower():
+            # MA-1.0: 跨 Agent 读隔离
+            if not _visible_to(e, args.agent):
+                hidden += 1
+                continue
             hits.append(e)
     print("命中 {0} 条:".format(len(hits)))
     for e in hits[:MAX_RETURN]:
         print("  [{0}] {1} ({2})".format(e["id"], e.get("name", "?"), e["type"]))
+    if hidden:
+        print("（已隔离隐藏 {0} 条跨 Agent 实体）".format(hidden))
     return 0
 
 
@@ -430,6 +457,9 @@ def cmd_create_entity(args):
         "updated_at": now_iso(),
         "status": entity_props.get("status", "active"),
         "scope": entity_props.get("scope", "AGENT"),
+        # MA-1.0 (规格 8.1 Entity Ownership): 记录实体归属。
+        "owner_type": entity_props.get("owner_type", "agent" if entity_props.get("scope") in (None, "AGENT", "TASK") else "project"),
+        "owner_id": entity_props.get("owner_id", ""),
     }
     append_log(ENTITIES_FILE, {"op": "create", "entity": entity})
     change = {
@@ -1027,6 +1057,8 @@ def main():
     parser = argparse.ArgumentParser(description="Ontology Skill for OpenClaw")
     parser.add_argument("--status", action="store_true")
     parser.add_argument("--entity", metavar="ID")
+    parser.add_argument("--agent", metavar="AGENT_ID", default="",
+                        help="MA-1.0: 当前读取 Agent 身份，用于跨 Agent 读隔离（scope=AGENT 且非本 Agent 的实体默认不可见）")
     parser.add_argument("--search", metavar="QUERY")
     parser.add_argument("--relations", metavar="ID")
     parser.add_argument("--impact", metavar="ID")
