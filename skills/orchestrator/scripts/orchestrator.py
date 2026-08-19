@@ -92,24 +92,6 @@ def _f(v, default=0.0):
         return default
 
 
-def load_json(path, default):
-    if not os.path.isfile(path):
-        return default
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return default
-
-
-def save_json(path, data):
-    d = os.path.dirname(path)
-    if d and not os.path.isdir(d):
-        os.makedirs(d, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
 def read_stdin_or_json(raw, label):
     if raw == "-":
         return json.load(sys.stdin)
