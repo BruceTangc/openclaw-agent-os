@@ -94,10 +94,26 @@ Goal = 最终想达到的状态。必须含：`goal_id / objective / success_cri
 progress_signal / current_state / created_at / updated_at`。
 > Goal 不能只写自然语言；必须尽量有 Success Criteria + Progress Signal，否则无法判断"有没有进步"。
 
+> **所有权切分（Architecture Contract v1.4）**：Goal/Task 存在**两个正交的所有权**，
+> 必须严格分开，不允许混为一谈：
+>
+> | 维度 | 归属 | 负责 |
+> |---|---|---|
+> | **Goal/Task Runtime Ownership** | **OpenClaw Runtime** | Task object / Task 持久化 / Task 生命周期运行 / Task 调度与流程 / Task 执行（agent loop） |
+> | **Goal/Task Governance Semantics** | **Agent OS Control Plane** | objective 语义 / success criteria / progress 语义 / 风险分级 / governance / verification 要求 / autonomy 决策 |
+>
+> 一句话：**OpenClaw 拥有 "Task 怎么跑"，Agent OS 拥有 "这个 Task 该不该跑、跑得好不好、要不要继续"**。
+> Agent OS 只应作为 Control Plane 读取/判定 Goal/Task 的**语义**，绝不因提供 `task-manager` 语义就
+> 声称自建 Task Runtime。文档里不许出现"Agent OS Task Manager owns task runtime"这类表述，
+> 以免误读为 Agent OS 自建 Runtime（违反 §27 路由 + 禁止自建 Runtime 原则）。
+
 ## 7. Task 层
 
 Task = 为 Goal 完成的一项工作。关系 `Goal ├── Task A/B/C`。
 必须可追溯 `goal_id → task_id`；自主产生的 Task 必须有 Goal provenance。
+> 归属同上：Task 的**运行生命周期**归 OpenClaw，Task 的**语义判定**（意图、成功标准、风险、
+> 验证要求、是否继续）归 Agent OS。`goal_id → task_id` 溯源链是 Agent OS 的语义记录，
+> 不构成对 Task 持久化存储的所有权声明。
 
 ## 8. Execution 层（重要概念）
 
@@ -110,6 +126,26 @@ Task T1 ├── Execution E1 → FAILED
 ```
 
 保留每次执行，才能做 Retry / Recovery / Anti-loop / Cost / Evolution / Audit。
+
+> **三个概念必须分开（Architecture Contract v1.4）**：
+> 1. **Task**："我要做什么"（意图）。
+> 2. **Execution**："我实际尝试做了哪一次"（一次有状态的尝试实体，有自己独立的执行状态）。
+> 3. **Execution Record**："这次实际执行经过了哪些 Agent OS Protocol"（可观测性/审计记录）。
+>
+> Execution 不是 Task 的子标签，Execution Record 也不是 Execution 本身。
+> Execution 状态机独立存在：`UNKNOWN / FAILED / RETRYING / SUCCEEDED`（以及 RUNNING）。
+> 只有把 Task / Execution / Execution Record 三者切开，才能真正可靠地处理：
+> retry / recovery / 重复副作用（duplicate side effect）/ crash recovery / anti-loop（L2）/ 执行核算。
+>
+> **Execution Record 的来源原则（Architecture Contract v1.4）**：
+> Execution Record 是 **Control Plane 的语义/审计记录**，**不是 Runtime，也不是 Agent 自己随意填写的日志**。
+> - 底层事实（before/after tool call、session/run 元数据）**应尽量取自 OpenClaw Runtime boundary**
+>   （native hooks / tool adapters / runtime facade / plugin boundary），而不是完全依赖 Agent 自报。
+> - 原因：Agent 自己创建自己的审计记录不可靠——若 Action 已发生但 Agent 中途崩溃，
+>   "Action 已发生而 Record 未写"会丢失追踪；Agent 也可能错误记录。
+> - 不因此自建 Agent OS Event Bus / Runtime（违反 §27）。当 OpenClaw 提供 runtime boundary
+>   事件/hook 时，Agent OS 应**消费这些 native 边界**来补全 Execution Record 的底层事实。
+> - Agent OS 负责的，是从这些底层事实推导**语义层判定**（进度、验证要求、是否继续/停止）。
 
 ## 9. Action 层
 
@@ -179,6 +215,12 @@ Task → Action → Action Fingerprint → Permission → OpenClaw Policy → Ex
 - **L2 Execution Loop**：Retry→Failure→Recovery→Retry→Failure，检测 Retry Storm
 - **L3 Goal Loop**：Task 都不同但 Goal Progress=0 → STALL/LOOP → STOP
 
+> **三层必须全部落地（Architecture Contract v1.4）**：Anti-loop 不是只做 L1 Action 去重。
+> 当前代码已实现 cycle_id / retry_count / action_signature / last_action_time（覆盖 L1 + 部分 L2），
+> **但 L3 Goal Progress Loop 必须补齐**——它检测的是"Action/Execution 每次都不一样、
+> 但 Goal Progress 始终为 0"的模式（A→B→C→D→A' 或 A→B→C 但零进展）。没有 L3，
+> 仅靠 Action 级 anti-loop 检测不到"换着动作无效空转"。L1/L2/L3 是**三层叠加**，不是可选项。
+
 > **L3 与 #17 的分工（V4-Pro 复核 A-3 补）**：`#16 L3 Goal Loop` 与 `#17 Progress
 > Gate` 在实现上是同一个 `action/execution` 重复检测计数器，为避免条款重复、混乱，
 > 明确分工：**#16 负责「检测」**（识别重复/无进展的行为模式），**#17 负责「决策」**
@@ -187,10 +229,45 @@ Task → Action → Action Fingerprint → Permission → OpenClaw Policy → Ex
 > `repetition_count` + `progress_delta`；决策器据此产出顶层决策词（归一到
 > Continue/Stop，见 #5）。Phase 2 wire 时按此契约落地。
 
+> **Fast Path / Full Path 必须汇入同一套协议（Architecture Contract v1.4，防分叉）**：
+> 简单任务走 Fast Path（无需 Orchestrator/Task 状态机/Proactive/Writeback），
+> 复杂任务走 Full Path——但**两条路径最终必须汇入同一套** Governance / Execution /
+> Verification / Evaluation / Progress / Completion 协议，不能演化成"Fast Path = 一套
+> Agent OS、Full Path = 另一套 Agent OS"。二者只是**同一 Control Plane 的两种简化度**
+> （Fast Path = 省略非必要的编排层，但 Permission/Verification/Progress/词汇归一 #5 不变），
+> 不是两套互不共享的底层。
+
 ## 17. Progress Gate
 
 不能"Action changed"就认为"Goal progressed"。须比较 current vs previous progress。
 无 Progress → STALL_DETECTED → Stop / Change Strategy / Ask（而非无限运行）。
+
+> **Progress Decision / Autonomy Decision（Architecture Contract v1.4，核心协议）**：
+> Control Plane 的顶层决策不是"Evaluation 通过就继续"，而是必须形成一条明确的决策链：
+>
+> ```
+> Verification ──▶ Evaluation ──▶ Progress Assessment ──▶ Autonomy Decision
+>  (证据是否可信)     (结果是否达标)    (较上次是否有进展)    (Continue/Complete/
+>                                                          Change Strategy/
+>                                                          Ask/Stop)
+> ```
+>
+> - **Evaluation ≠ Progress Gate**。Evaluation 判断"这次结果对 Goal 是否有价值/是否达标"；
+>   Progress Gate 比较"Goal current vs previous progress"是否真的在逼近 success criteria。
+>   二者不可混为一个"过得去就继续"的开关——否则会出现：每次 Task 都不同（Evaluation
+>   认为"有产出"），但 Goal Progress = 0 持续很久（换着动作空转），Anti-loop L3 也难检测。
+> - **Autonomy Decision 的顶层词汇（归一到 #5 的标准词）**：
+>   - `Continue`：有进展，继续下一 Task。
+>   - `Complete`：success criteria 达成，Goal 闭环。
+>   - `Change Strategy`：确认停滞/低效，换策略而非无限重试（映射到 #5 的 Stop 系：暂时
+>     停下当前行动，重新规划后 Continue）。
+>   - `Ask`：信息不足/需用户或 Native Approval 推进（#5 Stop(Ask)）。
+>   - `Stop`：不可证明有进展、风险过高或触达上限（#5 Stop(Block)，配合 #18 Recovery + Owner）。
+> - 决策必须**可溯源**：记录 `progress_signal`（当前 vs 上次）+ `decision` + reason +
+>   evidence 引用（对齐 #20），否则无法回答"为什么继续/为什么停在这里"。
+> - **这是 Control Plane 区别于"Governance + Verification + Failure Retry"的最后一块**：
+>   没有明确的 Progress/Autonomy 决策，系统更像失败重试机；补上后才是真正的 Autonomous
+>   Control Plane。Phase 2 wire 时把 #16（检测器）↔ #17（决策器）按此契约落地。
 
 ## 18. Recovery
 
