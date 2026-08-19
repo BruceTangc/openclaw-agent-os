@@ -184,17 +184,8 @@ def _list_ids(kind):
 
 # ======================== v2.3 统一状态机 ========================
 
-STATES = [
-    "CANDIDATE", "DIAGNOSED", "PROPOSED", "APPROVED",
-    "SNAPSHOTTED", "APPLYING", "APPLIED", "MONITORING",
-    "VALIDATED", "PROMOTED",
-    "REJECTED", "UNRESOLVED", "APPLY_FAILED",
-    "REGRESSED", "ROLLED_BACK",
-]
-
-# ===================== transition 已迁移到中央门 =====================
 # v1.4 C1: 状态跳转表/校验已统一收敛到 skills/_lib/transitions.py。
-# _core.assert_transition 为中央门薄封装（见下），此处不再定义局部跳转表，
+# _core.assert_transition 为中央门薄封装（见下），不再定义局部跳转表或 STATES，
 # 避免双份状态表失同步（reviewer F1）。如需状态信息，引用 _lib/transitions。
 def assert_transition(record, dst, kind="candidate", **extra):
     """统一状态跳转入口 —— v1.4 C1 收敛到中央门 transitions.transition。

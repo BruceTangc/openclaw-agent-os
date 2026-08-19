@@ -73,4 +73,4 @@ CANDIDATE → DIAGNOSED → PROPOSED → APPROVED → APPLIED → REGRESSION →
         / APPLIED→REGRESSED→ROLLED_BACK
 ```
 
-非法跳转由 `_core.py` 的 `TRANSITIONS` 表强制拒绝（Code = Enforcement）。
+非法跳转由 `skills/_lib/transitions.py` 中央门强制拒绝（`_core.assert_transition` 为薄封装转发，Code = Enforcement）。
