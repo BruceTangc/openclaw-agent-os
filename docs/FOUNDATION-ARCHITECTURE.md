@@ -115,6 +115,15 @@ Task = 为 Goal 完成的一项工作。关系 `Goal ├── Task A/B/C`。
 > 验证要求、是否继续）归 Agent OS。`goal_id → task_id` 溯源链是 Agent OS 的语义记录，
 > 不构成对 Task 持久化存储的所有权声明。
 
+> **禁止第二 Source of Truth（Architecture Contract v1.5）**：Goal/Task 的**运行事实**
+> （状态、生命周期、持久化）只有**一个**真值源，归 **OpenClaw Runtime**。Agent OS 对
+> Goal/Task 只做 **Semantic Projection / Governance Record**（语义投影/治理记录），
+> 即可以记录：`goal_id / objective 解读 / success criteria / progress assessment /
+> decision / evidence`——但**绝不能变成第二套 Goal/Task Database**。
+> 否则会出现不可调和的双真值：`OpenClaw(Task=RUNNING)` vs `Agent OS(Task=COMPLETED)`。
+> 判定标准：Agent OS 记录的是对同一 `goal_id/task_id` 的**语义判定与依据**（派生/只读视角），
+> 而非一份并行的目标状态数据库。Agent OS 不能声称自己拥有 Goal/Task 的运行真值。
+
 ## 8. Execution 层（重要概念）
 
 > **Task 是意图，Execution 是一次实际尝试。** 不能把多次执行覆盖成一个状态。
@@ -146,6 +155,20 @@ Task T1 ├── Execution E1 → FAILED
 > - 不因此自建 Agent OS Event Bus / Runtime（违反 §27）。当 OpenClaw 提供 runtime boundary
 >   事件/hook 时，Agent OS 应**消费这些 native 边界**来补全 Execution Record 的底层事实。
 > - Agent OS 负责的，是从这些底层事实推导**语义层判定**（进度、验证要求、是否继续/停止）。
+>
+> **Execution 与 OpenClaw Session/Run 的映射（Architecture Contract v1.5）**：
+> `execution_id` **不是** `session_id`，也**不是** `run_id`。三者的关系是：
+> ```
+> OpenClaw Run
+>     │
+>     │  observed by (runtime boundary)
+>     ▼
+> Agent OS Execution  ─── execution_id / agent_id / session_id / runtime_run_id
+> ```
+> - 一个 OpenClaw Session 可以产生**多个** Execution；一个 Run 也可能产生多个 Execution。
+>   **禁止** `execution_id = session_id` 或 `execution_id = run_id` 的一对一简写。
+> - `session_id / runtime_run_id` 是 Execution Record 的**引用字段**（连接 OpenClaw Runtime，对齐 #20），
+>   不是 Execution 本身的身份。Execution 的身份是独立的 `execution_id`。
 
 ## 9. Action 层
 
@@ -263,6 +286,21 @@ Task → Action → Action Fingerprint → Permission → OpenClaw Policy → Ex
 >     停下当前行动，重新规划后 Continue）。
 >   - `Ask`：信息不足/需用户或 Native Approval 推进（#5 Stop(Ask)）。
 >   - `Stop`：不可证明有进展、风险过高或触达上限（#5 Stop(Block)，配合 #18 Recovery + Owner）。
+>
+> **Autonomy Decision ≠ State Transition（Architecture Contract v1.5）**：
+> Autonomy Decision（决策）**不是**状态转换本身。它们之间必须隔着一层转换请求+转换门：
+> ```
+> Progress Assessment
+>   ↓ Autonomy Decision
+>   ↓ Transition Request   (决策 → 待执行的状态变更请求)
+>   ↓ State Transition Gate (transition(), §13 强制门槛)
+>   ↓ New State
+> ```
+> **禁止** Autonomy Decision 直接改 `Task.status` / `goal.state`。决策必须先产出一个
+> **Transition Request**，再交给 **Transition Gate（#13）** 校验合法性后落地为新状态。
+> 否则会绕过 #13 的强制门槛，退回"代码直接赋状态"的老问题。Continue/Complete/Stop
+> 都是**决策输出**，仍需各自经 Transition Gate 落到对应状态变更，不能因"已决策"就跳过门槛。
+> （对齐 #5 标准词 + #13 强制门 + #25 决策链。）
 > - 决策必须**可溯源**：记录 `progress_signal`（当前 vs 上次）+ `decision` + reason +
 >   evidence 引用（对齐 #20），否则无法回答"为什么继续/为什么停在这里"。
 > - **这是 Control Plane 区别于"Governance + Verification + Failure Retry"的最后一块**：
