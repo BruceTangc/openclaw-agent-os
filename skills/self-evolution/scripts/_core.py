@@ -192,66 +192,10 @@ STATES = [
     "REGRESSED", "ROLLED_BACK",
 ]
 
-TRANSITIONS = {
-    "CANDIDATE": {"DIAGNOSED", "REJECTED"},
-    "DIAGNOSED": {"PROPOSED", "UNRESOLVED"},
-    "PROPOSED": {"APPROVED", "REJECTED"},
-    "APPROVED": {"SNAPSHOTTED"},
-    "SNAPSHOTTED": {"APPLYING"},
-    "APPLYING": {"APPLIED", "APPLY_FAILED"},
-    "APPLIED": {"MONITORING"},
-    "MONITORING": {"VALIDATED", "REGRESSED"},
-    "VALIDATED": {"PROMOTED"},
-    "PROMOTED": set(),
-    "REJECTED": set(),
-    "UNRESOLVED": set(),
-    "APPLY_FAILED": set(),
-    "REGRESSED": {"ROLLED_BACK"},
-    "ROLLED_BACK": set(),
-}
-
-# v2.3: Kind-aware transition overrides
-# Proposal 和 Change 有不同状态机，共用全局 TRANSITIONS 表会导致跳转冲突
-TRANSITIONS_PROPOSAL = {
-    "PROPOSED": {"APPROVED", "REJECTED"},
-    "APPROVED": {"APPROVED", "APPLIED", "REJECTED"},  # APPROVED→APPROVED = idempotent no-op
-    "APPLIED": {"MONITORING"},
-    "MONITORING": {"VALIDATED", "REGRESSED"},
-    "VALIDATED": {"PROMOTED"},
-    "REJECTED": set(),
-    "PROMOTED": set(),
-    "REGRESSED": {"ROLLED_BACK"},
-    "ROLLED_BACK": set(),
-}
-
-TRANSITIONS_CHANGE = {
-    "SNAPSHOTTED": {"APPLYING"},
-    "APPLYING": {"APPLIED", "APPLY_FAILED"},
-    "APPLIED": {"MONITORING", "ROLLED_BACK"},   # AE-4: 回滚也可直接从 APPLIED 走状态机
-    "MONITORING": {"VALIDATED", "REGRESSED"},
-    "VALIDATED": {"PROMOTED"},
-    "APPLY_FAILED": set(),
-    "REGRESSED": {"ROLLED_BACK"},
-    "ROLLED_BACK": set(),
-    "PROMOTED": set(),
-}
-
-def _get_transitions(src, kind="candidate"):
-    """返回指定 kind 的跳转表，fallback 到全局 TRANSITIONS。"""
-    if kind == "proposal":
-        tbl = TRANSITIONS_PROPOSAL
-    elif kind == "change":
-        tbl = TRANSITIONS_CHANGE
-    else:
-        tbl = TRANSITIONS
-    return tbl.get(src, TRANSITIONS.get(src, set()))
-
-def transition_allowed(src, dst, kind="candidate"):
-    if src == dst:
-        return True
-    targets = _get_transitions(src, kind)
-    return dst in targets
-
+# ===================== transition 已迁移到中央门 =====================
+# v1.4 C1: 状态跳转表/校验已统一收敛到 skills/_lib/transitions.py。
+# _core.assert_transition 为中央门薄封装（见下），此处不再定义局部跳转表，
+# 避免双份状态表失同步（reviewer F1）。如需状态信息，引用 _lib/transitions。
 def assert_transition(record, dst, kind="candidate", **extra):
     """统一状态跳转入口 —— v1.4 C1 收敛到中央门 transitions.transition。
 
