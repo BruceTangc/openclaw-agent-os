@@ -132,6 +132,16 @@ def append_record(record):
     record.setdefault("parent_task_id", "")
     # MA-1.0: 完整性校验(仅元数据, 不阻断)。供审计追溯"这条结论是谁/哪次/哪个agent产生的"。
     record["ma_completeness"] = validate_ma_record(record)
+    # MA-1.0 (P1 修复, 修2): 写入前做关联一致性校验, 结果作为 ma_consistency 元数据
+    # 持久化到本条记录（记录与暴露, 不阻断写入——对齐 CHAIN-03-B 观察层原则）。
+    try:
+        _existing = load_records(limit=200).get("records", [])
+        record["ma_consistency"] = validate_ma_consistency(record, _existing)
+    except Exception:
+        # 一致性校验为 Integration 防线, 失败不应阻断/污染 Core 写入
+        record["ma_consistency"] = {
+            "consistent": True, "issue": "consistency_check_unavailable",
+            "detail": ""}
     if record.get("authorization"):
         binding = check_authorization_binding(record.get("authorization"))
         record["authorization_binding"] = binding
@@ -336,6 +346,40 @@ MA_IDENTITY_FIELDS = ["agent_id", "session_id", "execution_id", "task_id"]
 MA_REQUIRED_FIELDS = MA_IDENTITY_FIELDS + ["correlation_id"]
 
 
+def build_ma_context(record=None, runtime_agent_id="", runtime_session_id=""):
+    """建立 Agent/Session → ExecutionRecord 的 Integration Context（MA-1.0 P1 修复）。
+
+    把 OpenClaw Runtime 提供的真实 agent_id / session_id 与 record 合并，形成
+    统一身份上下文，供 append_record 自动透传。解决"调用方忘记传 agent_id 就
+    被当成 legacy"的问题：只要进入 MA 调度 (runtime_agent_id 非空或 record 含
+    MA 字段)，就自动绑定 Runtime 身份。
+
+    优先级：record 显式字段 > runtime 提供的身份（Runtime 是可信来源，防止
+    调用方篡改 agent_id）。correlation_id 若 record 提供则保留（协作链 ID 由
+    调度层生成）。
+
+    返回合并后的 record（含 agent/session/execution/task/correlation 默认值）。
+    """
+    rec = dict(record or {})
+    # execution_id 缺省时仍由 append_record 生成；此处先保证 task/correlation
+    rec.setdefault("task_id", rec.get("task_id", ""))
+    rec.setdefault("parent_task_id", rec.get("parent_task_id", ""))
+    rec.setdefault("operation_id", rec.get("operation_id", ""))
+    rec.setdefault("correlation_id", rec.get("correlation_id", ""))
+    # agent/session：Runtime 身份是可信来源，record 显式值若与 Runtime 冲突则以
+    # Runtime 为准（防调用方篡改）。若 Runtime 未提供（legacy 单 Agent），则保留
+    # record 原值（可能为空 → legacy）。
+    if runtime_agent_id:
+        rec["agent_id"] = runtime_agent_id
+    else:
+        rec.setdefault("agent_id", "")
+    if runtime_session_id:
+        rec["session_id"] = runtime_session_id
+    else:
+        rec.setdefault("session_id", "")
+    return rec
+
+
 def _is_ma_context(record):
     """判断记录是否处于 Multi-Agent 执行上下文。
 
@@ -349,31 +393,84 @@ def _is_ma_context(record):
     return False
 
 
-def validate_ma_record(record):
+def validate_ma_record(record, has_operation=None):
     """Multi-Agent Execution Record 完整性校验（MA-1.0 硬规则）。
 
     单 Agent legacy 记录：允许缺字段，返回 legacy=True（不强制）。
     Multi-Agent context：必须完整填充 agent_id / session_id / execution_id /
-    task_id / correlation_id；operation_id 仅当存在具体操作时要求。
+    task_id / correlation_id；operation_id 仅当存在具体 side-effect 操作
+    (has_operation=True) 时才要求。
 
-    返回 {valid: bool, ma: bool, missing: [field], legacy: bool}：
-      - valid : 是否通过校验
-      - ma    : 是否 Multi-Agent context
+    参数:
+      record       : 待校验记录(dict)
+      has_operation: None=自动探测(有 action 且有副作用语义);
+                     True=强制要求 operation_id; False=不要求
+
+    返回 {valid: bool, ma: bool, missing: [field], legacy: bool,
+          operation_required: bool, operation_missing: bool}：
+      - valid: 是否通过校验
+      - ma   : 是否 Multi-Agent context
       - legacy: 是否当作 legacy 单 Agent 记录
     """
     rec = record or {}
     if not _is_ma_context(rec):
         # 单 Agent legacy：不强制, 兼容 v1.3 旧记录
-        return {"valid": True, "ma": False, "missing": [], "legacy": True}
+        return {"valid": True, "ma": False, "missing": [], "legacy": True,
+                "operation_required": False, "operation_missing": False}
 
     missing = [f for f in MA_REQUIRED_FIELDS if not str(rec.get(f, "") or "").strip()]
-    # operation_id: 仅当存在具体 side-effect 操作时要求(由调用方以 has_operation 标记)
+
+    # operation_id 条件强制：有具体 side-effect operation 时必须存在
+    #   has_operation=None → 由 action 语义自动探测(L2+ 有外部副作用)
+    op_required = has_operation
+    if op_required is None:
+        op_required = _action_is_operation(str(rec.get("action_type", "") or ""))
+    op_missing = op_required and not str(rec.get("operation_id", "") or "").strip()
+    if op_missing:
+        missing.append("operation_id")
+
     return {
         "valid": len(missing) == 0,
         "ma": True,
         "missing": missing,
         "legacy": False,
+        "operation_required": bool(op_required),
+        "operation_missing": op_missing,
     }
+
+
+# 有明确外部副作用语义的 action（L2+）→ 要求 operation_id。
+_OPERATION_ACTIONS = {
+    "send", "message", "email", "reply", "post", "publish", "push",
+    "delete", "remove", "payment", "transfer", "order", "trade", "merge",
+    "grant", "revoke", "change_permission", "export_sensitive", "modify_production",
+}
+
+
+def _action_is_operation(action_type):
+    """判定 action_type 是否代表具体外部副作用操作(需 operation_id)。
+
+    只对**不可逆/外部副作用**操作要求 operation_id；L1 可逆本地操作
+    (write_draft / create_temp / edit_local / plan / compute) 不要求。
+    """
+    a = str(action_type).strip().lower()
+    if not a:
+        return False
+    # 可逆/起草类动作明确不算 operation
+    if a in ("write_draft", "create_draft", "create_temp", "write_temp",
+             "edit_local", "reversible_change", "plan", "compute",
+             "draft", "analyze", "research", "search"):
+        return False
+    # 精确副作用动词集合
+    if a in _OPERATION_ACTIONS:
+        return True
+    # 含副作用动词且非可逆前缀 → 视为 operation
+    for kw in ("send", "message", "delete", "publish", "payment", "transfer",
+               "push", "post", "email", "execute", "grant", "revoke",
+               "export_sensitive", "modify_production"):
+        if kw in a:
+            return True
+    return False
 
 
 def validate_ma_consistency(record, existing=None):
@@ -433,6 +530,33 @@ def validate_ma_consistency(record, existing=None):
                     % (eid, _field(prev, "correlation_id"), _field(rec, "correlation_id"))}
         # 正常：同 execution_id + 同 agent/session/task/correlation = 同一执行续写（含 crash 恢复）
         return {"consistent": True, "issue": "continuation", "detail": ""}
+
+    # P1 修复(修3): 跨 execution 的 parent_task_id 关联校验（攻击 F: parent 伪造）。
+    #   子任务 T_child.parent_task_id = T_parent 必须满足：
+    #   - parent_task_id 非空（有 delegation）时，存在一条历史记录 task_id == parent_task_id
+    #     且处于同一 correlation 链；且 parent != child 自身且不是 child 的子孙。
+    #   - 不满足 → 视为伪造 delegation 来源（issue=parent_forgery）。
+    parent_task_id = _field(rec, "parent_task_id")
+    child_task_id = _field(rec, "task_id")
+    corr = _field(rec, "correlation_id")
+    if parent_task_id and child_task_id:
+        if parent_task_id == child_task_id:
+            # 自指：parent == child → 伪造
+            return {"consistent": False, "issue": "parent_forgery",
+                    "detail": "parent_task_id(%s) 自指等于 task_id 自身" % parent_task_id}
+        # 在 correlation 链内查找父任务的历史记录
+        parent_found = False
+        for prev in (existing or []):
+            if _field(prev, "task_id") != parent_task_id:
+                continue
+            if corr and _field(prev, "correlation_id") and _field(prev, "correlation_id") != corr:
+                continue  # 父任务的 correlation 与子任务不一致 → 不算合法父
+            parent_found = True
+            break
+        if not parent_found:
+            return {"consistent": False, "issue": "parent_forgery",
+                    "detail": "parent_task_id=%r 在 correlation=%r 链内无对应父任务记录"
+                    % (parent_task_id, corr)}
 
     return {"consistent": True, "issue": "", "detail": ""}
 

@@ -642,18 +642,98 @@ def test_ma_attack_parent_forgery():
                       "correlation_id": "C1", "action_type": "read",
                       "action_signature": "s1"})
     ex = er.load_records(limit=100)["records"]
-    # 攻击: 子任务 T2 声明 parent=T2(自指) → 伪造
-    attack = er.validate_ma_consistency(
+    # 攻击F1: 子任务 T2 parent_task_id=T2(自指) → 伪造
+    attack_self = er.validate_ma_consistency(
         {"agent_id": "B", "session_id": "SB", "execution_id": "E2",
          "task_id": "T2", "parent_task_id": "T2", "correlation_id": "C1",
          "action_type": "write"}, ex)
-    check("parent 自指不触发 Core 判定(记录层仅暴露)",
-          attack["consistent"] in (True, False), "(record 层不阻断)")
+    check("parent 自指 → parent_forgery",
+          attack_self["issue"] == "parent_forgery", str(attack_self))
+    # 攻击F2: parent_task_id 指向不存在父任务(T99 不在 C1 链) → 伪造
+    attack_missing = er.validate_ma_consistency(
+        {"agent_id": "B", "session_id": "SB", "execution_id": "E2",
+         "task_id": "T2", "parent_task_id": "T99", "correlation_id": "C1",
+         "action_type": "write"}, ex)
+    check("parent 指向不存在父任务 → parent_forgery",
+          attack_missing["issue"] == "parent_forgery", str(attack_missing))
+    # 合法 delegation: T2.parent=T1 (T1 在 C1 链) → consistent
+    legit = er.validate_ma_consistency(
+        {"agent_id": "B", "session_id": "SB", "execution_id": "E2",
+         "task_id": "T2", "parent_task_id": "T1", "correlation_id": "C1",
+         "action_type": "write"}, ex)
+    check("合法 delegation T2→T1 → consistent",
+          legit["consistent"] is True, str(legit))
     # 关键: legacy/MA 记录仍可读取, 不破坏 Core
     r = er.check_action_loop({"goal_id": "G", "action_signature": "s1",
                               "result_hash": "r", "current_state": "RUNNING"})
     check("Core decision 不受 parent 伪造影响", r["decision"] in
           ("CONTINUE", "WARN", "NOOP", "ESCALATE", "UNKNOWN"), str(r))
+    _clean_ma_records()
+
+
+def test_build_ma_context():
+    print("\n=== Test 33: build_ma_context 身份自动透传 (P1 修复) ===")
+    _clean_ma_records()
+    # Runtime 提供 agent/session → 自动注入; correlation/task 保留
+    rec = er.build_ma_context({"action_type": "search", "task_id": "T1",
+                               "correlation_id": "C1"},
+                              runtime_agent_id="research", runtime_session_id="S1")
+    check("runtime agent 注入", rec["agent_id"] == "research")
+    check("runtime session 注入", rec["session_id"] == "S1")
+    check("correlation 保留", rec["correlation_id"] == "C1")
+    # 防篡改: record 传 agent_id=X, runtime 传 research → research 优先
+    rec2 = er.build_ma_context({"action_type": "search", "agent_id": "evil",
+                                "session_id": "evilS"},
+                               runtime_agent_id="research", runtime_session_id="S1")
+    check("runtime 身份防篡改", rec2["agent_id"] == "research"
+          and rec2["session_id"] == "S1")
+    # runtime 未提供(legacy) → 保留 record 值
+    rec3 = er.build_ma_context({"action_type": "search", "agent_id": "legacyA"})
+    check("runtime 未提供 → 保留 record 值", rec3["agent_id"] == "legacyA")
+    _clean_ma_records()
+
+
+def test_operation_id_conditional():
+    print("\n=== Test 34: operation_id 条件强制 (P2 修复) ===")
+    _clean_ma_records()
+    base = {"agent_id": "a", "session_id": "S", "execution_id": "E",
+            "task_id": "T", "correlation_id": "C"}
+    # send(副作用操作) 缺 operation_id → invalid
+    r1 = er.validate_ma_record(dict(base, action_type="send"))
+    check("send 缺 operation_id → invalid",
+          r1["valid"] is False and "operation_id" in r1["missing"], str(r1))
+    # send 有 operation_id → valid
+    r2 = er.validate_ma_record(dict(base, action_type="send", operation_id="op1"))
+    check("send 有 operation_id → valid", r2["valid"] is True, str(r2))
+    # read(无副作用) 不需 operation_id → valid
+    r3 = er.validate_ma_record(dict(base, action_type="read"))
+    check("read 不需 operation_id → valid", r3["valid"] is True, str(r3))
+    # 显式 has_operation=False 覆盖
+    r4 = er.validate_ma_record(dict(base, action_type="send"), has_operation=False)
+    check("has_operation=False → 不强制", r4["valid"] is True, str(r4))
+    _clean_ma_records()
+
+
+def test_append_consistency_metadata():
+    print("\n=== Test 35: append_record 接入 consistency metadata (P2 修复) ===")
+    _clean_ma_records()
+    # 先写一条 E1/A
+    er.append_record({"execution_id": "E1", "agent_id": "A",
+                      "session_id": "S1", "task_id": "T1",
+                      "correlation_id": "C1", "action_type": "write",
+                      "operation_id": "opA", "action_signature": "sA"})
+    # 第二条同 E1 不同 agent → ma_consistency 标记 cross_agent
+    r2 = er.append_record({"execution_id": "E1", "agent_id": "B",
+                           "session_id": "S2", "task_id": "T1",
+                           "correlation_id": "C1", "action_type": "write",
+                           "operation_id": "opB", "action_signature": "sB"})
+    check("duplicate+异agent → cross_agent",
+          r2.get("ma_consistency", {}).get("issue") == "cross_agent",
+          str(r2.get("ma_consistency")))
+    # 持久化后重读仍含 ma_consistency
+    res = er.load_records(limit=10)["records"]
+    check("持久化后重读含 ma_consistency",
+          all("ma_consistency" in r for r in res), str(res))
     _clean_ma_records()
 
 
@@ -714,6 +794,9 @@ if __name__ == "__main__":
     test_ma_attack_correlation_merge()
     test_ma_attack_parent_forgery()
     test_ma_attack_legacy_not_break_core()
+    test_build_ma_context()
+    test_operation_id_conditional()
+    test_append_consistency_metadata()
 
     print("\n" + "=" * 60)
     print(f"结果: {PASS} PASS / {FAIL} FAIL")
