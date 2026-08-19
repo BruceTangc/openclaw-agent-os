@@ -194,7 +194,15 @@ I-015 UNKNOWN execution outcome 在可能产生外部副作用 (转账/发消息
 
 ### A/B/C 三类清单 (ChatGPT 建议 + 我方核实)
 **A 类必修**: AE-1 save_artifact 事务化 (=L-01) / AE-2 Evidence append_atomic (=L-02) / AE-3 evolution_id 不一致 REJECT (=L-03) / AE-4 rollback 过状态机 (=L-04) / AE-5 Proactive 损坏≠空 (=L-05) / AE-6 Orchestrator 损坏≠空 (=L-06) / AE-7 Task create 不绕状态机 (=L-16) / AE-8 apply 重做 path/symlink (=L-08)
-**B 类增强** (增量, I-013/014/L2/L3/L-18): BE-1 Goal→Task provenance (I-013) / BE-2 Task↔Execution 分离 (I-014) / BE-3 Action→Observation 对应 / BE-4 Evidence→Verification 来源链 / BE-5 Goal Progress Vector (L3) / BE-6 State-loop 检测 (L2) / BE-7 UNKNOWN 副作用回收 (L-18) / BE-8 crash recovery 完整
+**B 类增强** (增量, I-013/014/L2/L3/L-18) — **✅ 全部完成 (分支 fix/v1.4-hardening-b, commit b97a711/80b24ca/ffeecab/797e174)**
+- BE-1 Goal→Task provenance (I-013) ✅ task_manager goal_id 显式默认空串, 独立 standalone 语义
+- BE-2 Task↔Execution 分离 (I-014) ✅ task 新增 executions/attempt 历史: RUNNING 记 attempt, 离开记 outcome
+- BE-3 Action→Observation 对应 ✅ execution_record 加 observation/observation_hash, 纳入 progress
+- BE-4 Evidence→Verification 来源链 ✅ record 加 verification{method,evidence_ref,independent_source}
+- BE-5 Goal Progress Vector (L3) ✅ progress 加 stall_count/cycle_signature/progress_count/last_progress_at
+- BE-6 State-loop 检测 (L2) ✅ progress 加 state_oscillation, check 检测状态对振荡→ESCALATE
+- BE-7 UNKNOWN 副作用回收 (L-18) ✅ recover_apply 副作用边界: type!=file_patch→VERIFY(不自动 retry)
+- BE-8 crash recovery 完整 ✅ 修 recover_apply 三元优先级 bug(mism=[] 返字符串而非元组)
 **C 类不动**: Windows stale lock / scope 复杂继承 / 多主机 / 自造 scheduler / event bus / model runtime / memory runtime
 
 ### 结论
