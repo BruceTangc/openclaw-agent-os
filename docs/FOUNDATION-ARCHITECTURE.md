@@ -287,6 +287,21 @@ Task → Action → Action Fingerprint → Permission → OpenClaw Policy → Ex
 >   - `Ask`：信息不足/需用户或 Native Approval 推进（#5 Stop(Ask)）。
 >   - `Stop`：不可证明有进展、风险过高或触达上限（#5 Stop(Block)，配合 #18 Recovery + Owner）。
 >
+> **UNKNOWN 是状态，不是决策（Architecture Contract v1.6，冻结补）**：
+> Progress 三态中，`UNKNOWN`（无法获得 Progress Signal）不是一种 Progress 决策目标，
+> 而是「尚无法判断进展」的**状态**；它必须按上下文拆成决策，不能固定映射成单一决策词：
+> ```
+> UNKNOWN（无法测量）
+>   ├─ API / 外部源暂时不可用  → WAIT
+>   ├─ 验证数据尚未产生        → VERIFY
+>   ├─ 信息缺失（缺信号定义）  → ASK
+>   └─ Runtime 状态不一致      → RECOVER
+> ```
+> （`WAIT`/`VERIFY`/`RECOVER` 均为 #5 归一词的收拢，落地时不得自造新决策词。）
+> 注意：Self-Evolution 的 `progress_gate` 当前把 `UNKNOWN` 固化为 `ASK`，在该窄域场景
+> 够用；但实现「通用 Autonomy Decision」时，必须按上述上下文映射，不得把 UNKNOWN 当
+> 作一个独立决策词硬编码。
+>
 > **Autonomy Decision ≠ State Transition（Architecture Contract v1.5）**：
 > Autonomy Decision（决策）**不是**状态转换本身。它们之间必须隔着一层转换请求+转换门：
 > ```
