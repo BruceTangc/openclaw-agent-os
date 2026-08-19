@@ -332,6 +332,108 @@ def test_binding_path_boundary_not_swallowed():
           str(res))
 
 
+def test_binding_scalar_scope_fail_closed():
+    print("\n=== Test 16-17: 标量 scope 仅完全相等才 PASS ===")
+    # T16: int 1 vs int 2 → violation (fail closed)
+    auth_int_diff = {
+        "planned":   {"action": "write", "resource": "acct", "scope": 1},
+        "authorized": {"action": "write", "resource": "acct", "scope": 2},
+        "actual":     {"action": "write", "resource": "acct", "scope": 2},
+    }
+    res1 = er.check_authorization_binding(auth_int_diff)
+    check("T16: int 1 vs 2 → violation",
+          res1["binding_violation"] is True, str(res1))
+    # T17: int 1 vs int 1 → PASS
+    auth_int_eq = {
+        "planned":   {"action": "write", "resource": "acct", "scope": 1},
+        "authorized": {"action": "write", "resource": "acct", "scope": 1},
+        "actual":     {"action": "write", "resource": "acct", "scope": 1},
+    }
+    res2 = er.check_authorization_binding(auth_int_eq)
+    check("T17: int 1 vs 1 → PASS",
+          res2["binding_violation"] is False, str(res2))
+
+
+def test_binding_type_mismatch_fail_closed():
+    print("\n=== Test 18: 类型不同 (string vs int) → FAIL CLOSED ===")
+    auth = {
+        "planned":   {"action": "run", "resource": "job", "scope": "1"},
+        "authorized": {"action": "run", "resource": "job", "scope": 1},
+        "actual":     {"action": "run", "resource": "job", "scope": 1},
+    }
+    res = er.check_authorization_binding(auth)
+    check("string vs int → violation (fail closed)",
+          res["binding_violation"] is True, str(res))
+    check("consistent == False", res["consistent"] is False, str(res))
+
+
+def test_binding_structured_scope_fail_closed():
+    print("\n=== Test 19: 未支持的结构化 scope → FAIL CLOSED ===")
+    # dict 相等 → PASS；dict 不等 → violation
+    auth_dict_eq = {
+        "planned":   {"action": "read", "resource": "cfg",
+                       "scope": {"a": 1}},
+        "authorized": {"action": "read", "resource": "cfg",
+                        "scope": {"a": 1}},
+        "actual":     {"action": "read", "resource": "cfg",
+                        "scope": {"a": 1}},
+    }
+    res1 = er.check_authorization_binding(auth_dict_eq)
+    check("dict scope 相等 → PASS",
+          res1["binding_violation"] is False, str(res1))
+    auth_dict_diff = {
+        "planned":   {"action": "read", "resource": "cfg",
+                       "scope": {"a": 1}},
+        "authorized": {"action": "read", "resource": "cfg",
+                        "scope": {"a": 2}},
+        "actual":     {"action": "read", "resource": "cfg",
+                        "scope": {"a": 2}},
+    }
+    res2 = er.check_authorization_binding(auth_dict_diff)
+    check("dict scope 不等 → violation (fail closed)",
+          res2["binding_violation"] is True, str(res2))
+    # 结构化 vs 字符串类型不匹配 → violation
+    auth_cross = {
+        "planned":   {"action": "read", "resource": "cfg",
+                        "scope": "/path"},
+        "authorized": {"action": "read", "resource": "cfg",
+                        "scope": ["a"]},
+        "actual":     {"action": "read", "resource": "cfg", "scope": ["a"]},
+    }
+    res3 = er.check_authorization_binding(auth_cross)
+    check("str vs list → violation (fail closed)",
+          res3["binding_violation"] is True, str(res3))
+
+
+def test_binding_None_scope_semantics():
+    print("\n=== Test 20: 空 scope / None 语义 ===")
+    # None scope 一致（都未提供）→ PASS
+    auth_none = {
+        "planned":   {"action": "write", "resource": "file", "scope": None},
+        "authorized": {"action": "write", "resource": "file", "scope": None},
+        "actual":     {"action": "write", "resource": "file", "scope": None},
+    }
+    res1 = er.check_authorization_binding(auth_none)
+    check("None scope 全一致 → PASS",
+          res1["binding_violation"] is False, str(res1))
+    # unprovided scope + 未提供 → PASS（缺省语义）
+    res2 = er.check_authorization_binding({
+        "planned": {"action": "a", "resource": "r"},
+        "authorized": {"action": "a", "resource": "r"},
+        "actual": {"action": "a", "resource": "r"},
+    })
+    check("未提供 scope 全一致 → PASS",
+          res2["binding_violation"] is False, str(res2))
+    # 提供了 str scope vs 未提供 → violation（防越权放宽）
+    res3 = er.check_authorization_binding({
+        "planned":   {"action": "a", "resource": "r", "scope": "/p"},
+        "authorized": {"action": "a", "resource": "r", "scope": None},
+        "actual":     {"action": "a", "resource": "r", "scope": None},
+    })
+    check("provided scope vs None → violation",
+          res3["binding_violation"] is True, str(res3))
+
+
 # ===========================================================================
 # Main
 # ===========================================================================
@@ -353,6 +455,10 @@ if __name__ == "__main__":
     test_binding_scope_legal_subset()
     test_binding_scope_equal()
     test_binding_path_boundary_not_swallowed()
+    test_binding_scalar_scope_fail_closed()
+    test_binding_type_mismatch_fail_closed()
+    test_binding_structured_scope_fail_closed()
+    test_binding_None_scope_semantics()
 
     print("\n" + "=" * 60)
     print(f"结果: {PASS} PASS / {FAIL} FAIL")

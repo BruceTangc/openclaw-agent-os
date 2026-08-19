@@ -153,9 +153,12 @@ def _split_scope_path(token):
     """路径/层级式 scope 切分为有序片段，用于前缀包含判断。
 
     支持形如: /workspace/project-a 、 /org/team/account 、 project-a/sub 、
-    write:config:xxx 、 account:123 等。对非字符串（如 None）返回 []。
+    write:config:xxx 、 account:123 等。仅接受 str；非字符串返回 None（表示
+    无法按层级解析，不能当 [] 用，否则非字符串会误判为相等）。
     """
-    if not isinstance(token, str) or not token.strip():
+    if not isinstance(token, str):
+        return None
+    if not token.strip():
         return []
     t = token.strip()
     # 统一把常见的层级分隔符切成片段；不区分 / \\ . :
@@ -165,40 +168,69 @@ def _split_scope_path(token):
     return [seg for seg in t.split("/") if seg]
 
 
-def _scope_strings(child, parent):
-    return _split_scope_path(child) == _split_scope_path(parent)
+def _scope_kind(v):
+    """判定 scope 值的类型族，用于决定 containment 语义。
+
+    - 'str' / 'scalar'(bool/int/float) / 'unsupported'（dict/list/set/tuple 等
+      尚未实现显式 containment 的结构化 scope，以及 None）。
+    None 视为 unsupported —— 含 None 的字段本身表示"未提供 scope"，由调用方
+    决定；此处不参与类型相等的合并，避免 None 与任意值误判。
+    """
+    if isinstance(v, str):
+        return "str"
+    if isinstance(v, bool):
+        return "scalar"
+    if isinstance(v, (int, float)):
+        return "scalar"
+    return "unsupported"
 
 
 def _scope_contains(scope, container):
-    """判断 scope ⊆ container（容器包含作用域）。
+    """判断 scope ⊆ container（容器包含作用域）。fail-closed：类型不支持时判 False。
 
-    - 均为字符串：按层级化片段做前缀包含（/a/b/c ⊆ /a/b → True）。
-      同时注意：/a/b 不包含 /a/bc（避免误把 b 当成 bc 的前缀）。
-    - 任一为 None/空：视为未提供。仅当两者都提供非空且含于容才判 True，
-      否则回退到相等判断（未提供 scope 时只允许完全一致，防御越权）。
-    - 非字符串标量（int/dict/list）：仅支持相等（无法通用包含）。
+    按 scope 类型决定语义：
+      - str ↔ str：层级化前缀包含（/a/b/c ⊆ /a/b → True）；
+        /a/b 不包含 /a/bc（边界段精确匹配）。
+      - scalar ↔ scalar：仅完全相等（_scope_contains(123,123)=True，
+        _scope_contains(123,456)=False）。
+      - 类型不同 / 任一为 None 或 dict/list/set 等未实现 containment 的结构化
+        scope：FAIL CLOSED → False（不因解析成 [] 而误判相等）。
+
+    注意：这里的 containment 是"通用层级/标量"语义，不是 operation-set /
+    domain / account 类型的集合 containment；文档不把能力写强于实现。
     """
-    # 标量相等（含未提供 None → 相等空）
-    if not scope and not container:
-        return True
-    if not scope:
-        return False
-    if not container:
-        return False
-    c = _split_scope_path(container)
-    if not c:
-        # container 提供了但无法解析 → 仅支持完全相等，防默认放行
-        return _scope_strings(scope, container)
-    s = _split_scope_path(scope)
-    if not s:
-        return _scope_strings(scope, container)
-    if s == c:
-        return True
-    # 前缀包含，且边界处不吞并更短的相邻段（防止 /a/b vs /a/bc 误判）
-    if len(s) < len(c):
-        return False
-    return s[:len(c)] == c and (len(s) == len(c)
-                                or s[len(c) - 1] == c[-1])
+    sk = _scope_kind(scope)
+    ck = _scope_kind(container)
+
+    # 结构化/None 类型：目前未实现显式 containment，回退到“完全相等”且 fail-closed。
+    # 结构化 scope（dict/list/set）相同结构且相等 → 视为一致（没越权）；
+    # 类型不同或结构不等 → False（越权/不支持一律不通过，绝不因解析成 [] 而放行）。
+    if sk == "unsupported" or ck == "unsupported":
+        if scope is None or container is None:
+            # None 表示未提供 scope，由调用方决定；此处要求两者同为 None 或同值才一致
+            return scope is None and container is None
+        # 非 None 结构化 scope：仅支持“同类型且逐字段相等”，否则 fail closed
+        return type(scope) is type(container) and scope == container
+
+    if sk == "scalar" and ck == "scalar":
+        return scope == container
+
+    if sk == "str" and ck == "str":
+        s = _split_scope_path(scope)
+        c = _split_scope_path(container)
+        # str 非空但解析后无片段（如纯分隔符）→ 不能默认放行
+        if not s:
+            return scope.strip() == container.strip()
+        if not c:
+            return False
+        if s == c:
+            return True
+        if len(s) < len(c):
+            return False
+        return s[:len(c)] == c
+
+    # 类型不同（str vs scalar / scalar vs str）→ fail closed
+    return False
 
 
 def check_authorization_binding(authorization):
