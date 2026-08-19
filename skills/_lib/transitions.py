@@ -32,6 +32,17 @@ obj["status"]=...，导致状态机"部分强制"——仍有入口能绕过合�
 
 import time
 from datetime import datetime, timezone
+import os, sys
+
+# 统一错误分层 (C2): StateError / InvariantError 由本门抛出
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    from errors import StateError, InvariantError
+except Exception:  # 降级: 中央门不依赖 errors.py 也能工作
+    class StateError(Exception):
+        pass
+    class InvariantError(Exception):
+        pass
 
 
 def _utcnow_iso():
@@ -202,15 +213,16 @@ def register_invariants(kind, table):
 
 
 def _check_invariants(kind, dst, obj):
-    """进入 dst 状态时校验必需事实字段。缺失则 raise ValueError。"""
+    """进入 dst 状态时校验必需事实字段。缺失则 raise InvariantError。"""
     inv = _INVARIANTS.get(kind, {}).get(dst)
     if not inv:
         return True
     missing = [f for f in inv if not obj.get(f)]
     if missing:
-        raise ValueError(
+        raise InvariantError(
             "状态不变量违反: %s -> %s 缺少必需事实字段 %s"
-            % (kind, dst, missing))
+            % (kind, dst, missing),
+            code="INVARIANT_MISSING_FIELD")
 
 
 def transition(obj, to, kind="candidate", actor="system", reason="",
@@ -235,8 +247,8 @@ def transition(obj, to, kind="candidate", actor="system", reason="",
     states, _tbl = _gate(kind)
     src = obj.get("status") or states[0]
     if to not in states:
-        raise ValueError("非法目标状态 %r (kind=%s, 合法: %s)"
-                         % (to, kind, states))
+        raise StateError("非法目标状态 %r (kind=%s, 合法: %s)"
+                         % (to, kind, states), code="ILLEGAL_TARGET_STATE")
 
     # 1) 携带 extra 事实字段
     if extra:
@@ -244,7 +256,8 @@ def transition(obj, to, kind="candidate", actor="system", reason="",
 
     # 2) 跳转合法性 (幂等 src==dst 放行; force 跳过)
     if not force and not transition_allowed(src, to, kind):
-        raise ValueError("非法状态跳转 %s -> %s (%s)" % (src, to, kind))
+        raise StateError("非法状态跳转 %s -> %s (%s)" % (src, to, kind),
+                         code="ILLEGAL_TRANSITION")
 
     # 3) 状态-事实不变量 (#3)
     _check_invariants(kind, to, obj)
