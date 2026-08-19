@@ -96,6 +96,15 @@ version: 1.3.0
 - 质量不足 → 重试或降置信度。
 - 模型升级：快模型 → 质检 → 不足 → 强模型。
 
+**Retry 上限（SUM-01，禁止无限 retry）**：Summarize 不是 Retry Runtime，禁止 `while quality < threshold: retry()`。硬上限如下：
+
+| 对象 | 首次 | 重试 | 超限后 |
+|:--|:--|:--|:--|
+| chunk（单块提取） | 1 次 | 1 次（换更小块） | → fallback 提取 → 仍败则记 warnings[] 并 fail |
+| quality（整份质量） | 1 次 | 1 次（升级模型/换策略） | → 降低 confidence → return |
+
+仍失败则返回 partial / low-confidence 结果，交上层决定，不得继续无限重试。
+
 ## Memory / Knowledge Writeback
 
 只产 candidates，不直接写。候选走 governance 决定是否持久化。缓存按 `input_hash+mode+audience+length` 失效。

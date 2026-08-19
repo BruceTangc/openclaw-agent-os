@@ -53,10 +53,12 @@ version: 1.3.0
 2. **识别所需实体**：涉及哪些人/项目/任务/工具/概念/关系。
 3. **检索相关内容**：按任务类型检索 memory / knowledge / ontology / 文件 / 工具结果。
 4. **本体解析身份/关系**：通过 ontology 解析别名、依赖、作用域。
-5. **优先信息质量**（时段分明，不作绝对排序）：
-   - **时间敏感任务**（行情/时效/价格）：`freshness > 旧验证`；
-   - **稳定域**（事实/常识/架构）：`verified > freshness`；
+5. **优先信息质量**（时段分明，不作绝对排序，CTX-01 统一排序）：
+   - 统一排序基准：`Provenance（来源）→ Validity（有效性）→ Freshness（新鲜度）→ Confidence（置信度）`。
+   - **时间敏感任务**（行情/时效/价格）：Freshness 权重大（`freshness > 旧验证`）；
+   - **稳定域**（事实/常识/架构）：Validity 权重大（`verified > freshness`）；
    - **始终**：`provenance > 无来源推断`（有来源比无来源优先，无论新旧）。
+   - 不是简单 `fresh > verified`，而是按 Provenance→Validity→Freshness→Confidence 四层统一，各任务场景调整权重。
 6. **去噪去重**：去掉重复、无关、噪音。
 7. **保留实质矛盾**：不因压缩而抹平矛盾。
 8. **产出紧凑上下文包**：交给 OpenClaw 正常执行。

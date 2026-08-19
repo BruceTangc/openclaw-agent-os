@@ -24,7 +24,7 @@ CANCELLED
 - WAITING：等外部条件/人/时间/资源
 - BLOCKED：有阻塞原因
 - PAUSED：主动暂停
-- RETRYING：重试中
+- RETRYING：重试中（**语义生命周期状态，不执行/调度 retry**）
 - FAILED：失败且暂时无策略
 - COMPLETED：满足完成条件
 - REVIEW：需复盘/验收/人工确认
@@ -34,6 +34,20 @@ CANCELLED
 ## 3. 状态转换规则
 
 INBOX→PLANNED→READY→RUNNING；RUNNING→{COMPLETED, WAITING, BLOCKED, RETRYING, FAILED, PAUSED, CANCELLED}；{WAITING, BLOCKED, PAUSED, RETRYING}→READY；COMPLETED→REVIEW→{ARCHIVED, READY}。
+
+### 3.1 RETRYING 权责边界（TM-01）
+
+`RETRYING` 是 **semantic lifecycle state（语义生命周期状态）**——它只表达「当前任务处于重试阶段」，
+**Task Manager 不执行、也不调度 retry**。retry 各环节的职责严格分层：
+
+| 层 | 职责 | 说明 |
+|:--|:--|:--|
+| Task Manager | retry budget / attempt / lifecycle | 维护 retry_count、attempt 计数、状态流转（RETRYING→READY/RUNNING），**不自己跑重试** |
+| Verification | failure diagnosis + retry_eligible | 诊断失败原因 + 判断「该不该重试」，输出 retry_eligible（VER-01） |
+| Orchestrator | retry / replan / routing | 决定重试策略、重新规划、路由到执行路径 |
+| OpenClaw Runtime | actual execution | 真正执行重试动作 |
+
+禁止 Task Manager 自己执行 retry——它只负责记账与状态，不触碰执行。
 
 ## 4. Task Lock 与崩溃恢复
 

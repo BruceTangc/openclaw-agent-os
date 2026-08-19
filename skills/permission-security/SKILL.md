@@ -16,7 +16,7 @@ version: 1.3.0
 
 - L0–L4 动作风险分级（唯一真值表）
 - 默认授权策略（auto/confirm/approve/deny）
-- Permission Gate 判断流程（authority→scope→risk→native policy→approval→reversibility→confirmation→execution→verification）
+- Permission Gate 判断流程（authority→scope→risk→native policy→approval→reversibility→confirmation→authorization decision）
 - 幂等 / 副作用控制、权限绑定（actor/action/resource/scope/expiry）
 - 脚本分类接口（scripts/permission.py --classify/--check）
 
@@ -30,6 +30,16 @@ version: 1.3.0
 ## OpenClaw Boundary
 
 只做分级与建议，**复用 OpenClaw 原生 policy / exec / sandbox / approval / session**。不创建自己的 Scheduler、Event Bus、Permission Runtime。fail-closed：分类器失效时高风险动作默认拒绝。
+
+## Permission vs Verification（严格边界，PERM-02）
+
+- **Permission** 判 `actual_scope ≤ authorized_scope`（动作是否在授权范围内）。
+- **Verification** 判 `actual_outcome satisfies success_condition`（结果是否达标），归 verification-evaluation。
+- **Permission 不判断任务是否成功；Verification 不决定权限。** 二者不得混用：
+  - 不能因为「结果看起来正确」就放宽权限（Verification 不升级授权）。
+  - 不能因为「动作已授权」就默认任务成功（Permission 不产出成功结论）。
+- 授权范围内是否真的发生副作用（execution）与是否真的达标（verification），都在
+  Permission 之外，由 OpenClaw Runtime 与 verification-evaluation 分别承担。
 
 ## When to Activate
 
@@ -49,7 +59,7 @@ version: 1.3.0
 
 1. **分级 classify**：对动作判定 L0–L4。
 2. **默认策略**：L0 auto（原生允许即放行）；L1 auto（可逆且在 scope 内）；L2 确认；L3 显式审批 + 目标/scope 验证；L4 deny。
-3. **Gate 判断**：authority → target/scope → risk → native policy → approval → reversibility → confirmation → minimal execution → verification。
+3. **Gate 判断**：authority → target/scope → risk → native policy → approval → reversibility → confirmation → **authorization decision**（到此 Permission 结束）。之后的 Execution 归 OpenClaw Runtime、Verification 归 verification-evaluation，均不属于 Permission Gate 职责。
 4. **绑定授权**：用户批准必须绑定 actor/action/resource/scope/expiry（防重放）。
 5. **执行后检查**：actual ≤ authorized，否则 Security Incident。
 6. **幂等**：副作用操作携带 operation_id；可逆操作声明 rollback；不可逆自动升级风险级。

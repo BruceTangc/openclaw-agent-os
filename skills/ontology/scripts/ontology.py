@@ -399,6 +399,21 @@ def cmd_create_entity(args):
     props = json.loads(args.props) if args.props else {}
     entity_props = validate_entity(schema, args.type, args.name, props)
     entities = read_entities()
+    # ONT-01（强制 Alias First）：创建必须先 resolve alias + duplicate check，
+    # 不得绕过 alias resolution 直接建实体。
+    alias_cache = load_alias_cache(entities)
+    resolve_key = (args.name or "").lower()
+    dup_id = alias_cache.get(resolve_key)
+    if dup_id:
+        # 同名/同别名已存在 → 不再新建，返回现有 id（强制去重）
+        print("⚠ 实体已存在（alias 命中）: {0} → {1}".format(args.name, dup_id))
+        return 2
+    # 再查 props.aliases 是否命中已有实体别名
+    for a in (props.get("aliases", []) or []):
+        hit = alias_cache.get(str(a).lower())
+        if hit:
+            print("⚠ 别名冲突: {0} → {1}".format(a, hit))
+            return 2
     if args.id:
         if args.id in entities:
             print("实体已存在: {0}".format(args.id))
@@ -567,14 +582,27 @@ def cmd_duplicates(args):
         key = e.get("name", "").strip().lower()
         if key:
             by_name.setdefault(key, []).append(eid)
+    # ONT-02: 去重判据 = exact normalized name + explicit alias + stable ID。
+    #   不引入 LLM 语义去重（否则 Ontology 开始承担语义推理）。
+    alias_cache = load_alias_cache(entities)
+    by_alias = {}  # alias → 命中它的实体 id 列表（同名已在 by_name 覆盖，这里只补别名维度）
+    for eid, e in entities.items():
+        for a in (e.get("properties", {}).get("aliases", []) or []):
+            ka = str(a).strip().lower()
+            if ka:
+                by_alias.setdefault(ka, []).append(eid)
+    # 别名命中多个实体的，也列为重复候选
     dups = {k: v for k, v in by_name.items() if len(v) > 1}
+    for ka, eids in by_alias.items():
+        if len(eids) > 1:
+            dups["[alias] " + ka] = eids
     if not dups:
-        print("未发现同名重复候选")
+        print("未发现同名/同别名重复候选")
         return 0
     print("重复候选:")
-    for name, ids in dups.items():
-        print("  '{0}': {1}".format(name, ", ".join(ids)))
-    print("(标记为 merge_candidate, 不自动合并)")
+    for key, ids in dups.items():
+        print("  '{0}': {1}".format(key, ", ".join(ids)))
+    print("(标记为 merge_candidate, 不自动合并；exact name / explicit alias / stable ID 以上均可甄别，不做 LLM 语义去重)")
     return 0
 
 

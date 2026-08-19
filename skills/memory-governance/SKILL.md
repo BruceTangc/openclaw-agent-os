@@ -138,6 +138,12 @@ version: 1.3.0
 
 写入/清理普通 memory 文件属 L1（可逆本地写入），可自动。涉及删除历史、修改 user-profile 偏好、覆盖长期条目属 L2/L3，需确认/审批。遵守 OpenClaw native policy。
 
+**Explicit Delete 不得绕过 Permission（MEM-01）**：用户说「删除」≠ 直接物理删除。正确链路：
+> 用户删除指令 → 意图确认 → Permission（分级+授权）→ actual deletion。
+
+禁止 explicit delete 直接物理删除，尤其针对：GLOBAL 层条目、USER durable memory、历史记录、长期条目覆盖。
+删除历史/覆盖长期条目属 L2/L3，必须先走 Permission 分级与确认，宁可归档/trash（可逆）也不直接 delete。
+
 ## Verification
 
 - 写入是否可溯源（有来源/时间）？

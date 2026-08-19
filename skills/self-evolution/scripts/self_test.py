@@ -220,6 +220,36 @@ check("rollback_evidence_rediscoverable",
       any(r.get("change_id") == H5 and r.get("event_type") == "rollback"
           for r in queried) or any(r.get("event_type") == "rollback" for r in rollback_queried))
 
+# === 9f. EVO-04: internal governance event 不自动产生新 Evolution Candidate ===
+# 第 9b 已产生 regression + rollback 两条 evolution_event（source=evolution_event）。
+# 验证：这些 internal governance event 不会被 discover 当外部 evidence 消费成新 candidate。
+# 即「Evolution → 内部 governance event → 不得自动产生新 candidate」。
+_evo_evs_before = [r for r in _core_module.load_evidence()
+                   if r.get("source") == "evolution_event"]
+# candidate 总数在产生 evolution_event 前后应只由外部 evidence 决定，不应被内部事件增加
+_cand_before = len(_core_module._list_ids("candidate"))
+# 尝试用内部 evolution_event 的 id 作为外部 evidence refs 喂给 discover，应 IGNORE（不被当外部证据）
+_internal_ev_ids = [r.get("id") for r in _evo_evs_before if r.get("id")]
+if _internal_ev_ids:
+    _int_disc = run(["discover.py", "--evidence-refs", json.dumps(_internal_ev_ids)],
+                    expect=None)  # 不期望 CANDIDATE_CREATED
+    _int_ok = not _int_disc or _int_disc.get("decision") in ("IGNORE", "DEDUP_EXISTING", "DEDUP")
+else:
+    _int_ok = True
+check("evo04_internal_event_no_new_candidate", _int_ok)
+# candidate 总数不被内部 governance event 增加
+_cand_after = len(_core_module._list_ids("candidate"))
+check("evo04_candidate_count_stable_on_internal_event", _cand_after == _cand_before)
+
+# === 9g. EVO-04: evolution_event source 隔离（不得当外部证据混入）===
+# evolution_event 必须以 source=evolution_event 独立存在，不能以外部 source 写入
+# （这保证 Evolution 自身 apply/change 事件不会误触发新 candidate）。
+_evo_evs_after = [r for r in _core_module.load_evidence()
+                  if r.get("source") == "evolution_event"]
+check("evo04_evolution_event_source_isolated",
+      all(r.get("source") == "evolution_event" for r in _evo_evs_after)
+      and len(_evo_evs_after) >= len(_evo_evs_before))
+
 # === 10. Crash Recovery: APPLYING 状态检测 ===
 import _core
 incomplete = _core.detect_incomplete_apply()

@@ -79,6 +79,8 @@ version: 1.3.0
 
 **决策词汇表（唯一真值）**：IGNORE / OBSERVE / QUEUE / SUGGEST / PREPARE / EXECUTE / ASK / ESCALATE（DENY 由 permission-security 输出）。NOOP≈IGNORE，INFORM≈SUGGEST，ACT≈EXECUTE。
 
+**EXECUTE 语义（ORC-03，纠偏）**：EXECUTE 是 **execution intent（执行意图）**，不是 direct tool execution。Proactive 输出 EXECUTE 只是表达「这件事应当被执行」，实际动作必须经：Proactive → EXECUTE intent → **orchestrator**（编排）→ **OpenClaw Runtime**（真正执行），并经 permission-security 把关、verification-evaluation 验证。**Proactive MUST NOT execute tools directly。**
+
 **评分→默认策略**：0–20 IGNORE；20–40 OBSERVE；40–60 QUEUE；60–75 SUGGEST；75–90 PREPARE/低风险 EXECUTE；90–100 高优先级。评分非绝对，Risk Gate 与用户授权优先。
 
 **优先级覆盖**：Safety > 用户明确指令 > Permission > Critical Risk > Deadline > Goal Alignment > 高价值机会 > 常规优化 > 低价值信息。主动性不覆盖用户明确指令。

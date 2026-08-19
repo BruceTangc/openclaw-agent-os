@@ -148,7 +148,12 @@ def goal_model(req):
 # Task Decomposition (文档 §7 §9)
 # ---------------------------------------------------------------------------
 def decompose(req):
-    """拆解目标 → Task 列表. 支持显式 tasks 或由 objective 推断."""
+    """拆解目标 → Task 列表. 支持显式 tasks 或由 objective 推断。
+
+    ORC-05：无显式 tasks 时，关键词映射仅是 heuristic fallback candidate（启发式
+    候选），不是最终 execution DAG。真正 DAG 应由 LLM plan → dependency → validation →
+    DAG；本函数产出只作 fallback，供上层补充依赖/校验后使用。
+    """
     if req.get("tasks"):
         return [dict(t) for t in req["tasks"]]
     # 无显式 task 时, 按 objective 关键字做简单映射(纯启发式, 供上层补充)
@@ -180,6 +185,7 @@ def decompose(req):
             "required_capabilities": [],
             "risk": "low",
             "priority": 0,
+            "_decompose_source": "heuristic_fallback",
         })
     return out
 
@@ -188,14 +194,22 @@ def decompose(req):
 # DAG (文档 §8)
 # ---------------------------------------------------------------------------
 def build_dag(tasks, edges):
-    """建 DAG + 环路检测 + 拓扑排序. edges: [["T1","T2"], ...] (T1 → T2)."""
+    """建 DAG + 环路检测 + 拓扑排序. edges: [["T1","T2"], ...] (T1 → T2)。
+
+    ORC-04：非法 edge（引用不存在的节点）不静默忽略，而是记录 invalid_edges 并
+    标记 planning_error，避免「输入 DAG ≠ 实际 DAG」。
+    """
     ids = set(t["id"] for t in tasks)
     graph = {tid: [] for tid in ids}
     indeg = {tid: 0 for tid in ids}
+    invalid_edges = []
     for a, b in edges:
-        if a in ids and b in ids:
-            graph[a].append(b)
-            indeg[b] += 1
+        if a not in ids or b not in ids:
+            # 引用了不存在的节点 → 非法依赖，不静默忽略
+            invalid_edges.append([a, b])
+            continue
+        graph[a].append(b)
+        indeg[b] += 1
     # 环路检测 (Kahn)
     q = deque([n for n in ids if indeg[n] == 0])
     order = []
@@ -212,6 +226,8 @@ def build_dag(tasks, edges):
         "edge_count": len(edges),
         "has_cycle": bool(cycle),
         "cycle_nodes": cycle,
+        "invalid_edges": invalid_edges,
+        "planning_error": bool(invalid_edges),
         "topological_order": order if not cycle else [],
         "graph": graph,
     }
@@ -294,6 +310,12 @@ def permission_gate(action, resource_type="internal", side_effect="NONE",
 
     只有分类器明确返回 decision == "allow" 才放行; 任何异常/缺失/歧义一律拒绝。
     OpenClaw 原生 policy/approval 仍是最终执行边界, 本函数不取代它。
+
+    ORC-01（收口）：本函数是 permission-security 的 **adapter**，不是第二 Permission
+    Engine。只调 classifier 透传 decision。禁止在 Orchestrator 层增加 risk scoring /
+    authority calculation / approval state / permission policy / permission delegation。
+    Orchestrator 只能：Permission Request → permission-security → Authorization Decision
+    → OpenClaw Runtime（最终执行边界）。
     """
     fail_closed = {
         "allowed": False, "level": "R?", "decision": "deny",
@@ -355,58 +377,43 @@ def build_plan(req, tasks, dag_result=None):
 
 
 # ---------------------------------------------------------------------------
-# Verification (文档 §35 §36)
+# Verification (文档 §35 §36) — adapter（ORC-02 收口）
 # ---------------------------------------------------------------------------
+# Orchestrator 不再自己实现 V0-V4 判定（否则会与 verification-evaluation 形成第二
+# Verification Engine）。本函数只做 adapter：结构校验 + 转发到
+# verification-evaluation/scripts/verify.py。真正的 success_condition / evidence /
+# independent verification / external state / confidence 判定全归 verification-evaluation。
+VERIFY_MODULE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "verification-evaluation", "scripts", "verify.py")
+
+
 def verify_result(result, level="V1"):
-    """按验证等级检查结果. V0→V4 逐级累计, 高等级必须同时满足低等级全部检查 (§55)."""
-    if level not in VERIFY_LEVELS:
-        level = "V1"
-    res = {"level": level, "passed": False, "checks": []}
-    # V0: 工具返回成功
-    res["checks"].append({"check": "V0 tool_success", "ok": bool(result.get("tool_success"))})
-    if level == "V0":
-        res["passed"] = all(c["ok"] for c in res["checks"])
-        return res
-    # V1: 输出格式正确
-    has_output = "output" in result or "outputs" in result or "summary" in result
-    res["checks"].append({"check": "V1 format", "ok": has_output})
-    if level == "V1":
-        res["passed"] = all(c["ok"] for c in res["checks"])
-        return res
-    # V2: 结果符合任务条件
-    condition_ok = bool(result.get("success_condition_met"))
-    res["checks"].append({"check": "V2 condition", "ok": condition_ok})
-    if level == "V2":
-        res["passed"] = all(c["ok"] for c in res["checks"])
-        return res
-    # V3: 独立验证 [<=#25]: 不能只看 independently_verified 布尔，必须 method+evidence_refs+verified_by 齐全
-    v3 = result.get("verification") if isinstance(result.get("verification"), dict) else result
-    method = v3.get("verification_method") or v3.get("method")
-    evidence_refs = v3.get("evidence_refs") or result.get("evidence_refs")
-    verified_by = v3.get("verified_by") or result.get("verified_by")
-    indep = bool(v3.get("independently_verified") or result.get("independently_verified"))
-    has_evidence_list = isinstance(evidence_refs, (list, tuple, set)) and len(evidence_refs) > 0
-    v3_ok = bool(method) and bool(verified_by) and has_evidence_list and indep
-    res["checks"].append({
-        "check": "V3 independent_verified",
-        "ok": v3_ok,
-        "detail": {
-            "method": method, "evidence_refs_count": len(evidence_refs) if has_evidence_list else 0,
-            "verified_by": verified_by, "independent": indep,
-        },
-    })
-    # #26: 无法确认(UNKNOWN) → 不算通过，标记 decision=UNKNOWN，不得静默当成功
-    if not v3_ok:
-        res["decision"] = "UNKNOWN"
-        res["unknown_reason"] = "V3 缺少 method/evidence_refs/verified_by/independent 之一，无法确认独立验证"
-    if level == "V3":
-        res["passed"] = all(c["ok"] for c in res["checks"])
-        return res
-    # V4: 外部状态变化
-    state_changed = bool(result.get("state_changed"))
-    res["checks"].append({"check": "V4 external_state", "ok": state_changed})
-    res["passed"] = all(c["ok"] for c in res["checks"])
-    return res
+    """adapter：转发到 verification-evaluation 的 verify 实现。
+
+    Orchestrator 只做 basic structural validation（result 是否 dict），
+    不自己判 V0-V4 / verdict（ORC-02：Verification 不得形成第二引擎）。
+    """
+    # basic structural validation：非 dict 直接 FAIL，不进 verify
+    if not isinstance(result, dict):
+        return {
+            "level": level, "verdict": "FAIL", "passed": False,
+            "retry_eligible": False, "reason": "result 非 dict（结构校验失败）",
+            "checks": [],
+        }
+    # 转发到 verification-evaluation
+    try:
+        proc = subprocess.run(
+            [sys.executable, VERIFY_MODULE, "--json", json.dumps(result, ensure_ascii=False),
+             "--level", level],
+            capture_output=True, text=True, timeout=10)
+        if proc.returncode != 0:
+            return {"level": level, "verdict": "FAIL", "passed": False,
+                    "retry_eligible": False, "reason": "verification-evaluation 调用失败"}
+        return json.loads(proc.stdout)
+    except Exception as e:
+        return {"level": level, "verdict": "FAIL", "passed": False,
+                "retry_eligible": False, "reason": "verification-evaluation 不可用: " + str(e)}
 
 
 # ---------------------------------------------------------------------------

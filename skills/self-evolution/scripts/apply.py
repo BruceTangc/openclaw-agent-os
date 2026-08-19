@@ -55,11 +55,22 @@ def apply_change(proposal_id, approve, approver, reason):
         _core.save_artifact("candidate", cand)
 
     human = _core.require_human_approval(prop.get("level", "G3"))
+    level = prop.get("level", "G3")
+    # EVO-01: --approve 是 caller assertion（调用方断言），不是 trusted human approval。
+    #   Agent 自己跑 apply.py --approve 只能表达「调用方声明已获授权」；
+    #   G5/G6（human 级）必须要求可信 approval artifact（approver 非空、且非 agent 自注），
+    #   不能仅靠命令行布尔开关就当作真实人工批准。
     if human and not approve:
-        return None, "级别 {} 要求人工审批".format(prop.get("level"))
+        return None, "级别 {} 要求人工审批".format(level)
+    if human and approve and level in ("G5", "G6"):
+        if not approver or approver in ("unknown", "agent", "self", "auto"):
+            return None, ("级别 {} 要求可信人类审批 artifact；--approve 仅是 caller "
+                          "assertion，不能作为 trusted human approval。必须提供 approver"
+                          "（非 unknown/agent/self/auto）").format(level)
     prop["_approved"] = True
     prop["_approval"] = {"approver": approver or "unknown", "reason": reason or "",
-                         "human_required": human, "at": _core.now_iso()}
+                         "human_required": human, "at": _core.now_iso(),
+                         "_approval_source": "caller_assertion" if approve else "none"}
 
     ok, problems = governance_check(prop)
     if not ok:
@@ -129,6 +140,17 @@ def _apply_change_locked(prop, evo_id, approve, approver, reason):
 
     # 执行结构化 patch
     ops = (prop.get("change") or {}).get("operations") or []
+    # EVO-02（Execution Gate）: Apply 最终执行点再次检查 targets。Proposal Gate 的
+    #   governance_check 已查过一次，但这里在真正写盘前再验证一次 operation ∈ approved
+    #   targets，双门(Create 时 + Execute 时)都必须存在，防 Proposal 到 Apply 之间目标
+    #   集被修改导致越界。
+    _exec_ok, _exec_bad = _core.allowed_ops(ops, change.get("targets") or [])
+    if not _exec_ok:
+        _core.assert_transition(change, "APPLY_FAILED", kind="change",
+                                apply_error="Execution Gate: operations 越出 targets: " + ";".join(_exec_bad))
+        _core.save_artifact("change", change)
+        _core.restore_snapshot(cid)
+        return None, "APPLY_FAILED + EXEC_GATE: operations 越出 targets: " + ";".join(_exec_bad)
     try:
         applied = _core.apply_patch(ops)
     except Exception as e:
@@ -252,7 +274,8 @@ def _retry_from_change(change_id):
 def main():
     p = argparse.ArgumentParser(description="Self-Evolution v2.3 Apply")
     p.add_argument("--proposal", required=True)
-    p.add_argument("--approve", action="store_true")
+    p.add_argument("--approve", action="store_true",
+                   help="caller assertion（调用方断言已获授权），非 trusted human approval；G5/G6 还需 --approver 非 unknown")
     p.add_argument("--approver", default="")
     p.add_argument("--reason", default="")
     args = p.parse_args()

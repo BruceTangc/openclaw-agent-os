@@ -6,6 +6,11 @@
 
 Task ID 唯一，建议 `task_<date>_<random>` 或 UUID。同一外部请求绑定 request_id 防重复创建。来源：user / proactive / orchestrator / workflow / event / agent / system。
 
+**去重身份分层（TM-02）**：
+- **强身份（自动 MERGE 的唯一依据）**：`source_id` / `request_id` / `operation_id` / `goal_id`。这些标识相同才算「同一任务」，才允许自动合并/去重。
+- **弱信号（只能 SUGGEST_DUPLICATE，禁止强制 MERGE）**：`title` 相似度。标题相似只作"疑似重复"建议，提示用户/上层确认，不能单独据此自动合并。
+- 禁止 `title same → automatic merge`。
+
 ## 2. Task 类型
 
 action / research / search / analysis / decision / writing / review / communication / followup / maintenance / scheduled / workflow / proactive / verification / waiting。允许扩展但别为每个业务建新类型。
@@ -25,7 +30,12 @@ priority_score = impact + urgency + goal_alignment + deadline_pressure
 
 ## 5. 停滞（Stale）
 
-除 deadline 外检测停滞（如 14 天未更新），依据 last_activity_at / expected_progress / task_type / priority 判定 STALE。
+除 deadline 外检测停滞，依据 last_activity_at / expected_progress / task_type / priority 判定 STALE。
+
+**STALL 判据（TM-03）**：不能单纯因「时间长」判停滞。长期项目（如长期研究/长期监控）即使长时间未更新也不应因时间被误判停滞。
+- `stale`（久未更新）≈ 时间维：`age_days ≥ 阈值`（如 14 天）。
+- `STALL`（真停滞）= `stale AND 无任何 progress evidence`（既久未更新，又没有新进展/里程碑/产出证据）。
+- 只有 stale + no progress evidence 才判 STALL；单纯 stale 只作"可能停滞"提示，不升级为停滞状态。
 
 ## 6. Parent / Child
 

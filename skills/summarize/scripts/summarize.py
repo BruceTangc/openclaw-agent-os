@@ -103,7 +103,11 @@ def chunk_by_semantics(text, overlap=0.15, max_chars=2500):
 def dedup_lines(text, threshold=0.9):
     """基于 2-gram Jaccard 相似度的行级去重。
 
-    返回 (去重后文本, 重复行数, 相似对样例)。
+    SUM-02：高相似但「数字/日期/来源不同」不得直接 dedup——例如
+    「苹果营收增长 10%」vs「苹果营收增长 20%」数字不同，是关键事实差异，
+    应标记为 possible contradiction 交后续判断，而非静默删除。
+
+    返回 (去重后文本, 重复行数, 相似对样例, 矛盾候选)。
     """
     lines = [l for l in text.splitlines() if l.strip()]
     kept = []
@@ -111,10 +115,14 @@ def dedup_lines(text, threshold=0.9):
     seen = []
     dup = 0
     samples = []
+    contradictions = []
 
     def grams(s):
         s = re.sub(r"\s+", "", s.lower())
         return set(s[i:i + 2] for i in range(max(0, len(s) - 1)))
+
+    def numbers(s):
+        return set(re.findall(r"\d+(?:\.\d+)?", s))
 
     for line in lines:
         g = grams(line)
@@ -125,6 +133,14 @@ def dedup_lines(text, threshold=0.9):
             else:
                 sim = len(g & kg) / len(g | kg)
             if sim >= threshold:
+                # SUM-02: 高相似但数字不同 → 不 dedup，标 possible contradiction
+                nums_a = numbers(line)
+                nums_b = numbers(kept_lines[k])
+                if nums_a and nums_b and nums_a != nums_b:
+                    if len(contradictions) < 10:
+                        contradictions.append((kept_lines[k][:40], line[:40],
+                                               round(sim, 2)))
+                    continue  # 不当作 duplicate
                 is_dup = True
                 dup += 1
                 if len(samples) < 5:
@@ -134,7 +150,7 @@ def dedup_lines(text, threshold=0.9):
             kept.append(line)
             kept_lines.append(line)
             seen.append(g)
-    return NL.join(kept), dup, samples
+    return NL.join(kept), dup, samples, contradictions
 
 
 # ── 3. 多文档聚合 ────────────────────────────────────────
@@ -397,12 +413,15 @@ def main():
 
     if args.dedup:
         text = read_text(args.dedup)
-        cleaned, dup, samples = dedup_lines(text, threshold=args.threshold)
+        cleaned, dup, samples, contradictions = dedup_lines(text, threshold=args.threshold)
         print("原行数: {0} | 去重后: {1} | 判重: {2}".format(
             len([l for l in text.splitlines() if l.strip()]),
             len(cleaned.splitlines()), dup))
         for s in samples:
             print("  相似对: {0} ~ {1} (sim={2})".format(s[0], s[1], s[2]))
+        for c in contradictions:
+            print("  ⚠ 数字不同不 dedup (possible contradiction): {0} ~ {1} (sim={2})".format(
+                c[0], c[1], c[2]))
         if args.out:
             w = open(args.out, "w", encoding="utf-8")
             w.write(cleaned)

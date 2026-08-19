@@ -214,6 +214,23 @@ PROTECTED_TARGETS = [
     "AGENTS.md", "SOUL.md",
 ]
 
+# EVO-03/05: 保护目标从「substring match」升级为「四类语义分类」，优先 fail closed。
+#   四类：exact protected file / protected path prefix / protected subsystem /
+#   protected semantic class。精确匹配优先，前缀/子系统用规则而非裸子串（避免
+#   'secret' 误命中 'secretary' 这类）。
+PROTECTED_EXACT_FILES = {
+    "agents.md", "soul.md", "identity.md", "user.md", "memory.md",
+    "tools.md", "heartbeat.md",
+}
+PROTECTED_PATH_PREFIXES = [
+    "skills/permission-security", "skills/self-evolution/scripts/",
+    "_lib/", "skills/_lib/",
+]
+PROTECTED_SUBSYSTEMS = [
+    "permission", "security", "credential", "secret", "auth", "approval",
+    "runtime", "infrastructure", "global_authority",
+]
+
 APPROVAL_BY_LEVEL = {
     "G1": "optional", "G2": "optional",
     "G3": "review", "G4": "review_human",
@@ -225,8 +242,33 @@ def require_human_approval(level):
     return APPROVAL_BY_LEVEL.get(level) in ("human", "review_human")
 
 def is_protected_target(target):
-    t = str(target).lower()
-    return any(p.lower() in t for p in PROTECTED_TARGETS)
+    """判定 target 是否受保护（四类语义分类，fail closed）。
+
+    优先级：exact file > 路径前缀 > 子系统词 > 遗留 substring（向后兼容）。
+    """
+    t = str(target)
+    tl = t.lower()
+    # 1) exact protected file（basename 精确匹配）
+    basename = tl.split("/")[-1]
+    if basename in PROTECTED_EXACT_FILES:
+        return True
+    # 2) protected path prefix（路径前缀匹配）
+    for pfx in PROTECTED_PATH_PREFIXES:
+        if tl.startswith(pfx.lower()):
+            return True
+    # 3) protected subsystem（关键词作为独立段匹配，而非裸子串）
+    segments = re.split(r"[\/_\.\-\s]", tl)
+    for p in PROTECTED_SUBSYSTEMS:
+        if p in segments:
+            return True
+    # 4) 遗留 substring（向后兼容，仅对带 . 或 / 的精确文件/路径类关键词，如 AGENTS.md/SOUL.md）。
+    #   不再对纯单词（permission/secret/security 等）做裸子串匹配——那些已由第 3 步
+    #   独立段匹配正确处理，裸子串会导致 'secret' 误命中 'secretary'。
+    for p in PROTECTED_TARGETS:
+        pl = p.lower()
+        if ("." in pl or "/" in pl) and pl in tl:
+            return True
+    return False
 
 def signature(scope, target, pattern_key):
     return "{}|{}|{}".format(str(scope), str(target), str(pattern_key))
