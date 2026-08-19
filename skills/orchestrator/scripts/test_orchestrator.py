@@ -58,11 +58,41 @@ def test_verify_unknown_not_pass():
           "got passed=%s" % r.get("passed"))
 
 
+def test_dag_cycle_hard_block():
+    """审计9: 环/自依赖必须硬阻断 (PLAN_REJECTED + 清空 tasks)。
+
+    CHAIN-01 只覆盖非法 edge; 审计9 把 cycle(含 self-dep) 并入 planning_error,
+    环不能当作 PLAN_READY / 交付可执行序列。
+    """
+    T = lambda i: {"id": "T%d" % i, "objective": "t%d" % i,
+                   "type": "search", "dependencies": []}
+    # 环
+    tasks = [T(1), T(2)]
+    d = occ.build_dag(tasks, [["T1", "T2"], ["T2", "T1"]])
+    p = occ.build_plan({"objective": "x"}, tasks, d)
+    check("cycle → planning_error", d.get("planning_error") is True, str(d))
+    check("cycle → PLAN_REJECTED", p["status"] == "PLAN_REJECTED", p["status"])
+    check("cycle → tasks 清空", p["tasks"] == [], str(p["tasks"]))
+    # 自依赖
+    tasks2 = [T(1)]
+    d2 = occ.build_dag(tasks2, [["T1", "T1"]])
+    p2 = occ.build_plan({"objective": "x"}, tasks2, d2)
+    check("self-dep → planning_error", d2.get("planning_error") is True, str(d2))
+    check("self-dep → PLAN_REJECTED", p2["status"] == "PLAN_REJECTED", p2["status"])
+    # 合法 DAG 不受影响
+    tasks3 = [T(1), T(2)]
+    d3 = occ.build_dag(tasks3, [["T1", "T2"]])
+    p3 = occ.build_plan({"objective": "x"}, tasks3, d3)
+    check("合法链 → PLAN_READY", p3["status"] == "PLAN_READY", p3["status"])
+    check("合法链 → tasks 保留", len(p3["tasks"]) == 2, str(p3["tasks"]))
+
+
 if __name__ == "__main__":
     print("Orchestrator 回归 (F-002 / RVW-20260819-001):")
     test_dead_functions_removed()
     test_corrupt_input_not_silent()
     test_verify_unknown_not_pass()
+    test_dag_cycle_hard_block()
     print("=" * 40)
     print("结果: %d PASS / %d FAIL" % (PASS, FAIL))
     sys.exit(0 if FAIL == 0 else 1)

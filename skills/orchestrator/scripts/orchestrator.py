@@ -198,6 +198,8 @@ def build_dag(tasks, edges):
 
     ORC-04：非法 edge（引用不存在的节点）不静默忽略，而是记录 invalid_edges 并
     标记 planning_error，避免「输入 DAG ≠ 实际 DAG」。
+    CHAIN-01/审计9：cycle（含 self-dependency）同样是规划完整性错误，一并标记
+    planning_error —— 环无法拓扑排序，不得当作 PLAN_READY / 交付可执行序列。
     """
     ids = set(t["id"] for t in tasks)
     graph = {tid: [] for tid in ids}
@@ -221,13 +223,18 @@ def build_dag(tasks, edges):
             if indeg[m] == 0:
                 q.append(m)
     cycle = [n for n in ids if indeg[n] > 0]
+    has_cycle = bool(cycle)
     return {
         "node_count": len(ids),
         "edge_count": len(edges),
-        "has_cycle": bool(cycle),
+        "has_cycle": has_cycle,
         "cycle_nodes": cycle,
         "invalid_edges": invalid_edges,
-        "planning_error": bool(invalid_edges),
+        # 审计9: planning_error 覆盖两种规划完整性错误 ——
+        #   ① 非法 edge（引用不存在节点, ORC-04）
+        #   ② 环/自依赖（无法拓扑排序）
+        # 任一为真即判定 planning_error，build_plan 将 PLAN_REJECTED + 清空 tasks。
+        "planning_error": bool(invalid_edges) or has_cycle,
         "topological_order": order if not cycle else [],
         "graph": graph,
     }
