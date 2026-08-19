@@ -112,8 +112,11 @@ def append_record(record):
     """追加一条记录 (v1.3 #9: 文件锁 + append-only)。
 
     CHAIN-03: 若 record 含 authorization 快照（planned/authorized/actual 三态），
-    在写入时执行 binding 一致性校验，违例以 binding_violation 标记（不阻断写入，
-    供上层追溯），不造 Permission Runtime。
+    在写入时执行 binding 一致性校验，违例以 binding_violation 标记。
+
+    CHAIN-03-B: 此处仅“记录与暴露”违规，不负责 Permission Runtime 层面的
+    运行时阻断——阻断必须在 Permission/Runtime 边界完成；本层不自我声称阻断。
+    违例不阻断追加写入，供上层追溯/安全处置。不造 Permission Runtime。
     """
     record.setdefault("execution_id", "EXE-" + _hash_str(
         json.dumps(record, sort_keys=True) + utcnow_iso()))
@@ -143,12 +146,68 @@ def compute_action_signature(goal_id, task_id, action_type, normalized_target):
 # ---------------------------------------------------------------------------
 # Authorization Binding（CHAIN-03）
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Scope containment（CHAIN-03-A）
+# ---------------------------------------------------------------------------
+def _split_scope_path(token):
+    """路径/层级式 scope 切分为有序片段，用于前缀包含判断。
+
+    支持形如: /workspace/project-a 、 /org/team/account 、 project-a/sub 、
+    write:config:xxx 、 account:123 等。对非字符串（如 None）返回 []。
+    """
+    if not isinstance(token, str) or not token.strip():
+        return []
+    t = token.strip()
+    # 统一把常见的层级分隔符切成片段；不区分 / \\ . :
+    t = t.replace("\\", "/")
+    for sep in (":", "."):
+        t = t.replace(sep, "/")
+    return [seg for seg in t.split("/") if seg]
+
+
+def _scope_strings(child, parent):
+    return _split_scope_path(child) == _split_scope_path(parent)
+
+
+def _scope_contains(scope, container):
+    """判断 scope ⊆ container（容器包含作用域）。
+
+    - 均为字符串：按层级化片段做前缀包含（/a/b/c ⊆ /a/b → True）。
+      同时注意：/a/b 不包含 /a/bc（避免误把 b 当成 bc 的前缀）。
+    - 任一为 None/空：视为未提供。仅当两者都提供非空且含于容才判 True，
+      否则回退到相等判断（未提供 scope 时只允许完全一致，防御越权）。
+    - 非字符串标量（int/dict/list）：仅支持相等（无法通用包含）。
+    """
+    # 标量相等（含未提供 None → 相等空）
+    if not scope and not container:
+        return True
+    if not scope:
+        return False
+    if not container:
+        return False
+    c = _split_scope_path(container)
+    if not c:
+        # container 提供了但无法解析 → 仅支持完全相等，防默认放行
+        return _scope_strings(scope, container)
+    s = _split_scope_path(scope)
+    if not s:
+        return _scope_strings(scope, container)
+    if s == c:
+        return True
+    # 前缀包含，且边界处不吞并更短的相邻段（防止 /a/b vs /a/bc 误判）
+    if len(s) < len(c):
+        return False
+    return s[:len(c)] == c and (len(s) == len(c)
+                                or s[len(c) - 1] == c[-1])
+
+
 def check_authorization_binding(authorization):
     """校验 planned_action / authorized_action / actual_runtime_action 三态一致性。
 
     CHAIN-03：进入 OpenClaw Runtime 前必须保证 authorized_scope 没被 Orchestrator
     replan / Skill parameter / Tool parameter 改变。这里不造 Permission Runtime，
-    只在 Execution Record 内做一致性校验，违例输出 binding_violation 供追溯/阻断。
+    只在 Execution Record 内做一致性校验；违例仅记录 binding_violation 供上层
+    追溯与安全处置，不自行声称负责运行时阻断（阻断在 Permission/Runtime 边界）。
 
     authorization 结构（可选三态，缺省视为一致）:
       {
@@ -156,6 +215,18 @@ def check_authorization_binding(authorization):
         "authorized":{"action": ..., "resource": ..., "scope": ...},
         "actual":    {"action": ..., "resource": ..., "scope": ...},
       }
+
+    约束（CHAIN-03-A）:
+      - authorized.action  == planned.action
+      - authorized.resource == planned.resource
+      - authorized.scope  ⊆ planned.scope
+      - actual.action     == authorized.action
+      - actual.resource   == authorized.resource
+      - actual.scope      ⊆ authorized.scope
+
+    scope 按类型做包含判断（path / resource-id / operation-set / domain /
+    account），对非层级字符串回退到完全相等；不接受简单字符串== 之外
+    的默认放行，避免越权通过。
 
     返回 {consistent: bool, binding_violation: bool, violations: [...]}
     """
@@ -167,7 +238,7 @@ def check_authorization_binding(authorization):
     actual = authorization.get("actual") or {}
 
     violations = []
-    # planned vs authorized：authorized action/resource 必须落在 planned scope 内
+    # planned vs authorized：authorized action/resource/scope 必须落在 planned 内
     if planned and authorized:
         if authorized.get("action") and planned.get("action") \
                 and authorized.get("action") != planned.get("action"):
@@ -175,6 +246,12 @@ def check_authorization_binding(authorization):
         if authorized.get("resource") and planned.get("resource") \
                 and authorized.get("resource") != planned.get("resource"):
             violations.append("authorized.resource != planned.resource")
+        if authorized.get("scope") is not None or planned.get("scope") is not None:
+            if not _scope_contains(authorized.get("scope"),
+                                   planned.get("scope")):
+                violations.append(
+                    "authorized.scope not ⊆ planned.scope: %r vs %r"
+                    % (authorized.get("scope"), planned.get("scope")))
 
     # authorized vs actual：actual 不得超出 authorized scope
     if authorized and actual:
@@ -184,6 +261,12 @@ def check_authorization_binding(authorization):
         if actual.get("resource") and authorized.get("resource") \
                 and actual.get("resource") != authorized.get("resource"):
             violations.append("actual.resource != authorized.resource")
+        if actual.get("scope") is not None or authorized.get("scope") is not None:
+            if not _scope_contains(actual.get("scope"),
+                                   authorized.get("scope")):
+                violations.append(
+                    "actual.scope not ⊆ authorized.scope: %r vs %r"
+                    % (actual.get("scope"), authorized.get("scope")))
 
     return {
         "consistent": len(violations) == 0,

@@ -245,11 +245,99 @@ def test_escalation_dedup():
 
 
 # ===========================================================================
+# CHAIN-03-A: Authorization Scope Binding 测试（3 项 + 边界）
+# ===========================================================================
+def test_binding_scope_authorized_exceeds_planned():
+    print("\n=== Test 11: authorized.scope 超出 planned.scope → violation ===")
+    auth = {
+        "planned":   {"action": "write", "resource": "file",
+                       "scope": "/workspace/project-a"},
+        "authorized": {"action": "write", "resource": "file",
+                        "scope": "/workspace/project-b"},
+        "actual":     {"action": "write", "resource": "file",
+                        "scope": "/workspace/project-b"},
+    }
+    res = er.check_authorization_binding(auth)
+    check("consistent == False", res["consistent"] is False, str(res))
+    check("binding_violation == True", res["binding_violation"] is True,
+          str(res))
+    check("violation mentions authorized.scope",
+          any("authorized.scope" in v for v in res["violations"]),
+          str(res["violations"]))
+
+
+def test_binding_scope_actual_exceeds_authorized():
+    print("\n=== Test 12: actual.scope 超出 authorized.scope → violation ===")
+    auth = {
+        "planned":   {"action": "write", "resource": "file",
+                       "scope": "/workspace"},
+        "authorized": {"action": "write", "resource": "file",
+                        "scope": "/workspace/project-a"},
+        "actual":     {"action": "write", "resource": "file",
+                        "scope": "/workspace/project-b"},
+    }
+    res = er.check_authorization_binding(auth)
+    check("consistent == False", res["consistent"] is False, str(res))
+    check("binding_violation == True", res["binding_violation"] is True,
+          str(res))
+    check("violation mentions actual.scope",
+          any("actual.scope" in v for v in res["violations"]),
+          str(res["violations"]))
+
+
+def test_binding_scope_legal_subset():
+    print("\n=== Test 13: scope 合法子集 → PASS ===")
+    auth = {
+        "planned":   {"action": "write", "resource": "file",
+                       "scope": "/workspace"},
+        "authorized": {"action": "write", "resource": "file",
+                        "scope": "/workspace/project-a"},
+        "actual":     {"action": "write", "resource": "file",
+                        "scope": "/workspace/project-a/sub"},
+    }
+    res = er.check_authorization_binding(auth)
+    check("consistent == True", res["consistent"] is True, str(res))
+    check("binding_violation == False",
+          res["binding_violation"] is False, str(res))
+    check("violations empty", res["violations"] == [], str(res))
+
+
+def test_binding_scope_equal():
+    print("\n=== Test 14: scope 完全相等 → PASS ===")
+    auth = {
+        "planned":   {"action": "run", "resource": "job",
+                       "scope": "/cluster/queue-a"},
+        "authorized": {"action": "run", "resource": "job",
+                        "scope": "/cluster/queue-a"},
+        "actual":     {"action": "run", "resource": "job",
+                        "scope": "/cluster/queue-a"},
+    }
+    res = er.check_authorization_binding(auth)
+    check("consistent == True", res["consistent"] is True, str(res))
+    check("binding_violation == False",
+          res["binding_violation"] is False, str(res))
+
+
+def test_binding_path_boundary_not_swallowed():
+    print("\n=== Test 15: 路径边界不吞并相邻段 (/a vs /ab 不判含容) ===")
+    # /a 不应被视为包含 /ab （避免把 b 当 a 的子路径）
+    auth = {
+        "planned":   {"action": "read", "resource": "db", "scope": "/a"},
+        "authorized": {"action": "read", "resource": "db",
+                        "scope": "/ab"},
+        "actual":     {"action": "read", "resource": "db", "scope": "/ab"},
+    }
+    res = er.check_authorization_binding(auth)
+    check("/a 不包含 /ab → violation", res["binding_violation"] is True,
+          str(res))
+
+
+# ===========================================================================
 # Main
 # ===========================================================================
 if __name__ == "__main__":
     print("=" * 60)
-    print("Anti-loop v1.3 测试 (10 项)")
+    print("Anti-loop v1.3 测试 (CHAIN-03 scope binding 已并入)")
     print("=" * 60)
 
     test_same_action_same_result()
@@ -260,6 +348,11 @@ if __name__ == "__main__":
     test_wake_after_cooldown()
     test_signal_fingerprint()
     test_escalation_dedup()
+    test_binding_scope_authorized_exceeds_planned()
+    test_binding_scope_actual_exceeds_authorized()
+    test_binding_scope_legal_subset()
+    test_binding_scope_equal()
+    test_binding_path_boundary_not_swallowed()
 
     print("\n" + "=" * 60)
     print(f"结果: {PASS} PASS / {FAIL} FAIL")
