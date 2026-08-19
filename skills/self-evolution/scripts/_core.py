@@ -274,34 +274,98 @@ def signature(scope, target, pattern_key):
     return "{}|{}|{}".format(str(scope), str(target), str(pattern_key))
 
 
-def classify_skill_scope(target, agent_workspace_skills=()):
-    """MA-1.0 Integration#4: 判定 Skill target 是 Agent-specific 还是 Shared。
+def classify_skill_scope(target, agent_id=None, agent_workspace=None, shared_root=None,
+                         skills_manifest=None, agent_workspace_skills=()):
+    """MA-1.0 Integration#4 (修复): 判定 Skill target 是 Agent-specific / Shared / DENY。
 
-    依据目标路径归属：
-      - 目标落在任一 Agent 专属 workspace skills 目录 → agent (Agent-specific)
-      - 否则 → shared (共享)
+    Skill ownership **不能靠名称判断**（Agent-specific 与 Shared Skill 可同名），
+    正确依据是 canonical path + Agent workspace 归属：
+      1. target 解析为 canonical/real path
+      2. Agent-specific 仅当 canonical_target 位于 agent 的 canonical <workspace>/skills/ 下
+      3. 路径边界用 commonpath（禁止字符串 startswith 绕过，如 /workspace-research-evil/）
+      4. 防 ../ path traversal → DENY
+      5. 解析 symlink，ownership 以 realpath 后实际目标位置为准
+      6. target 只有 skill 名时，先经 skills_manifest 解析为唯一真实路径；
+         找不到唯一映射 → 视为无法确定 → shared（宁可错当 Shared，不可把 Shared 错判 Agent）
+      7. 无法确定 ownership → shared（fail-safe，走更严格审批）
+      8. unknown agent、非法/空 target、明确 path traversal → DENY（非 shared）
 
-    agent_workspace_skills: 当前 Agent 的专属 skill 目录前缀（如
-    ["research", "~/workspace-research/skills"]）或直接传 skill 名。
-
-    返回 {"kind": "agent" | "shared", "matched_by": str}。
-    单 Agent / 未知目标 → shared（保守，shared 需更高审批）。
+    返回 {"kind": "AGENT" | "SHARED" | "DENY", "matched_by": str, "deny": bool}。
     """
-    t = str(target or "").strip().lower()
-    if not t:
-        return {"kind": "shared", "matched_by": ""}
-    # 规范化：取 skill 名（去掉路径前后缀）；路径形式含 / 时逐段匹配
-    t_norm = t.replace("\\", "/")
-    t_segments = [s for s in t_norm.split("/") if s]
-    for entry in (agent_workspace_skills or ()):
-        e = str(entry)
-        en = e.replace("\\", "/").split("/")[-1].lower().strip()
-        if not en:
-            continue
-        # 匹配：skill 名作为路径段出现（含 target 直接等于 skill 名、子路径、或含该段）
-        if en in t_segments or t_norm == en or t_norm.startswith(en + "/"):
-            return {"kind": "agent", "matched_by": e}
-    return {"kind": "shared", "matched_by": ""}
+    # --- 输入校验 / DENY ---
+    raw = str(target or "").strip()
+    if not raw:
+        return {"kind": "DENY", "matched_by": "", "deny": True}
+    # unknown agent → DENY（执行身份不可信，不是 ownership 不确定）
+    if agent_id is not None:
+        aid = str(agent_id).strip()
+        ws = str(agent_workspace or "").strip()
+        if aid and not ws:
+            # 声称是某 agent 但无法解析其 workspace → 身份不可信 → DENY
+            return {"kind": "DENY", "matched_by": "", "deny": True}
+
+    import os
+
+    def _is_within(path, root):
+        """路径边界包含判断，用 commonpath 防止 startswith 前缀欺骗。"""
+        try:
+            return os.path.commonpath([os.path.realpath(path),
+                                       os.path.realpath(root)]) == os.path.realpath(root)
+        except ValueError:
+            return False
+
+    # --- 路径穿越 / 非法路径检测（先于所有权判断） ---
+    if ".." in raw.split("/") or ".." in raw.split(os.sep):
+        return {"kind": "DENY", "matched_by": "", "deny": True}
+    if raw.startswith(("/", "\\")) is False and ".." in raw:
+        return {"kind": "DENY", "matched_by": "", "deny": True}
+
+    # --- 优先：target 提供真实/相对路径 → canonical 解析 ---
+    # workspace 已知时，相对路径基于 workspace 规范化
+    workspace_root = None
+    if agent_workspace:
+        workspace_root = os.path.realpath(os.path.expanduser(str(agent_workspace)))
+    abs_candidate = None
+    if os.path.isabs(raw) or raw.startswith("./"):
+        abs_candidate = os.path.realpath(os.path.expanduser(raw))
+    else:
+        # 相对路径（非单一 skill 名的一般路径）：尝试基于 agent workspace 规范化
+        if workspace_root and "/" in raw:
+            abs_candidate = os.path.realpath(os.path.join(workspace_root, raw))
+    # symlink 已经由 realpath 解析；shared_root 亦 realpath
+    shared_root_p = os.path.realpath(os.path.expanduser(shared_root)) if shared_root else None
+    agent_skills_root = None
+    if workspace_root:
+        agent_skills_root = os.path.realpath(os.path.join(workspace_root, "skills"))
+
+    if abs_candidate is not None:
+        # 在 agent skills 根内 → AGENT
+        if agent_skills_root and _is_within(abs_candidate, agent_skills_root):
+            return {"kind": "AGENT", "matched_by": agent_skills_root, "deny": False}
+        # 在 shared root 内 → SHARED
+        if shared_root_p and _is_within(abs_candidate, shared_root_p):
+            return {"kind": "SHARED", "matched_by": shared_root_p, "deny": False}
+        # 两者都不在 → 无法确定 → SHARED (fail-safe)
+        return {"kind": "SHARED", "matched_by": "", "deny": False}
+
+    # --- target 只有 Skill 名（无真实路径）→ 经 manifest 唯一解析 ---
+    base = raw.split("/")[-1].strip()
+    if "/" not in raw:
+        # 用 skills_manifest（{skill_name: abs_path}）解析唯一归属
+        if isinstance(skills_manifest, dict):
+            p = skills_manifest.get(base) or skills_manifest.get(raw)
+            if p:
+                canon = os.path.realpath(os.path.expanduser(str(p)))
+                if agent_skills_root and _is_within(canon, agent_skills_root):
+                    return {"kind": "AGENT", "matched_by": agent_skills_root, "deny": False}
+                if shared_root_p and _is_within(canon, shared_root_p):
+                    return {"kind": "SHARED", "matched_by": shared_root_p, "deny": False}
+                return {"kind": "SHARED", "matched_by": "", "deny": False}
+        # 无法唯一解析 → SHARED（fail-safe: 宁可 Shared 更严审批，不可误判 Agent）
+        return {"kind": "SHARED", "matched_by": "", "deny": False}
+
+    # --- 其它无法可靠解析的情形 → SHARED fail-safe ---
+    return {"kind": "SHARED", "matched_by": "", "deny": False}
 def find_candidate(scope, target, pattern_key):
     for cid in _list_ids("candidate"):
         rec = load_artifact("candidate", cid)
