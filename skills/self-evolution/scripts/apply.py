@@ -178,7 +178,11 @@ def _retry_from_change(change_id):
 
     只用于 recovery.py 的 SAFE_TO_RETRY 路径；通过 Proposal 重新进入既有链路，
     必要时在 lock 保护下补 apply 后置校验。失败不抛异常，返回描述字符串。
+
+    #16 L2 Anti-loop: 显式 retry_count 计数器，防 retry storm。每次进入递增，
+    超过 MAX_RETRY 阈值即收敛到 APPLY_FAILED 停止自动重试，不依赖"恰好失败"。
     """
+    MAX_RETRY = 3
     try:
         chg = _core.load_artifact("change", change_id)
         if not chg:
@@ -191,6 +195,16 @@ def _retry_from_change(change_id):
             return "RETRY_MANUAL: proposal 不存在: " + str(proposal_id)
         if prop.get("status") not in ("PROPOSED", "APPROVED", "APPLIED"):
             return "RETRY_SKIP: proposal 状态 " + str(prop.get("status"))
+        # #16 L2: 显式 retry_count 计数，超过阈值直接收敛，防止 infinite retry storm。
+        retry_count = int(chg.get("retry_count", 0) or 0) + 1
+        if retry_count > MAX_RETRY:
+            _core.assert_transition(chg, "APPLY_FAILED", kind="change",
+                                    verify_error=(
+                                        "retry_count 超过上限 {}，停止自动重试".format(MAX_RETRY)))
+            _core._core_save_artifact("change", chg)
+            return ("RETRY_FAILED: retry_count 超过上限 {}，已落地 APPLY_FAILED"
+                    " 停止自动重试".format(MAX_RETRY))
+        chg["retry_count"] = retry_count
         with _core.apply_lock():
             # P1-8/修复: apply 前重新验证 baseline fingerprint。
             #   若 Apply 中断期间目标文件已被外部修改(≠ baseline)，拒绝重新 patch，

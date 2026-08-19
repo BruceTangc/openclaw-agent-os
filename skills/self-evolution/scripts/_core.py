@@ -167,8 +167,13 @@ def load_artifact(kind, ident):
     sub = os.path.join(evo_dir(), kind_dir(kind), ident + ".json")
     if not os.path.exists(sub):
         return None
-    with open(sub, encoding="utf-8") as f:
-        return json.load(f)
+    # AE-5 (I-008): 损坏状态(CORRUPTED) ≠ 空状态(NOT_FOUND)。artifact 文件存在但
+    # 无法解析 → 语义化抛错，拒绝把损坏数据当 None 静默吞掉（对齐 proactive.load_json 口径）。
+    try:
+        with open(sub, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        raise ValueError("CORRUPTED: {} 无法解析 ({})".format(sub, e))
 
 def _index_summary(rec):
     keys = ("scope", "target", "pattern_key", "candidate_id", "diagnosis_id",
@@ -790,6 +795,129 @@ def _safe_transition(record, dst, kind):
         assert_transition(record, dst, kind)
     except ValueError:
         pass
+
+
+# ======================== #17 Progress Gate：检测器 (#16) ========================
+
+# #16/#17 连续停滞阈值（统一常量，检测器 detect_goal_loop 与决策器 progress_gate 共用，
+# 消除 magic-number 漂移；与 apply.py 的 MAX_RETRY=3 语义对称）。
+STALL_THRESHOLD = 3
+
+def _measure_progress(change_id):
+    """测量 change 的当前 goal progress（量化口径：验证通过率）。
+
+    #17 契约：Progress Gate 比较 current vs previous progress，量化口径统一为
+    「验证通过的变更文件数 / 实际变更文件数（expected fingerprints 数）」。
+    数据源 = apply 后置 fingerprint 校验（verify_fingerprints）的真实结果，不是
+    Action changed 就视为 Goal progressed。
+    返回 0.0~1.0 之间浮点；无法测量(无 targets/无 fingerprint)时返回 None，表示
+    「无 Progress 信号」——交由决策器映射为 STALL_DETECTED。
+    """
+    chg = load_artifact("change", change_id)
+    if not chg:
+        return None
+    targets = chg.get("targets") or []
+    if not targets:
+        return None
+    ok, bad = verify_fingerprints(change_id)
+    # verify_fingerprints 返回 (all_ok, mismatches)，mismatches 为不一致的 rel 列表。
+    # 但「无 expected fingerprint」时 ok=False 且 bad=[("", "no expected fingerprint", "")]，
+    # 此时不是「验证失败」而是「尚无验证基准」，不能计为 0 进展。
+    expected = chg.get("_expected_fingerprints", {}) or {}
+    if not expected:
+        return None
+    passed = len(expected) - len(bad)
+    # B-1 修复：分子/分母口径统一。expected 是「实际变更文件」的子集（非全部 targets），
+    # 分母用 len(expected)（而非 len(targets)），否则 progress 永远到不了 1.0。
+    return float(passed) / float(len(expected))
+
+
+def assess_progress(change_id):
+    """#16 检测器 + #17 Progress Assessment 的数据源。
+
+    输出（#16 ↔ #17 接口契约）：
+      loop_type ∈ {ACTION, EXECUTION, GOAL}（此处固定 GOAL，Action/Execution 归 L1/L2）
+      repetition_count: change 上累计的进度评估次数
+      progress_delta: 本次 progress - 上次 progress（无上次则 None）
+      current_progress / previous_progress
+      last_action_time
+    决策器 _decide_progress 消费此结构产出顶层决策词，不在此处直接改状态。
+    """
+    chg = load_artifact("change", change_id)
+    if not chg:
+        return {"loop_type": "GOAL", "repetition_count": 0, "progress_delta": None,
+                "current_progress": None, "previous_progress": None,
+                "last_action_time": None, "change_id": change_id}
+    current = _measure_progress(change_id)
+    previous = chg.get("_previous_progress")
+    rep = int(chg.get("progress_assess_count", 0) or 0)
+    stall = int(chg.get("consecutive_stall_count", 0) or 0)
+    delta = None if (current is None or previous is None) else (current - previous)
+    return {
+        "loop_type": "GOAL",
+        "repetition_count": rep,
+        "consecutive_stall_count": stall,
+        "progress_delta": delta,
+        "current_progress": current,
+        "previous_progress": previous,
+        "last_action_time": chg.get("updated_at"),
+        "change_id": change_id,
+    }
+
+
+def detect_goal_loop(change_id, max_stall=STALL_THRESHOLD):
+    """#16 L3 Goal Progress Loop 检测器。
+
+    检测「Action/Execution 每次都不一样，但 Goal Progress 始终为 0」的模式
+    （A→B→C→D→A' 或 A→B→C 但零进展）——正是 L1/L2 检测不到的空转。
+
+    与 assess_progress 一体两面：assess_progress 只评估进度；本函数判定是否已构成
+    STALL/LOOP（连续停滞达到阈值）。不依赖 action 是否相同，只看 goal progress 信号。
+
+    输出（#16 ↔ #17 接口契约）：
+      loop_type = "GOAL"
+      is_loop: bool（连续停滞 ≥ max_stall 即 True）
+      repetition_count / consecutive_stall_count / progress_delta
+      current_progress（0 或 None 视为无进展）
+    """
+    sig = assess_progress(change_id)
+    stall = sig.get("consecutive_stall_count", 0)
+    cur = sig.get("current_progress")
+    # Goal Progress 始终为 0 或无 Progress 信号，且连续停滞达到阈值 → LOOP
+    no_goal_motion = (cur is None or cur <= 0)
+    is_loop = no_goal_motion and stall >= max_stall
+    return {
+        "loop_type": "GOAL",
+        "is_loop": is_loop,
+        "repetition_count": sig.get("repetition_count", 0),
+        "consecutive_stall_count": stall,
+        "progress_delta": sig.get("progress_delta"),
+        "current_progress": cur,
+        "change_id": change_id,
+    }
+
+
+def record_progress_assessment(change_id, signal):
+    """把一次 Progress Assessment 结果写回 change record（可溯源）。
+
+    #17 契约：决策必须可溯源——记录 progress_signal（当前 vs 上次）+ 计数。
+    只写观测字段，不改 status（状态变更由决策器经 #13 门单独落地）。
+    """
+    chg = load_artifact("change", change_id)
+    if not chg:
+        return None
+    chg["_previous_progress"] = signal.get("current_progress")
+    chg["progress_assess_count"] = signal.get("repetition_count", 0) + 1
+    # #17 修复：单独维护连续停滞计数(consecutive_stall_count)，delta==0 自增、delta>0 清零。
+    #   避免用全局评估次数误判 STOP（长期有进展、偶发一次停滞会被过早 STOP）。
+    delta = signal.get("progress_delta")
+    if delta is not None and delta > 0:
+        chg["consecutive_stall_count"] = 0
+    elif delta is not None and delta == 0:
+        chg["consecutive_stall_count"] = int(chg.get("consecutive_stall_count", 0) or 0) + 1
+    chg["progress_assessed_at"] = now_iso()
+    _core_save_artifact("change", chg)
+    return chg
 
 
 def _core_save_artifact(kind, record):

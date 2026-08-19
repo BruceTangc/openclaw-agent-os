@@ -284,6 +284,78 @@ finally:
     _core.change_dir = _orig_chdir
     shutil.rmtree(_BE7_TMP, ignore_errors=True)
 
+# === 16. #16 L3 Goal Progress Loop 专项测试 ===
+# 直接单测 detect_goal_loop / assess_progress / record_progress_assessment，
+# 用 monkeypatch load_artifact 构造 change 状态，不依赖完整 CLI 链路。
+_orig_load_l3 = _core.load_artifact
+_orig_save_l3 = _core._core_save_artifact
+_fake_chg = {}
+_saved = {}
+def _mock_load(kind, ident):
+    return dict(_fake_chg) if _fake_chg else None
+def _mock_save(kind, record):
+    _saved[kind] = dict(record)
+try:
+    _core.load_artifact = _mock_load
+    _core._core_save_artifact = _mock_save
+
+    # 场景 1: 有进展 (previous=0.0 -> current=0.5)，is_loop 应为 False
+    _fake_chg = {"id": "CHG-L3A", "status": "MONITORING", "targets": ["a.md"],
+                 "_expected_fingerprints": {"a.md": "hash"},
+                 "_previous_progress": 0.0, "consecutive_stall_count": 0}
+    # 强制 progress=0.5：monkeypatch _measure_progress
+    _orig_measure = _core._measure_progress
+    _core._measure_progress = lambda cid: 0.5
+    sig = _core.assess_progress("CHG-L3A")
+    check("L3_assess_progress_delta_positive", sig.get("progress_delta") == 0.5)
+    _core._measure_progress = _orig_measure
+    _fake_chg["_previous_progress"] = 0.0
+    _fake_chg["consecutive_stall_count"] = 0
+    # 有进展时 detect_goal_loop 不判死循环
+    _core._measure_progress = lambda cid: 0.5
+    gl = _core.detect_goal_loop("CHG-L3A")
+    check("L3_detect_no_loop_when_progressing", gl.get("is_loop") is False)
+    _core._measure_progress = _orig_measure
+
+    # 场景 2: 换动作空转 (goal progress 始终 0 + 连续停滞达阈值) → is_loop=True
+    _fake_chg = {"id": "CHG-L3B", "status": "MONITORING", "targets": ["a.md"],
+                 "_expected_fingerprints": {"a.md": "hash"},
+                 "_previous_progress": 0.0, "consecutive_stall_count": 3}
+    _core._measure_progress = lambda cid: 0.0
+    gl = _core.detect_goal_loop("CHG-L3B")
+    check("L3_detect_loop_at_threshold", gl.get("is_loop") is True)
+    check("L3_loop_type_is_goal", gl.get("loop_type") == "GOAL")
+    _core._measure_progress = _orig_measure
+
+    # 场景 3: 尚无验证基准 (_measure_progress=None) + 停滞计数低 → 不误判死循环
+    _fake_chg = {"id": "CHG-L3C", "status": "MONITORING", "targets": ["a.md"],
+                 "_expected_fingerprints": {}, "_previous_progress": None,
+                 "consecutive_stall_count": 1}
+    _core._measure_progress = lambda cid: None
+    gl = _core.detect_goal_loop("CHG-L3C")
+    check("L3_no_false_loop_without_baseline", gl.get("is_loop") is False)
+    _core._measure_progress = _orig_measure
+
+    # 场景 4: record_progress_assessment 维护连续停滞计数 (delta==0 自增)
+    _fake_chg = {"id": "CHG-L3D", "status": "MONITORING", "consecutive_stall_count": 1}
+    _core.record_progress_assessment("CHG-L3D", {"current_progress": 0.0,
+                                                 "repetition_count": 1,
+                                                 "progress_delta": 0.0})
+    check("L3_stall_counter_increments_on_zero_delta",
+          _saved.get("change", {}).get("consecutive_stall_count") == 2)
+
+    # 场景 5: delta>0 清零连续停滞计数
+    _fake_chg = {"id": "CHG-L3E", "status": "MONITORING", "consecutive_stall_count": 4}
+    _core.record_progress_assessment("CHG-L3E", {"current_progress": 0.6,
+                                                 "repetition_count": 1,
+                                                 "progress_delta": 0.1})
+    check("L3_stall_counter_resets_on_progress",
+          _saved.get("change", {}).get("consecutive_stall_count") == 0)
+finally:
+    _core.load_artifact = _orig_load_l3
+    _core._core_save_artifact = _orig_save_l3
+    _core._measure_progress = _orig_measure
+
 # ============ v1.4 C1: 中央门 transitions 回归断言 ============
 # 验证统一状态中央门：非法/合法跳转、事实不变量、audit、兼容别名。
 import sys as _sys, os as _os

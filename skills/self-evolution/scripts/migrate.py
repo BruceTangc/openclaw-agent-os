@@ -35,24 +35,39 @@ def load_legacy():
 
 
 def to_candidate(entry):
-    """旧 entry → v2 candidate（只迁移有 pattern 可归类的演进候选）。"""
+    """旧 entry → v2 candidate（只迁移有 pattern 可归类的演进候选）。
+
+    v2.3 字段语义对齐：recurrence→observation_count、sessions→unique_sessions。
+    同时产出 _stats 供门槛判断（discover._meets_threshold 需要 stats 形态）。
+    """
     text = str(entry.get("summary", "")) + " " + str(entry.get("content", ""))
-    # 复用 reflect 启发式触发词
     target = entry.get("area", entry.get("topic", "unknown"))
     pattern_key = entry.get("pattern_key") or str(entry.get("id", ""))
-    return {
+    observation_count = int(entry.get("recurrence", entry.get("count", 0)) or 0)
+    unique_sessions = int(entry.get("sessions", 0) or 0)
+    independent_sources = int(entry.get("independent_sources", 0) or 0)
+    systemic = bool(entry.get("systemic", False))
+    cand = {
         "scope": entry.get("scope", "unknown"),
         "target": target,
         "pattern_key": pattern_key,
         "problem": text[:300],
         "evidence_refs": [str(entry.get("id", ""))],
-        "recurrence": int(entry.get("recurrence", entry.get("count", 0)) or 0),
-        "sessions": int(entry.get("sessions", 0) or 0),
-        "independent_sources": int(entry.get("independent_sources", 0) or 0),
-        "systemic": bool(entry.get("systemic", False)),
+        "observation_count": observation_count,
+        "unique_sessions": unique_sessions,
+        "independent_sources": independent_sources,
+        "systemic": systemic,
         "confidence": float(entry.get("confidence", 0) or 0),
         "impact": entry.get("impact", "low"),
     }
+    cand["_stats"] = {
+        "observation_count": observation_count,
+        "unique_sessions": unique_sessions if unique_sessions else None,
+        "independent_sources": independent_sources,
+        "verified_count": 0,
+        "systemic": systemic,
+    }
+    return cand
 
 
 def run(dry_run):
@@ -65,8 +80,12 @@ def run(dry_run):
     skipped = 0
     for entry in entries:
         cand = to_candidate(entry)
-        # 口径：只有达到门槛才迁成 Candidate（避免垃圾入库）
-        ok, _reason = discover._meets_threshold(cand)
+        # 口径：只有达到门槛才迁成 Candidate（避免垃圾入库）。
+        # v2.3 修复：_meets_threshold(stats, n_verified) 需 stats 形态 + n_verified 两个参数；
+        # 旧代码误传 candidate dict 且缺参 → TypeError。
+        stats = cand.pop("_stats", {})
+        n_verified = stats.get("verified_count", 0)
+        ok, _reason = discover._meets_threshold(stats, n_verified)
         if not ok:
             skipped += 1
             continue
