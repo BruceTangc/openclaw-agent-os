@@ -451,9 +451,18 @@ def register_evolution_event(event_type, change_id, reason="", regression_id=Non
     _append_index_line("{}\t{}\t{}\n".format(rec["id"], "evidence", rec.get("pattern_key", "")))
     return rec["id"]
 
-def query_evidence(pattern_key=None, scope=None, target=None):
+def query_evidence(pattern_key=None, scope=None, target=None, exclude_internal=True):
+    """查询 Evidence。
+
+    CHAIN-04：默认 exclude_internal=True，排除 source='evolution_event' 的内部
+    governance 事件（apply succeeded / proposal promoted / regression passed 等），
+    防止它们被当作外部 evidence 消费。显式传 exclude_internal=False 才用于证据链
+    追溯（需要看到 regression/rollback 内部事件）。
+    """
     rows = []
     for rec in load_evidence():
+        if exclude_internal and rec.get("source") == "evolution_event":
+            continue
         if pattern_key and rec.get("pattern_key") != pattern_key:
             continue
         if scope and rec.get("scope") != scope:
@@ -463,9 +472,17 @@ def query_evidence(pattern_key=None, scope=None, target=None):
         rows.append(rec)
     return rows
 
-def compute_stats(evids=None, pattern_key=None, scope=None, target=None):
-    """v2.3: 字段语义修正。recurrence → observation_count，新增 unique_executions/unique_sessions。"""
-    rows = load_evidence(evids) if evids else query_evidence(pattern_key, scope, target)
+def compute_stats(evids=None, pattern_key=None, scope=None, target=None, exclude_internal=True):
+    """v2.3: 字段语义修正。recurrence → observation_count，新增 unique_executions/unique_sessions。
+
+    CHAIN-04：默认 exclude_internal=True——内部 evolution_event 不作为外部 evidence 计数
+    （Evolution 成功/回归/回滚本身不得自激出新 Evolution）。只有外部/真实运行 evidence
+    （verification/evaluation/operational/user_feedback/proactive）才计入 recurrence。
+    """
+    rows = load_evidence(evids) if evids else query_evidence(
+        pattern_key, scope, target, exclude_internal=exclude_internal)
+    if exclude_internal:
+        rows = [r for r in rows if r.get("source") != "evolution_event"]
     if not rows:
         return {"observation_count": 0, "unique_executions": 0, "unique_sessions": 0,
                 "independent_sources": 0, "verified_count": 0, "systemic": False,

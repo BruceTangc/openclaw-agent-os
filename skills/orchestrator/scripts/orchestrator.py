@@ -365,14 +365,22 @@ def permission_gate(action, resource_type="internal", side_effect="NONE",
 # Execution Plan (文档 §18)
 # ---------------------------------------------------------------------------
 def build_plan(req, tasks, dag_result=None):
-    """生成 execution_plan."""
+    """生成 execution_plan。
+
+    CHAIN-01：planning_error（非法 DAG edge）是规划完整性错误，不是某个 Task 的执行
+    失败——必须硬阻断。当 dag_result.planning_error == true 时，plan.status = PLAN_REJECTED，
+    tasks 置空，禁止进入 Permission / Execution（不得「尽量执行剩下的任务」）。
+    """
+    rejected = bool(dag_result and dag_result.get("planning_error"))
     return {
         "id": generate_id("plan"),
         "objective": req.get("objective", ""),
-        "tasks": tasks,
+        "status": "PLAN_REJECTED" if rejected else "PLAN_READY",
+        "tasks": [] if rejected else tasks,
         "dag": dag_result,
         "budget": DEFAULT_BUDGET,
         "success_condition": req.get("success_condition", []),
+        "planning_error": rejected,
     }
 
 
@@ -393,6 +401,10 @@ def verify_result(result, level="V1"):
 
     Orchestrator 只做 basic structural validation（result 是否 dict），
     不自己判 V0-V4 / verdict（ORC-02：Verification 不得形成第二引擎）。
+
+    CHAIN-02：验证器自身不可用（timeout / returncode≠0 / 模块缺失 / 异常）返回
+    UNAVAILABLE，不是 Task FAIL——任务失败和验证器坏了是两件事，UNAVAILABLE 交给
+    Evaluation / Autonomy Decision，不能直接判死（避免「执行成功+验证超时→误判失败」）。
     """
     # basic structural validation：非 dict 直接 FAIL，不进 verify
     if not isinstance(result, dict):
@@ -408,12 +420,25 @@ def verify_result(result, level="V1"):
              "--level", level],
             capture_output=True, text=True, timeout=10)
         if proc.returncode != 0:
-            return {"level": level, "verdict": "FAIL", "passed": False,
-                    "retry_eligible": False, "reason": "verification-evaluation 调用失败"}
-        return json.loads(proc.stdout)
+            # 子进程异常退出 = 验证器不可用（如 verify.py 自身崩溃），非任务失败
+            return {"level": level, "verdict": "UNAVAILABLE", "passed": False,
+                    "retry_eligible": False,
+                    "reason": "verification-evaluation 调用失败（exit=%s）" % proc.returncode}
+        try:
+            return json.loads(proc.stdout)
+        except Exception:
+            return {"level": level, "verdict": "UNAVAILABLE", "passed": False,
+                    "retry_eligible": False,
+                    "reason": "verification-evaluation 返回非 JSON（输出损坏）"}
+    except subprocess.TimeoutExpired:
+        # 验证器超时 = 不可用，非任务失败
+        return {"level": level, "verdict": "UNAVAILABLE", "passed": False,
+                "retry_eligible": False, "reason": "verification-evaluation 超时"}
     except Exception as e:
-        return {"level": level, "verdict": "FAIL", "passed": False,
-                "retry_eligible": False, "reason": "verification-evaluation 不可用: " + str(e)}
+        # 模块缺失/不可用
+        return {"level": level, "verdict": "UNAVAILABLE", "passed": False,
+                "retry_eligible": False,
+                "reason": "verification-evaluation 不可用: " + str(e)}
 
 
 # ---------------------------------------------------------------------------
@@ -530,7 +555,14 @@ def main():
             if "-" in e:
                 a, b = e.split("-", 1)
                 edges.append([a.strip(), b.strip()])
-        print(json.dumps(build_dag(tasks, edges), ensure_ascii=False, indent=2))
+        dag = build_dag(tasks, edges)
+        # CHAIN-01：planning_error 硬阻断——顶层直接给出 PLAN_REJECTED 信号，
+        #   不交付 topological_order 给执行层（避免「输入 DAG ≠ 实际 DAG」）。
+        if dag.get("planning_error"):
+            dag["blocked"] = True
+            dag["block_reason"] = "planning_error: 非法 DAG edge（引用不存在的节点）"
+            dag["topological_order"] = []  # 不得交付可执行序列
+        print(json.dumps(dag, ensure_ascii=False, indent=2))
         return
 
     if args.cmd == "route":

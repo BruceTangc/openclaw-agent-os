@@ -109,10 +109,18 @@ def histories_available(goal_id=None):
 
 
 def append_record(record):
-    """追加一条记录 (v1.3 #9: 文件锁 + append-only)。"""
+    """追加一条记录 (v1.3 #9: 文件锁 + append-only)。
+
+    CHAIN-03: 若 record 含 authorization 快照（planned/authorized/actual 三态），
+    在写入时执行 binding 一致性校验，违例以 binding_violation 标记（不阻断写入，
+    供上层追溯），不造 Permission Runtime。
+    """
     record.setdefault("execution_id", "EXE-" + _hash_str(
         json.dumps(record, sort_keys=True) + utcnow_iso()))
     record.setdefault("timestamp", utcnow_iso())
+    if record.get("authorization"):
+        binding = check_authorization_binding(record.get("authorization"))
+        record["authorization_binding"] = binding
     append_atomic(_record_path(), record)
     return record
 
@@ -130,6 +138,58 @@ def compute_action_signature(goal_id, task_id, action_type, normalized_target):
         str(normalized_target or ""),
     ])
     return _hash_str(raw)
+
+
+# ---------------------------------------------------------------------------
+# Authorization Binding（CHAIN-03）
+# ---------------------------------------------------------------------------
+def check_authorization_binding(authorization):
+    """校验 planned_action / authorized_action / actual_runtime_action 三态一致性。
+
+    CHAIN-03：进入 OpenClaw Runtime 前必须保证 authorized_scope 没被 Orchestrator
+    replan / Skill parameter / Tool parameter 改变。这里不造 Permission Runtime，
+    只在 Execution Record 内做一致性校验，违例输出 binding_violation 供追溯/阻断。
+
+    authorization 结构（可选三态，缺省视为一致）:
+      {
+        "planned":   {"action": ..., "resource": ..., "scope": ...},
+        "authorized":{"action": ..., "resource": ..., "scope": ...},
+        "actual":    {"action": ..., "resource": ..., "scope": ...},
+      }
+
+    返回 {consistent: bool, binding_violation: bool, violations: [...]}
+    """
+    if not isinstance(authorization, dict):
+        return {"consistent": True, "binding_violation": False, "violations": []}
+
+    planned = authorization.get("planned") or {}
+    authorized = authorization.get("authorized") or {}
+    actual = authorization.get("actual") or {}
+
+    violations = []
+    # planned vs authorized：authorized action/resource 必须落在 planned scope 内
+    if planned and authorized:
+        if authorized.get("action") and planned.get("action") \
+                and authorized.get("action") != planned.get("action"):
+            violations.append("authorized.action != planned.action")
+        if authorized.get("resource") and planned.get("resource") \
+                and authorized.get("resource") != planned.get("resource"):
+            violations.append("authorized.resource != planned.resource")
+
+    # authorized vs actual：actual 不得超出 authorized scope
+    if authorized and actual:
+        if actual.get("action") and authorized.get("action") \
+                and actual.get("action") != authorized.get("action"):
+            violations.append("actual.action != authorized.action")
+        if actual.get("resource") and authorized.get("resource") \
+                and actual.get("resource") != authorized.get("resource"):
+            violations.append("actual.resource != authorized.resource")
+
+    return {
+        "consistent": len(violations) == 0,
+        "binding_violation": len(violations) > 0,
+        "violations": violations,
+    }
 
 
 # ---------------------------------------------------------------------------

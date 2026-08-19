@@ -403,6 +403,29 @@ try:
                                                  "progress_delta": 0.1})
     check("L3_stall_counter_resets_on_progress",
           _saved.get("change", {}).get("consecutive_stall_count") == 0)
+
+    # CHAIN-05: UNKNOWN（delta=None）不得转 STALL/retry——record_progress_assessment
+    #   在 delta=None（无法测量：API 不可用/验证未产生）时，consecutive_stall_count 必须
+    #   保持原值（不增不触发 retry budget），不得把「无法测量」当成「零进展停滞」。
+    _fake_chg = {"id": "CHG-L3H", "status": "MONITORING", "consecutive_stall_count": 5}
+    _core.record_progress_assessment("CHG-L3H", {"current_progress": None,
+                                                 "repetition_count": 3,
+                                                 "progress_delta": None})
+    check("CHAIN05_unknown_does_not_increment_stall",
+          _saved.get("change", {}).get("consecutive_stall_count") == 5)
+
+    # CHAIN-05: 连续多次 UNKNOWN 评估也不得累积 STALL/retry（不因反复无法测量而陷入 loop）
+    _fake_chg = {"id": "CHG-L3I", "status": "MONITORING", "consecutive_stall_count": 1,
+                 	"_previous_progress": None}
+    _core._measure_progress = lambda cid: None
+    for _n in range(5):
+        sig = _core.assess_progress("CHG-L3I")
+        _core.record_progress_assessment("CHG-L3I", sig)
+    _gl_unknown = _core.detect_goal_loop("CHG-L3I")
+    check("CHAIN05_unknown_never_becomes_loop", _gl_unknown.get("is_loop") is False)
+    check("CHAIN05_unknown_never_becomes_loop_state",
+          _gl_unknown.get("progress_state") == "UNKNOWN")
+    _core._measure_progress = _orig_measure
 finally:
     _core.load_artifact = _orig_load_l3
     _core._core_save_artifact = _orig_save_l3

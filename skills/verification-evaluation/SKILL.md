@@ -15,7 +15,7 @@ version: 1.3.0
 ## Scope
 
 - V0–V4 验证分级（累计）
-- 状态定义（PASS/PARTIAL/FAIL/UNKNOWN）
+- 状态定义（PASS/PARTIAL/FAIL/UNKNOWN/UNAVAILABLE）
 - Verify 六维度 + Evaluate 质量维度
 - 失败处理循环（diagnose→repair→retry→re-verify→escalate）
 - 验证等级与任务重要性的匹配
@@ -52,7 +52,7 @@ version: 1.3.0
 1. **核心区分**：`tool success ≠ task success`。
 2. **Verify**：检查执行/工件/数据/范围/证据/安全六维度。
 3. **定级**：按累计规则确定满足到 V0–V4 哪级。
-4. **定状态**：PASS / PARTIAL / FAIL / UNKNOWN。
+4. **定状态**：PASS / PARTIAL / FAIL / UNKNOWN / UNAVAILABLE。
 5. **Evaluate**：目标达成、正确性、完整性、质量、效率、约束、有用性。
 6. **失败处理**：diagnose → repair → retry within budget → re-verify → escalate。
 
@@ -74,8 +74,13 @@ version: 1.3.0
 |:--|:--|
 | PASS | 满足该等级全部验证项，有证据 |
 | PARTIAL | 部分满足（缺证据/部分完成） |
-| FAIL | 有失败证据，或验证项不通过 |
-| UNKNOWN | 证据不足/无法确认（≠ PASS） |
+| FAIL | 有失败证据，或验证项不通过（任务真的失败） |
+| UNKNOWN | 证据不足/无法确认（≠ PASS，交给 Evaluation 补证据） |
+| UNAVAILABLE | 验证器自身不可用（超时/模块缺失/JSON 损坏/异常），≠ Task FAIL，交上层决策 |
+
+> **FAIL vs UNAVAILABLE（CHAIN-02）**：`FAIL` = 任务失败；`UNAVAILABLE` = 验证器坏了。验证器
+> timeout / 模块缺失 / 输出损坏不得判 FAIL（否则「执行成功 + 验证超时」会误判任务失败而结束），
+> 必须返回 UNAVAILABLE 交给上层决策。
 
 **Verify 六维度**：执行（只发生一次）、工件/状态、数据正确性、范围（actual ≤ 授权）、证据（可独立复核）、安全（无越权/副作用泄漏）。
 

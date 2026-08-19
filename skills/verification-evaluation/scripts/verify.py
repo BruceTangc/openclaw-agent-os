@@ -14,7 +14,24 @@ import json
 import sys
 
 VERIFY_LEVELS = ["V0", "V1", "V2", "V3", "V4"]
-VERDICTS = ["PASS", "PARTIAL", "FAIL", "UNKNOWN"]
+VERDICTS = ["PASS", "PARTIAL", "FAIL", "UNKNOWN", "UNAVAILABLE"]
+
+
+def unavailable(reason):
+    """验证器自身不可用 → UNAVAILABLE（不是 Task FAIL）。
+
+    CHAIN-02：区分「任务失败」（FAIL）与「验证器坏了/timeout/模块缺失/JSON 损坏」
+    （UNAVAILABLE）。UNAVAILABLE 交给 Evaluation / Autonomy Decision，不直接等价 FAIL，
+    避免「执行成功 + 验证服务超时 → 误判 FAIL → 任务结束」。
+    """
+    return {
+        "level": "V0",
+        "verdict": "UNAVAILABLE",
+        "passed": False,
+        "retry_eligible": False,
+        "reason": reason,
+        "checks": [],
+    }
 
 
 def _fmt_ok(v):
@@ -117,7 +134,11 @@ def _render(level, checks, unknown=None):
 
 
 def main():
-    """CLI: echo '<result-json>' '<level>' 或 --json <result-json> --level <level>。"""
+    """CLI: --json <result-json> --level <level>。
+
+    CHAIN-02：JSON 损坏/无法解析 = 验证器无法处理 = UNAVAILABLE（非 Task FAIL）。
+    验证器超时/模块缺失等由调用方 adapter 自行 catch 并映射为 UNAVAILABLE。
+    """
     import argparse
     p = argparse.ArgumentParser(description="verification-evaluation 验证分级判定")
     p.add_argument("--json", help="result JSON 或 -")
@@ -130,7 +151,7 @@ def main():
     try:
         result = json.loads(raw)
     except Exception as e:
-        print(json.dumps({"verdict": "FAIL", "reason": "invalid JSON: " + str(e)},
+        print(json.dumps(unavailable("invalid JSON: " + str(e)),
                          ensure_ascii=False, indent=2))
         return 1
     print(json.dumps(verify(result, a.level), ensure_ascii=False, indent=2))
