@@ -259,6 +259,31 @@ _core.register_evidence(ev2)
 D = run(["discover.py", "--evidence-refs", "EVID-TEST-001", "EVID-TEST-002"], "IGNORE")
 check("evidence_refs_below_threshold", D and D.get("decision") == "IGNORE")
 
+# === 15. BE-7 副作用边界判定 (recover_apply) ===
+# 非 file_patch 的 APPLYING change: 即使文件未修改也没副作用, 也应收敛 VERIFY(人工), 不自动 SAFE_TO_RETRY
+_BE7_TMP = tempfile.mkdtemp()
+char_dir = os.path.join(_BE7_TMP, "change/snapshot/files")
+os.makedirs(char_dir, exist_ok=True)
+_orig_load = _core.load_artifact
+_orig_chdir = _core.change_dir
+try:
+    _core.change_dir = lambda _c: os.path.join(_BE7_TMP, "change")
+    _core.load_artifact = lambda _k, _i: {
+        "status": "APPLYING", "type": "db_migration",
+        "_applied_files": [], "_snapshot": {"files": []}, "targets": []}
+    a_nonpatch, _ = _core.recover_apply("x")
+    check("BE7_sideeffect_force_verify", a_nonpatch == "VERIFY")
+
+    _core.load_artifact = lambda _k, _i: {
+        "status": "APPLYING", "type": "file_patch",
+        "_applied_files": [], "_snapshot": {"files": []}, "targets": []}
+    a_patch, _ = _core.recover_apply("x")
+    check("BE7_filepatch_safe_retry", a_patch == "SAFE_TO_RETRY")
+finally:
+    _core.load_artifact = _orig_load
+    _core.change_dir = _orig_chdir
+    shutil.rmtree(_BE7_TMP, ignore_errors=True)
+
 shutil.rmtree(WS, ignore_errors=True)
 print("\n===== REGRESSION SUMMARY (v2.3) =====")
 print("PASS: {}\tFAIL: {}".format(PASS, FAIL))

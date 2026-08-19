@@ -764,6 +764,12 @@ def recover_apply(change_id):
             any_match = True
 
     if all_match and not applied_files:
+        # BE-7 (I-015/L-18): 副作用边界判定 — 只有当 change 明确是纯文件可逆
+        # patch(create/replace/append)时才允许自动 SAFE_TO_RETRY；否则(可能带
+        # 不可逆外部副作用)一律收敛为 VERIFY(人工确认)，宁可 ASK 不错 AUTO。
+        if chg.get("type") != "file_patch":
+            return "VERIFY", ("非纯文件 patch(type=%r)，无法确认可逆性，需人工验证"
+                               % chg.get("type"))
         return "SAFE_TO_RETRY", "文件未修改，可安全重试 apply"
     elif all_match and applied_files:
         # #34: 有 expected fingerprint 时进一步校验当前文件是否与期望一致。
