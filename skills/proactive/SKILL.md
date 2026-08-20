@@ -157,3 +157,7 @@ python3 scripts/proactive.py queue --op list          # 维护队列
 python3 scripts/proactive.py evol --json '...'        # 生成进化候选
 python3 scripts/proactive.py noop                    # NO_ACTION 标记
 ```
+
+## Multi-Agent Contract（PROTOCOL.md §8）
+
+对齐统一 10 项契约，本 Skill 涉及: 1,2,3,5,8,10（per-agent state 隔离；无价值不打扰）。不重写已有机制；跨 Agent 场景以 PROTOCOL.md §8 总规则 + 本 SKILL.md 对应章节为准。

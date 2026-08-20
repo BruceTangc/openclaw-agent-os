@@ -235,3 +235,103 @@ x-agent-os:
    - 无持久化价值（如"1+1"）→ writeback = NONE，不阻塞完成
 
 **只满足其中一部分 = PARTIAL，不是 COMPLETED。**（第 4 条对高风险任务不可放松。）
+
+---
+
+## 8. Multi-Agent Contract + State Isolation（v1.3.1，总规则）
+
+> **核心总则：共享 Skill ≠ 共享状态。** 11 个 Skill 是能力（可以被所有 Agent 使用），
+> 但每个 Skill 在工作时触及的**状态与数据**是否跨 Agent 共享，由下方隔离契约决定，
+> **不从 Skill 可共享推出状态可共享**。本规则是全部 11 个 Skill 的统一总原则，
+> 各 Skill 在 Multi-Agent 场景只补充自己的具体项，不重写本总则。
+
+```
+Shared Skill:          所有 Agent 可用（能力共享）
+────────────────────────────────────────────
+Agent State:           Agent-specific（per-agent 隔离）
+Private Memory:        Agent-specific（per-agent 隔离）
+Private Task:          Agent-specific（per-agent 隔离）
+Execution Record:      Agent-specific + provenance（可追溯，见 §8.2）
+Self-Evolution State:  Agent-specific（见 EVOLUTION-PROTOCOL §12）
+Shared Knowledge:      必须经过 governance（knowledge-governance）
+Shared Ontology:       必须经过 scope/governance（ontology）
+```
+
+## 8.1 Multi-Agent Contract（统一 10 项，各 Skill 声明涉及项）
+
+每个 Skill 在 Multi-Agent 场景统一对齐以下 10 项；各 Skill 只需要声明**自己涉及哪些项**，
+不逐项展开整套机制（机制细节在各 Skill 的 SKILL.md / 底层协议里已有）：
+
+| # | Contract 项 | 含义 | 默认 |
+|:--|:--|:--|:--|
+| 1 | Current Agent Identity | 当前执行者是谁 | agent_id 必须明确 |
+| 2 | Current Scope | 当前任务的授权边界 | 最窄有效 scope |
+| 3 | Private State | 属于当前 Agent 的状态 | 默认不共享 |
+| 4 | Shared State | 显式声明共享的状态 | 必须经 governance/scope |
+| 5 | Cross-Agent Input | 来自其他 Agent 的输入 | 初始不信任 (trusted=false) |
+| 6 | Provenance | 来源可追溯 | 不丢失 origin（见 §8.2） |
+| 7 | Delegation | 委托/被委托边界 | 权限只减不增，默认不继承 |
+| 8 | Permission | 权限门 | L0/L1 自动，L2+ ASK |
+| 9 | Side Effect | 副作用 | 记录 + 幂等 operation_id |
+| 10 | Evolution Scope | 进化影响范围 | 仅影响自身 Agent（见 EVOLUTION §12） |
+
+**使用规则**：11 个 Skill 的 SKILL.md 在文末的 Multi-Agent Contract 声明只列出本条涉及的项
+（例如 `涉及: 1,2,3,6,8,10`），不重复写整套机制。
+
+## 8.2 Execution Record 跨 Agent Provenance（硬约束）
+
+> **任何跨 Agent 操作不得丢失 origin/provenance。**
+> A → B → C 的委托链，最终 C 的 Execution Record 仍必须能追溯回 origin。
+
+Execution Record 必须携带以下 provenance 字段（schema 见 execution-record.md §Provenance）：
+
+```
+agent_id
+session_id
+execution_id
+task_id
+operation_id
+correlation_id
+parent_task_id
+```
+
+**跨 Agent 链路要求**：当 B 受 A 委托执行、C 又受 B 委托执行时，最终记录必须保留：
+
+```
+origin_agent       # A（最初的发起者）
+parent_task        # 上级任务 id
+chain              # A → B → C（完整 delegation chain）
+current_agent      # C（当前执行者）
+```
+
+这是以后排查多 Agent 问题的核心审计依据；不得因中间层而丢失 origin。
+
+## 8.3 Enforcement 三层边界（Agent OS / OpenClaw Runtime / policy-only）
+
+> **防止误解：Agent OS 并不“自己实现了”所有隔离。** 隔离有效性分三层，必须如实区分：
+
+```
+┌─ Agent OS Enforcement ─────────┐  代码强制（有 scripts，可校验）
+│  execution_record / ontology /│  e.g. build_ma_context / _visible_to /
+│  task-manager / proactive /   │       check_agent_isolation / _state_path
+│  permission / self-evolution /│
+│  orchestrator / verification  │
+└───────────────────────────────┘
+┌─ OpenClaw Runtime Enforcement ─┐  原生物理隔离（per-agent workspace / session）
+│  memory / session / workspace  │  这是底层的强制边界，Agent OS 依赖它
+└───────────────────────────────┘
+┌─ LLM Policy Compliance ───────┐  规范层（无代码强制，靠 SKILL.md + 遵守）
+│  context-orchestration /      │  隔离有效性依赖 OpenClaw 物理隔离 + 规范遵守，
+│  knowledge-governance /       │  非 Agent OS 代码强制。
+│  memory-governance            │
+└───────────────────────────────┘
+```
+
+**明确边界**（详见 MULTI-AGENT-AUDIT-20260820.md §2）：
+
+- **Memory Isolation**：OpenClaw workspace/session **物理隔离**（Runtime Enforcement），Agent OS 治理“写什么、能否晋升”（Governance）。物理隔离不是 Agent OS 实现的。
+- **Memory Governance**：Agent OS 决定什么可以写、什么可以晋升（policy/规范层）。
+- **规范层 Skill（context/knowledge/memory 三件）**：无 scripts、无代码强制，隔离靠 OpenClaw 物理隔离 + SKILL.md 规范。**不得**把它说成“Agent OS 代码强制执行”。
+- 三个规范层 Skill 需要真正“运行时强制”时，应委托给有代码 enforcement 的 Skill（execution_record / task-manager），而不是给规范层再造 Runtime。
+
+---

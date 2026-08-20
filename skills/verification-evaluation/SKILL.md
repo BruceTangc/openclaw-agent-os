@@ -135,3 +135,7 @@ version: 1.3.0
 - 资金转账后需确认对方账户到账 → 必须 V4（外部状态变化）+ 人工确认。
 - 搜索结果返回成功但无来源 → 数据正确性/证据维度不足，标 UNKNOWN。
 - 结果符合条件但非独立验证 → V2 通过，V3 未达，据任务需要决定是否补验。
+
+## Multi-Agent Contract（PROTOCOL.md §8）
+
+对齐统一 10 项契约，本 Skill 涉及: 1,2,5,6,8（producer/verifier 分离；证据带来源）。不重写已有机制；跨 Agent 场景以 PROTOCOL.md §8 总规则 + 本 SKILL.md 对应章节为准。

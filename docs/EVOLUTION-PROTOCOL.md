@@ -194,3 +194,54 @@ regression 过期、heartbeat 噪音、stale state、repeated proposal、failed 
 - 变更候选必须有：问题、证据、提议变更、预期影响、回归检查、G 级别、审批路径。
 - 高影响变更（G3+）进入 review queue（人工）；低风险指令改进（G1-G2）可走已有授权策略。
 - 每次应用后写 Regression check 结果，失败则回滚并记录。
+
+## 12. Agent Scope 隔离（v1.3.1，Multi-Agent 硬规则）
+
+> **Shared Skill ≠ Shared Evolution State。** Skill 是能力可以共享，但进化状态默认按 Agent 隔离。
+> 本规则防止“Research 的 self-evolution 自动改掉所有 Agent 的 Shared Skill”。
+
+### 12.1 默认：Evolution State 按 Agent 隔离
+
+```
+Agent A
+  ↓
+自己的 Evidence
+  ↓
+自己的 Candidate
+  ↓
+自己的 Proposal
+  ↓
+只允许影响自己的 Evolution Scope
+  ── (Agent-specific State) ──
+```
+
+- **Evolution State**（Evidence / Candidate / Proposal / Apply / Change / Regression）默认归属**当前 Agent**。
+- **per-agent state 隔离**：即使多个 Agent 共享同一份 Skill 代码，它们的 evolution state 彼此独立
+  （对应 `_state_path` per-agent 隔离，见 proactive / self-evolution 实现）。
+- 一个候选**默认只能影响自己 Agent 的 scope**，不得自动改动 Shared Skill / 其他 Agent / Agent OS Core。
+
+### 12.2 Cross-Agent / Shared Evolution（必须升级治理）
+
+若一次进化需要影响：
+
+```
+Shared Skill         （多个 Agent 共用的 Skill 定义）
+Agent B              （其他 Agent 的行为/状态）
+Agent OS Core        （协议/权限/验证核心）
+```
+
+则不能按“单 Agent 自己改自己”处理，必须升级为 **Cross-Agent / Shared Evolution**：
+
+- 提案必须显式声明 `scope: cross-agent | shared-skill | agent-os-core`。
+- 走**更高一级 Governance**：跨 Agent 影响 = 更高风险，审批级别相应升档（G5/G6 或要求多 Agent 相关方
+  复核 + 人工显式批准）。
+- 禁止：某 Agent 在**本 Agent 内**发现候选后，未经 Cross-Agent 流程就把改动直接应用到 Shared Skill。
+- 影响范围超出本 Agent 时，Self-Evolution 只能**产出 Proposal**，不能自行 Apply（Apply 权限是 scope 的）。
+
+### 12.3 Multi-Agent Contract 对齐
+
+对应 PROTOCOL.md §8 的 Contract 项 #10 `Evolution Scope`：默认仅影响自身 Agent（Agent-specific）；
+跨 Agent 影响必须升级 Cross-Agent / Shared Evolution 并走更高一级治理。
+
+> 相关审计：MULTI-AGENT-AUDIT-20260820.md（self-evolution 已列为代码强制 scope，且 protected
+> target 禁止自改权限/安全/Runtime）。本 §12 把“scope 只影响自身 Agent”明确为文档级硬规则。

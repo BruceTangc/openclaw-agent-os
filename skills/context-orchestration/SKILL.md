@@ -156,3 +156,7 @@ per-agent workspace/session 隔离，不另建 Agent Registry）。
 - 「研究 AI Agent 方向」→ 取当前项目、相关目标、近期相关 memory、ontology 依赖，排除无关项目历史。
 - 交易任务 → 取资金账户约束、行情时间戳知识、相关决策，排除无关社媒上下文。
 - 上下文接近预算 → 只保留目标 + 已确认决策 + 冲突点 + 下一步，其余降级检索。
+
+## Multi-Agent Contract（PROTOCOL.md §8）
+
+对齐统一 10 项契约，本 Skill 涉及: 1,2,3,5,6,8,10（跨 Agent 上下文只走显式委托，见 SKILL.md §7）。不重写已有机制；跨 Agent 场景以 PROTOCOL.md §8 总规则 + 本 SKILL.md 对应章节为准。

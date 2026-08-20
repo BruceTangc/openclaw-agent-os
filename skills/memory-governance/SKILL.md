@@ -179,3 +179,7 @@ version: 1.3.0
 - 一次对话里的临时变量 → 仅 session，不持久。
 - 某 API 反复超时（跨 3 次独立会话，已验证）→ durable lesson。
 - 用户 A 说「喜欢详细」，用户 B 上下文说「要结论」→ 保留矛盾并按作用域区分，不覆盖。
+
+## Multi-Agent Contract（PROTOCOL.md §8）
+
+对齐统一 10 项契约，本 Skill 涉及: 1,2,3,4,5,9,10（Private Memory 默认隔离；Shared 经行 governance 晋升）。不重写已有机制；跨 Agent 场景以 PROTOCOL.md §8 总规则 + 本 SKILL.md 对应章节为准。
