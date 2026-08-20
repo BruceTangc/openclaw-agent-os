@@ -42,32 +42,13 @@ from persistence import atomic_write_json
 from persistence import FileLock
 # v1.4 C1: Task 状态机也收敛到统一中央门（跳转校验 + 事实不变量 + audit）
 from transitions import transition as _task_transition
+from transitions import valid_states as _valid_task_states
 
 # ---------------------------------------------------------------------------
 # 常量
 # ---------------------------------------------------------------------------
-VALID_STATUS = [
-    "INBOX", "PLANNED", "READY", "RUNNING",
-    "WAITING", "BLOCKED", "PAUSED", "RETRYING", "FAILED",
-    "COMPLETED", "REVIEW", "ARCHIVED", "CANCELLED",
-]
+VALID_STATUS = _valid_task_states("task")
 
-# 合法状态转换 (文档 §9)
-VALID_TRANSITIONS = {
-    "INBOX": {"PLANNED", "READY", "CANCELLED"},
-    "PLANNED": {"READY", "INBOX", "CANCELLED"},
-    "READY": {"RUNNING", "WAITING", "BLOCKED", "PAUSED", "CANCELLED", "RETRYING"},
-    "RUNNING": {"COMPLETED", "WAITING", "BLOCKED", "PAUSED", "RETRYING", "FAILED", "CANCELLED"},
-    "WAITING": {"READY", "BLOCKED", "CANCELLED"},
-    "BLOCKED": {"READY", "CANCELLED"},
-    "PAUSED": {"READY", "CANCELLED"},
-    "RETRYING": {"READY", "RUNNING", "FAILED", "CANCELLED"},
-    "FAILED": {"READY", "CANCELLED"},   # 重规划后回 READY
-    "COMPLETED": {"REVIEW", "ARCHIVED"},
-    "REVIEW": {"ARCHIVED", "READY", "CANCELLED"},
-    "ARCHIVED": set(),
-    "CANCELLED": set(),
-}
 
 PRIORITY_LEVELS = ["P0", "P1", "P2", "P3", "P4"]
 

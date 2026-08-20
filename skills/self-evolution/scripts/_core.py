@@ -85,9 +85,6 @@ class WorkspaceContext:
     def contains(self, abs_path):
         return is_within_workspace(abs_path, self.root)
 
-    def snapshot_path(self, change_id):
-        return os.path.join(evo_dir(), "changes", change_id, "snapshot", "files")
-
 
 # ======================== 时间与 ID ========================
 
@@ -96,13 +93,6 @@ def now_iso():
 
 def today_compact():
     return datetime.now().strftime("%Y%m%d")
-
-def _read_index():
-    p = os.path.join(evo_dir(), "index.jsonl")
-    if not os.path.exists(p):
-        return []
-    with open(p, encoding="utf-8") as f:
-        return [ln.rstrip("\n") for ln in f if ln.strip()]
 
 def gen_id(prefix):
     """#35: artifact ID → UUID。统一走 id_utils.generate_id()（稳定 UUID4、
@@ -657,12 +647,6 @@ def _write_file(path, content):
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
 
-def file_hash(path):
-    if not os.path.exists(path):
-        return None
-    with open(path, "rb") as f:
-        return hashlib.sha256(f.read()).hexdigest()
-
 @contextlib.contextmanager
 def apply_lock():
     """#32: Apply 互斥锁（fcntl.flock 阻塞锁，跨进程安全）。
@@ -961,10 +945,16 @@ def rollback_full_state(change_id, reason="", regression_id=None):
         _safe_transition(prp, "ROLLED_BACK", "proposal")
         _core_save_artifact("proposal", prp)
 
-    # 更新 candidate 状态（标记为 regressed，不删除）
+    # 更新 candidate 状态（回滚标记，不删除）。按候选所处阶段用合法跳转：
+    #   未应用阶段(DIAGNOSED/PROPOSED/APPROVED/SNAPSHOTTED/APPLYING) → REJECTED(终止)
+    #   已应用阶段(APPLIED/MONITORING/REGRESSED) → ROLLED_BACK(回滚)
     cnd = load_artifact("candidate", chg.get("candidate_id", ""))
-    if cnd and cnd.get("status") in ("DIAGNOSED", "PROPOSED", "APPROVED", "APPLIED", "APPLIED"):
-        _safe_transition(cnd, "REGRESSED", "candidate")
+    if cnd:
+        cst = cnd.get("status")
+        if cst in ("DIAGNOSED", "PROPOSED", "APPROVED", "SNAPSHOTTED", "APPLYING"):
+            _safe_transition(cnd, "REJECTED", "candidate")
+        elif cst in ("APPLIED", "MONITORING", "REGRESSED"):
+            _safe_transition(cnd, "ROLLED_BACK", "candidate")
         _core_save_artifact("candidate", cnd)
 
     # v2.4: Rollback 产生 evolution_event evidence

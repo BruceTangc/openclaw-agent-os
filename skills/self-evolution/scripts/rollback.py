@@ -48,22 +48,28 @@ def do_rollback(change_id, reason, regression_id):
             )
         _core._core_save_artifact("proposal", prp)
 
-    # v2.3: 同步更新 candidate 状态（标记 regressed，不删除）
+    # v2.3: 更新 candidate 状态（按阶段走合法跳转）：
+#   未应用阶段(DIAGNOSED/PROPOSED/APPROVED/SNAPSHOTTED/APPLYING) → REJECTED
+#   已应用阶段(APPLIED/MONITORING/REGRESSED) → ROLLED_BACK
     cnd = _core.load_artifact("candidate", chg.get("candidate_id", ""))
     if cnd and cnd.get("status") not in ("REJECTED", "ROLLED_BACK", "UNRESOLVED", "PROMOTED"):
-        try:
-            _core.assert_transition(cnd, "DIAGNOSED", kind="candidate")
-        except ValueError:
-            pass
-        try:
-            # v1.4 C1: 全走门。若门拒绝 DIAGNOSED→REJECTED，记录而不静默直改。
-            _core.assert_transition(cnd, "REJECTED", kind="candidate")
-        except ValueError:
-            cnd.setdefault("history", []).append({
-                "timestamp": _core.now_iso(), "actor": "system",
-                "action": "transition_denied", "from": cnd.get("status"),
-                "to": "REJECTED", "reason": "rollback: 门拒绝 candidate 状态跳转"},
-            )
+        cst = cnd.get("status")
+        if cst in ("DIAGNOSED", "PROPOSED", "APPROVED", "SNAPSHOTTED", "APPLYING"):
+            try:
+                _core.assert_transition(cnd, "REJECTED", kind="candidate")
+            except ValueError as e:
+                cnd.setdefault("history", []).append({
+                    "timestamp": _core.now_iso(), "actor": "system",
+                    "action": "transition_denied", "from": cst,
+                    "to": "REJECTED", "reason": "rollback: 门拒绝 candidate 跳转: %s" % e})
+        elif cst in ("APPLIED", "MONITORING", "REGRESSED"):
+            try:
+                _core.assert_transition(cnd, "ROLLED_BACK", kind="candidate")
+            except ValueError as e:
+                cnd.setdefault("history", []).append({
+                    "timestamp": _core.now_iso(), "actor": "system",
+                    "action": "transition_denied", "from": cst,
+                    "to": "ROLLED_BACK", "reason": "rollback: 门拒绝 candidate 跳转: %s" % e})
         _core._core_save_artifact("candidate", cnd)
 
     # v2.4: Rollback 产生 evolution_event Evidence（"这次修改失败"本身就是有价值信号）

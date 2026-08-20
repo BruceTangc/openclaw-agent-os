@@ -110,12 +110,12 @@ _CHANGE_TRANSITIONS = {
 # --- Candidate (align: _core.TRANSITIONS) ---
 _CANDIDATE_TRANSITIONS = {
     "CANDIDATE": {"DIAGNOSED", "REJECTED"},
-    "DIAGNOSED": {"PROPOSED", "UNRESOLVED"},
+    "DIAGNOSED": {"PROPOSED", "UNRESOLVED", "REJECTED"},   # 回滚可终止未应用的 diagnosis
     "PROPOSED": {"APPROVED", "REJECTED"},
     "APPROVED": {"SNAPSHOTTED"},
     "SNAPSHOTTED": {"APPLYING"},
     "APPLYING": {"APPLIED", "APPLY_FAILED"},
-    "APPLIED": {"MONITORING"},
+    "APPLIED": {"MONITORING", "ROLLED_BACK"},   # AE-4: 候选回滚可直接从 APPLIED 走状态机(对齐 change 表)
     "MONITORING": {"VALIDATED", "REGRESSED"},
     "VALIDATED": {"PROMOTED"},
     "PROMOTED": set(),
@@ -183,6 +183,11 @@ def _gate(kind):
 
 def valid_states(kind):
     return _gate(kind)[0]
+
+
+def get_transitions(kind):
+    """返回某 kind 的合法跳转表（dict）。供各 Skill 动态获取，消除双份维护。"""
+    return _gate(kind)[1]
 
 
 def transition_allowed(src, dst, kind="candidate"):
