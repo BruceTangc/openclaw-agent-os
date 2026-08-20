@@ -22,3 +22,4 @@ skills/task-manager/SKILL.md
 skills/verification-evaluation/SKILL.md
 tests/README.md
 tests/cases.md
+tests/scripts/ma_regression.py

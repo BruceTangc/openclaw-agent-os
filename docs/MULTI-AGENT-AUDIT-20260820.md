@@ -76,3 +76,40 @@
 
 **提醒**：context/knowledge/memory 三个 governance skill 是规范层，隔离有效性最终依赖
 OpenClaw per-agent workspace 物理隔离（设计如此）。建议文档明确「规范层 ≠ 代码强制」边界。
+
+---
+
+# MA-1.1 冻结（2026-08-20）
+
+## 范围
+在 a8c90b2（MA-1.0 安全基线冻结）之上，做**协议统一 + 边界补齐 + 回归测试**，
+不扩架构、不动 v1.3 冻结 Core。对应 commits：d2153ab（文档）/ 9e6fbaa（回归测试）/ 7f415b0（merge）。
+
+## 内容
+1. **PROTOCOL.md §8** Multi-Agent State Isolation Contract（共享 Skill ≠ 共享状态）+ §8.1 统一 10 项 Contract。
+2. **PROTOCOL.md §8.2** Execution Record 跨 Agent Provenance 硬约束（agent/session/execution/task/operation/correlation/parent + origin_agent/delegation_chain/current_agent）。
+3. **PROTOCOL.md §8.3** Enforcement 三层边界（Agent OS 代码强制 / OpenClaw Runtime 物理隔离 / LLM policy 规范层）。
+4. **EVOLUTION-PROTOCOL.md §12** Agent Scope 隔离（Evolution State 按 Agent；跨 Agent/Shared 须升级 Cross-Agent Governance）。
+5. **execution-record.md §Provenance** 字段级硬约束。
+6. **11 个 SKILL.md** 文末追加 Multi-Agent Contract 声明（只标涉及项，不重写逻辑）。
+7. **回归测试** `tests/scripts/ma_regression.py`（24 PASS）+ tests/README.md #11-14 + tests/cases.md Case J-N。
+
+## 真实 OpenClaw 多 Agent 集成验收（2026-08-20）
+在本机 OpenClaw 用 4 个一次性测试 agent（research-test/trading-test/coding-test/test-agent-04，
+共享 11 个 Agent OS Skill，真实会话驱动）完成集成验收：
+
+- 10 维度全通过：Skill Discovery / 11 Skill 实际调用 / 主动 Skill 选择 / State Isolation /
+  Execution Identity / Permission(冒充) / Self-Evolution Scope / Cross-Agent Delegation /
+  Provenance / Concurrent Execution。
+- 关键防线验证：冒充被 Runtime 身份覆盖修正（无法伪造）；trading 读 research 私有状态 → not_found；
+  3 agent 并发调 summarize → 8 条 execution record 零冲突；A→B 委托链同 correlation 追溯 origin。
+- 终极验证：test-agent-04 只给 workspace（不复制任何 skill），自主发现并调用共享 summarize —— 架构成立核心证明。
+
+**如实标注的遗留（非阻断）**：
+- 冒充是「记录层静默纠正」而非「Permission Runtime 大声 DENY」——属 CHAIN-03-B 观察层设计，
+  真实 Permission 阻断在更高 Runtime 边界，MA-1.1 文档层已覆盖。
+- execution_records.jsonl 为所有 agent 共享单文件，隔离靠 agent_id/correlation 字段而非物理文件分离（已验证零冲突）。
+
+## 冻结判定
+**MA-1.1 协议统一 + 边界补齐 + 回归测试通过，真实多 Agent 集成验收 10/10 通过，可冻结。**
+测试环境已清理（4 个一次性测试 agent 已删，openclaw.json 还原），不留生产污染。
