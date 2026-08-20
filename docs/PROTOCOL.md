@@ -145,6 +145,9 @@ Permission Gate (permission-security, 所有路径必经)
 > 二者不可混为一个「过得去就继续」的开关——否则换动作空转（每次 Task 不同、Evaluation 觉得「有产出」），
 > 但 Goal Progress=0 持续很久，L3 也难检测。
 > **Progress 三态**：PROGRESS（delta>0）/ STALL（delta==0 连续达阙）/ UNKNOWN（无信号，不误判为 STALL）。
+> **UNKNOWN 是状态不是决策（v1.6 冻结补）**：UNKNOWN 是测量状态，不是可直接输出的决策目标；
+> 须按上下文拆分为 WAIT / VERIFY / ASK / RECOVER，再映射到标准决策词（Continue / Stop）。
+> 已知例外：Self-Evolution 窄域的 UNKNOWN→ASK 固化不视为通用模式（见 FOUNDATION §17）。
 > **Autonomy Decision ≠ State Transition**：决策词（Continue/Stop/Change Strategy/Ask）必须先产出
 > Transition Request，再经 #13 Transition Gate 落地，禁直改 status。
 
@@ -335,3 +338,24 @@ current_agent      # C（当前执行者）
 - 三个规范层 Skill 需要真正“运行时强制”时，应委托给有代码 enforcement 的 Skill（execution_record / task-manager），而不是给规范层再造 Runtime。
 
 ---
+
+---
+
+## 9. 术语附录（MA-1.1 术语收敛）
+
+> 评审补充（2026-08-20）：统一 C2 底座相关术语的正式定义与映射，消除"代码已实现但文档无定义"的断层。
+
+| 术语 | 定义 | 代码落点 | 等价/映射 |
+|:--|:--|:--|:--|
+| **C2 底座** | 统一底层能力与约束底座（Capability & Control），含状态转移中央门、统一身份链、统一错误分层、原子持久化 | `skills/_lib/transitions.py` / `identity.py` / `errors.py` / `persistence.py` | 非独立 Runtime |
+| **状态中央门** | 所有关键状态变化的唯一强制门槛，禁止直改 status | `transitions.py transition()` / `assert_transition()` | = Transition Gate / State Transition Gate |
+| **TraceBuilder / 身份链** | Execution Record 中 goal→task→execution→action→observation→evidence→verification 的可追溯链 + agent/session 宿主身份 | `skills/_lib/identity.py` | = make_trace / TraceBuilder |
+| **权限生命周期状态机** | L0-L4 分级 + 授权记录状态流转（REQUESTED→APPROVED→CONSUMED/EXPIRED/REVOKED） | `permission-security/scripts/permission.py` + `transitions.py kind="permission"` | 授权生命周期 = Approval State Machine |
+| **Scope Binding** | Delegation Scope 的显式绑定与校验过程（requested ⊆ authorized） | `permission.py check()` / `execution_record.py check_authorization_binding` / `_scope_contains` | 授权作用域绑定 |
+| **默认失败关闭** | 分类器/输入不可用时默认拒绝（fail-closed），不默认放行 | `permission.py check()` / `transitions.py` | = fail-closed（中文术语映射） |
+| **状态中央门（force）** | transition(force=True) 跳过跳转合法性校验，仅用于建数据迁移/恢复 | `transitions.py` | 正常流程禁止 |
+
+**规则**：
+- 状态中央门不可用（import 失败）→ **fail-closed**，抛 StateError，禁止静默直写绕过（C2 约束）。
+- 授权 expiry 无法解析 → 视为无效授权（fail-closed），不放行。
+- 跨 Agent 读取 Execution Record / Evidence 必须按 agent_id 过滤，防串流。

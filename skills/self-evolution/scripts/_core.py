@@ -461,11 +461,12 @@ def register_evidence(rec, runtime_agent_id=None, runtime_session_id=None, runti
     _append_index_line("{}\t{}\t{}\n".format(rec["id"], "evidence", rec.get("pattern_key", "")))
     return rec["id"]
 
-def load_evidence(evids=None):
+def load_evidence(evids=None, agent_id=None):
     out = []
     if not os.path.exists(evidence_store_path()):
         return out
     evids = set(evids) if evids else None
+    _agent_id = str(agent_id or "").strip()
     with open(evidence_store_path(), encoding="utf-8") as f:
         for ln in f:
             if not ln.strip():
@@ -475,6 +476,9 @@ def load_evidence(evids=None):
             except json.JSONDecodeError:
                 continue
             if evids and rec.get("id") not in evids:
+                continue
+            # MA-1.1 安全补：按 agent_id 过滤，防止跨 Agent evidence 串流
+            if _agent_id and str(rec.get("agent_id", "") or "").strip() != _agent_id:
                 continue
             out.append(rec)
     return out
@@ -579,8 +583,12 @@ def register_evolution_event(event_type, change_id, reason="", regression_id=Non
     _append_index_line("{}\t{}\t{}\n".format(rec["id"], "evidence", rec.get("pattern_key", "")))
     return rec["id"]
 
-def query_evidence(pattern_key=None, scope=None, target=None, exclude_internal=True):
+def query_evidence(pattern_key=None, scope=None, target=None, exclude_internal=True,
+                   agent_id=None):
     """查询 Evidence。
+
+    MA-1.1 安全补：新增 agent_id 参数——查询某 Agent 的 evidence 时只返回该 Agent
+    的记录，防止跨 Agent 串流（同一 evidence.jsonl 混存所有 Agent 记录）。
 
     CHAIN-04：默认 exclude_internal=True，排除 source='evolution_event' 的内部
     governance 事件（apply succeeded / proposal promoted / regression passed 等），
@@ -588,7 +596,7 @@ def query_evidence(pattern_key=None, scope=None, target=None, exclude_internal=T
     追溯（需要看到 regression/rollback 内部事件）。
     """
     rows = []
-    for rec in load_evidence():
+    for rec in load_evidence(agent_id=agent_id):
         if exclude_internal and rec.get("source") == "evolution_event":
             continue
         if pattern_key and rec.get("pattern_key") != pattern_key:

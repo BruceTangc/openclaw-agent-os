@@ -31,6 +31,10 @@
 | `verification-evaluation` | new | Prove task success vs. tool success; PASS/PARTIAL/FAIL/UNKNOWN |
 | `permission-security` | new | L0-L4 risk/authority policy above native policy/approval |
 
+> **Multi-Agent 边界**：Multi-Agent 能力（委派/Sub-agent/编排）依赖 **OpenClaw 原生 Sub-agent / Task Flow 调度**；
+> Agent OS 只提供跨 Agent 的权限治理（L0-L4 + delegation scope）、身份/provenance 追溯（execution_record / identity）
+> 与隔离约束（agent_id 过滤、per-agent scope）。Agent OS **不实现 Agent Runtime / 自建多 Agent 编排**。
+
 ## Architecture（Execution Model = 实际执行链）
 
 > 粒度标注：本图是**实际执行链**（actual execution chain），含 Goal/Task、Fast/Full 分流。

@@ -50,9 +50,13 @@
 
 涉及权限、外部副作用、跨 Agent、共享知识或 Self-Evolution 时，必须遵循 Agent OS Governance。
 
-执行遵循：
+执行遵循（与 PROTOCOL.md §3 Mandatory 链对齐，Fast Path 可简化）：
 
-trigger → task → plan → authorize → execute → verify → decide
+trigger → context → goal/task semantics → plan → permission → execute → verify → evaluate → decide
+
+> 说明：context（Context Orchestration）与 goal/task semantics 为 Mandatory（所有任务必经）；
+> permission gate 永远存在，L0/L1 自动 ALLOW；evaluate 评判质量。
+> 完整执行链（Fast/Full Path 分流、Conditional 节点）见 PROTOCOL.md §3。
 
 ## Heartbeat / Cron
 

@@ -64,8 +64,12 @@ def _stable_hash(data):
     ).hexdigest()[:16]
 
 
-def load_records(goal_id=None, limit=100):
-    """读取记录，可选按 goal_id 过滤。
+def load_records(goal_id=None, limit=100, agent_id=None):
+    """读取记录，可选按 goal_id / agent_id 过滤。
+
+    MA-1.1 安全补：Multi-Agent 场景下按 agent_id 过滤，防止跨 Agent 串流
+    （同一 JSONL 文件里所有 Agent 记录混存，读取时必须归还当前 Agent 的记录，
+    避免 A 读到 B 的身份/证据信息）。
 
     v1.3 #10/#12:
       - 损坏 JSONL 行记录到 corruption/corrupt_lines，不静默跳过。
@@ -78,6 +82,7 @@ def load_records(goal_id=None, limit=100):
                 "history_unavailable": False}
     records = []
     corrupt_lines = []
+    _agent_id = str(agent_id or "").strip()
     try:
         with open(path, "r", encoding="utf-8") as f:
             for i, line in enumerate(f):
@@ -87,6 +92,9 @@ def load_records(goal_id=None, limit=100):
                 try:
                     r = json.loads(line)
                     if goal_id and r.get("goal_id") != goal_id:
+                        continue
+                    # MA-1.1: 指定查看某 Agent 的记录时按 agent_id 过滤，防串流
+                    if _agent_id and str(r.get("agent_id", "") or "").strip() != _agent_id:
                         continue
                     records.append(r)
                 except Exception:
@@ -801,8 +809,10 @@ def cmd_check(args):
     check = json.loads(args.json) if args.json else {}
     goal_id = check.get("goal_id", "")
     action_signature = check.get("action_signature", "")
+    # MA-1.1: 只看当前 agent 的历史，防跨 Agent 串流
+    agent_id = getattr(args, "runtime_agent", "") or ""
 
-    res = load_records(goal_id=goal_id, limit=50)
+    res = load_records(goal_id=goal_id, limit=50, agent_id=agent_id or None)
     if res.get("history_unavailable", False):
         result = check_action_loop(check, None, previous_available=False)
         print(json.dumps(result, ensure_ascii=False))
@@ -821,7 +831,9 @@ def cmd_check(args):
 
 
 def cmd_query(args):
-    res = load_records(goal_id=args.goal, limit=int(args.limit or 50))
+    agent_id = getattr(args, "runtime_agent", "") or ""
+    res = load_records(goal_id=args.goal, limit=int(args.limit or 50),
+                       agent_id=agent_id or None)
     out = {"records": res.get("records", []),
            "total": len(res.get("records", [])),
            "corruption": res.get("corruption", 0),

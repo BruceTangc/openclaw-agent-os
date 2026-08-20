@@ -169,11 +169,13 @@ def _permission_transition(rec, to, actor="system", reason=""):
     if _perm_transition is not None:
         _perm_transition(rec, to, kind="permission", actor=actor, reason=reason)
     else:
-        rec["status"] = to
-        rec.setdefault("history", []).append({
-            "event": "transition", "to": to, "actor": actor, "reason": reason,
-            "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        })
+        # fail-closed: 中央门不可用时不得直写状态绕过跳转校验（C2 约束）。
+        # 静默直写会完全跳过跳转合法性 + 事实不变量校验，让授权记录可任意改状态。
+        # 改为抛错（StateError 语义），让调用方感知并升级，而非默默放行。
+        from errors import StateError
+        raise StateError(
+            "permission 状态中央门不可用，拒绝绕过直写状态 (%s -> %s)"
+            % (rec.get("status"), to), code="PERMISSION_GATE_UNAVAILABLE")
     return rec
 
 
@@ -326,8 +328,10 @@ def check(req):
                 expired = True
                 expiry_problem = "authorization 已过期: expiry=" + str(auth_expiry)
         except ValueError:
-            # 无法解析的 expiry 在安全上按“视为有效但提醒”；避免误拦截合法授权。
-            expiry_problem = "authorization expiry 无法解析: " + str(auth_expiry)
+            # expiry 无法解析 → 按无效授权处理（fail-closed），不静默放行。
+            # 格式错误的 expiry 若被当“有效”，会让过期授权绕过过期判定继续生效（安全洞）。
+            expired = True
+            expiry_problem = "authorization expiry 无法解析(视为无效): " + str(auth_expiry)
     if expired:
         auth_valid = False
     authorized_effective = auth_valid and scope_ok
