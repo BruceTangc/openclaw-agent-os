@@ -101,6 +101,16 @@ MAX_RETURN = 20
 
 FORBIDDEN_KEYS = ["password", "secret", "token", "api_key", "apikey", "credential", "private_key"]
 
+# CORE-19（最小核心类型白名单）：防止 ontology 实体类型自由膨胀。
+# 与 references/semantic-model.md「初始实体类型」一致；另含 Person（常用于身份建模）。
+# schema.json 的实际 types 仍为校验权威；白名单用作“超核心告警”，不入白名单的类型可存在
+# 但会收到告警，提示走语义模型评审，避免因新名字就新建实体类型。
+CORE_ENTITY_TYPES = {
+    "Agent", "Project", "Skill", "Tool", "Learning", "Decision", "Concept",
+    "Task", "User", "Memory", "Document", "Event", "Resource", "Workflow",
+    "Rule", "Constraint", "Metric", "Evidence", "Proposal", "Issue", "Person",
+}
+
 DEFAULT_SCHEMA = {
     "types": {
         "Agent": {"required": ["name"]},
@@ -286,6 +296,12 @@ def validate_entity(schema, etype, name, props):
     types = schema.get("types", {})
     if etype not in types:
         raise ValueError("未知实体类型: {0} (可用: {1})".format(etype, ", ".join(sorted(types))))
+    # CORE-19：最小核心类型白名单——schema 已含的类型若不属于核心集，告警（防膨胀）。
+    # 不硬拦截（schema 仍是权威，自定义扩展类型允许存在），但提示“别因新名字就新建实体类型”。
+    if etype not in CORE_ENTITY_TYPES:
+        print("⚠ [ontology CORE-19] 类型 '{0}' 不在最小核心白名单内(可用核心: {1})；"
+              "如需持久化新类型请走语义模型评审，勿随意膨胀。".format(
+                  etype, ", ".join(sorted(CORE_ENTITY_TYPES))))
     required = types[etype].get("required", [])
     entity_props = {"name": name} if name else {}
     entity_props.update(props or {})

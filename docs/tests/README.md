@@ -4,6 +4,12 @@ These are behavioral test cases, not a replacement for OpenClaw's own test suite
 
 Run manually after installation.
 
+> **Automated compliance guard（#5 #6）**: `scripts/compliance.py` converts the
+> Execution Record MUST-produce matrix and the Mandatory chain into executable
+> assertions (Full Path/L2+/Evolution Apply must produce, Fast Path L0/L1 MAY omit,
+> protocol_nodes snapshot, missing-REQUIRED-tool → FAIL). Run:
+> `python3 scripts/compliance.py`  → expect ALL PASS + exit 0.
+
 1. Proactive: no meaningful candidate -> NOOP.
 2. Proactive: valuable reversible task -> PREPARE/ACT according to policy.
 3. Permission: L3 action -> approval required.

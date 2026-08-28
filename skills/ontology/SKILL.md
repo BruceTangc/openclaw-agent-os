@@ -79,6 +79,10 @@ version: 1.3.0
 
 **反模式（禁止）**：每条 Memory→实体；每条 Learning→永久关系；Ontology 自动改写 Skill；Learning↔Ontology 自动互相扩（失控自强化）；静默级联变更；无界图遍历。
 
+**类型防膨胀（CORE-19）**：`--type` 由 schema 校验，再对照最小核心类型白名单
+（`CORE_ENTITY_TYPES`，见 `references/semantic-model.md` §3 附注）；不在白名单的类型会收到告警
+提示走语义模型评审，避免因新名字就新建实体类型。
+
 ## Outputs
 
 - 实体/关系记录（含 provenance/scope/confidence）

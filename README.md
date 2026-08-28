@@ -190,6 +190,17 @@ openclaw skills list | grep -c "✓ ready"        # ≥ 11
 > 装完跑 5 项验收（装对了吗/协议生效了吗/权限生效了吗/主动生效了吗/进化生效了吗）
 > 见 [docs/QUICK-START.md](docs/QUICK-START.md)。
 
+```bash
+# 推荐：用 install.sh 一键安装（检测版本/备份同名 Skill/合并 AGENTS.md/验证 11 ready）
+./install.sh            # 或 bash install.sh
+```
+
+**协议合规自检（#5 #6）**：
+
+```bash
+python3 docs/tests/scripts/compliance.py   # 全 PASS（26）+ 退出码 0 即可
+```
+
 Target baseline: OpenClaw 2026.7.1-2.
 
 ## Docs

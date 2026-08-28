@@ -88,6 +88,10 @@ version: 1.3.0
 
 **等级匹配**：简单阅读 V1；研究/数据分析 V2/V3；外部写入 V3；资金/不可逆 V4 + 人工确认。
 
+**证据采集模板**：宣称成功前按 `references/evidence-template.md` 采集并留存证据
+（采集 5 问 + evidence_refs 字段模板 + 关键事实/不确定点/建议下一步 三段式输出），
+与 `docs/schemas/evidence.md` 及 verify.py 的 V3/V4 校验字段对齐。
+
 ## Outputs
 
 - 验证等级 + 状态（PASS/PARTIAL/FAIL/UNKNOWN）+ 证据
