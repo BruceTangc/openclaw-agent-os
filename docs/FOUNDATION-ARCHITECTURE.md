@@ -287,7 +287,7 @@ Task → Action → Action Fingerprint → Permission → OpenClaw Policy → Ex
 >   - `Ask`：信息不足/需用户或 Native Approval 推进（#5 Stop(Ask)）。
 >   - `Stop`：不可证明有进展、风险过高或触达上限（#5 Stop(Block)，配合 #18 Recovery + Owner）。
 >
-> **UNKNOWN 是状态，不是决策（Architecture Contract v1.6，冻结补）**：
+> **UNKNOWN 是状态，不是决策（`autonomy-decision` 特性 tag，非协议主版本）**：
 > Progress 三态中，`UNKNOWN`（无法获得 Progress Signal）不是一种 Progress 决策目标，
 > 而是「尚无法判断进展」的**状态**；它必须按上下文拆成决策，不能固定映射成单一决策词：
 > ```

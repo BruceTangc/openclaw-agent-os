@@ -18,15 +18,21 @@ ESCALATE  — 升级（连续失败/超预算/权限不足/高风险）
 DENY      — 拒绝（由 permission-security 输出，非 proactive 输出）
 ```
 
-> **两层决策词汇（v1.6 冻结补）**：上述为 **Proactive 决策层**（被唤醒后判断“是否值得做”）。
-> 任务执行中的 **Autonomy Decision 层** 顶层标准词为 `Continue / Complete / Change Strategy / Ask / Stop`
+> **两层决策词汇（冻结补，`layer2-decision-mapping` 特性 tag）**：上述为 **Proactive 决策层**（被唤醒后判断“是否值得做”）。
+> 任务执行中的 **Autonomy Decision 层** 顶层标准词为 `Continue / Stop(Block) / Stop(Ask)`
 > （见 FOUNDATION-ARCHITECTURE.md §5/§17/§25）。映射关系：
 > - `EXECUTE` intent → `Continue`
 > - `ESCALATE` → `Stop(Ask)`
 > - `WARN / NOOP` → `Continue`（继续但需留意）
 > - `UNKNOWN` → 是状态不是决策，按上下文拆为 `WAIT/VERIFY/ASK/RECOVER` 再映射
-> - `IGNORE / OBSERVE / QUEUE` → `Stop(Block)`（待核实）
+> - `IGNORE / OBSERVE / QUEUE / SUGGEST` → `Stop(Block)`（待核实）
 > - `DENY` → `Stop(Block)`
+>
+> > **该映射已代码化（确定性，审计 🟢12）**：由 `orchestrator.py` 的
+> > `PROACTIVE_TO_AUTONOMY` dict + `autonomy_decision()` 函数强制，同输入→同输出，
+> > 与 `action_signature`（deterministic hash）同一模式。LLM/人只负责填 Proactive 层 8 词，
+> > 映射由代码强制，输出带 `source` 字段可审计；未知词/`UNKNOWN` 返回 `UNRESOLVED`（fail-closed，
+> > 需先拆 `WAIT/VERIFY/ASK/RECOVER`）。
 
 ## 2. 决策输入（Opportunity/Signal schema）
 

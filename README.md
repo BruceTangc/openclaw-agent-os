@@ -7,6 +7,19 @@
 > 后续只做三件事：协议文字收敛、Execution Record 追溯、Long-running 验证。
 >
 > Governance, decision and workflow policy layer around OpenClaw's native runtime.
+>
+> ### 版本正交说明（skill_version vs protocol_version）
+>
+> 技能文件中有**两层正交的版本号**，不要混为一谈（审计 🔴2）：
+> - `protocol_version`（协议版本）：该 Skill 声明的 **Agent OS 协议兼容版本**，统一为 `1.3`，
+>   决定其是否满足 Core Protocol 的执行链/权限/验证契约（legacy 1.2 Skill 以兼容模式运行）。
+> - 技能 `version`（自迭代版本）：该 Skill **自身独立迭代节奏**，可偏离协议主版本：
+>   - 11 个核心 Skill 中 10 个为 `1.3.0`（紧随协议）；
+>   - **`self-evolution` 为 `2.0.0`**（同时声明 `protocol_version: "1.3"`）——它按自迭代节奏独立演进，
+>     skill 版本领先不等于协议版本领先，两者互不影响（正交）。
+>
+> 因此库内：`protocol_version` 统一（1.3）；`version` 允许各 Skill 独立（1.3.0 / 2.0.0…），
+> 后续迭代不必强求两者同步递增。
 
 > 官方协议：见 [docs/PROTOCOL.md](docs/PROTOCOL.md)（统一行为协议）。
 > 冻结存档：见 [FINALIZE-REPORT.md](FINALIZE-REPORT.md)、[DEEP-AUDIT.md](DEEP-AUDIT.md)、[SCRIPTS-AUDIT-FINAL.md](SCRIPTS-AUDIT-FINAL.md)。

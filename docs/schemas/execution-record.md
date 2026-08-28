@@ -59,29 +59,33 @@ task:
   skill: "business-quote"     # 实际使用的 Skill
 
 steps:
+  # 每个节点的 `status`（经过状态）三态：executed / bypassed / not_applicable
+  # 验证结果不放在 `status`，放 verification.result（五态），两者正交不混用。
   context:
-    status: "completed"       # completed | skipped | conditional
+    status: "executed"            # executed | bypassed | not_applicable
   goal_task:
-    status: "completed"       # Goal/Task Semantics（Mandatory）
+    status: "executed"            # Goal/Task Semantics（Mandatory）
   task_manager_state_machine:
-    status: "skipped"         # 仅 Full Path/长任务才 required
+    status: "bypassed"            # 仅 Full Path/长任务才 required
     note: "简单任务无需完整状态机"
-  decision:                   # 仅自主任务
-    status: "completed"
-    result: "EXECUTE"         # 决策词汇表
+  decision:                        # 仅自主任务
+    status: "executed"
+    result: "EXECUTE"             # 决策词汇表
   permission:
-    status: "completed"
+    status: "executed"
     level: "L2"
-    result: "ALLOW"           # ALLOW | ASK | DENY | AUTO
+    result: "ALLOW"               # ALLOW | ASK | DENY | AUTO
   execution:
-    status: "completed"
+    status: "executed"
   verification:
-    status: "completed"
+    status: "executed"
     level: "V3"
-    result: "PASS"            # PASS | PARTIAL | FAIL | UNKNOWN
+    # 验证结果是五态 result（与节点经过状态 status 分离）：
+    # execution status（executed/bypassed/not_applicable）≠ verification result（五态）
+    result: "PASS"                # PASS | PARTIAL | FAIL | UNKNOWN | UNAVAILABLE
     evidence: "quotation.xlsx"
   evaluation:
-    status: "completed"
+    status: "executed"
     result: "PASS"
   writeback:
     status: "none"            # none | memory | knowledge | ontology
@@ -142,8 +146,10 @@ cross_agent_ok: true               # 委托链完整、未丢失 origin
 
 ## 使用规则
 
-- **status 三态**：`completed`（真实经过）/ `skipped`（按 Contract 条件性跳过，需 note）/ `conditional`（按任务类型）。
-- 不允许填"假 completed"：某节点没做就不能标 completed（这是审计点，不是装饰）。
+- **节点经过状态 `status` 三态**：`executed`（真实经过）/ `bypassed`（按 Contract 条件性跳过，需 note）/ `not_applicable`（按任务类型不适用）。
+- **节点经过状态 ≠ 验证结果**：验证结果统一放 `verification.result` 五态（`PASS / PARTIAL / FAIL / UNKNOWN / UNAVAILABLE`），
+  由 verification-evaluation 判定；`node.status` 只回答"这个协议节点有没有实际经过"，与"结果是否通过验证"是正交的两个维度，不得混用一个词表。
+- 不允许填"假 executed"：某节点没做就不能标 executed（这是审计点，不是装饰）。
 - 高风险（L3+ / 资金 / 不可逆）任务的 Execution Record 必须保留到任务结束并可供用户调阅。
 - 普通 Fast Path（L0-L1 无副作用）可不生成记录——生成是义务不是开销，无谓记录是噪音。
 

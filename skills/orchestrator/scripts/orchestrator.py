@@ -68,6 +68,60 @@ EXEC_STATES = [
     "retrying", "failed", "completed", "cancelled", "blocked",
 ]
 
+# ---------------------------------------------------------------------------
+# 两层决策确定性映射表（审计 🟢12，代码消 LLM 漂移）
+# ---------------------------------------------------------------------------
+# Proactive 决策层输出 8 词（见 proactive.py DECISIONS / DECISION-PROTOCOL §1）
+#   → 任务执行中的 Autonomy Decision 层顶层标准词为
+#     Continue / Stop(Block) / Stop(Ask)（见 FOUNDATION §5/§17/§25）。
+# 本表为**确定性 dict**：同输入 → 同输出，不依赖 LLM 解读，与 action_signature
+# （deterministic hash）同一模式。LLM 只负责填 Proactive 层词，映射由本代码强制。
+# 映射语义（对齐 DECISION-PROTOCOL §1）：
+#   - IGNORE/OBSERVE/QUEUE    → Stop(Block) 不进入自主执行（QUEUE=入队不自动做）
+#   - SUGGEST                 → Stop(Block) 仅建议，不自动执行
+#   - PREPARE                 → Continue    可逆准备，允许继续
+#   - EXECUTE                 → Continue    低风险可逆/已授权，继续
+#   - ASK / ESCALATE          → Stop(Ask)   需用户确认/升级
+#   - UNKNOWN                 → 是状态不是决策，须先拆 WAIT/VERIFY/ASK/RECOVER 再映射
+#   - DENY                    → Stop(Block) 由 permission-security 输出，非 proactive
+PROACTIVE_TO_AUTONOMY = {
+    "IGNORE":    "Stop(Block)",
+    "OBSERVE":   "Stop(Block)",
+    "QUEUE":     "Stop(Block)",
+    "SUGGEST":   "Stop(Block)",
+    "PREPARE":   "Continue",
+    "EXECUTE":   "Continue",
+    "ASK":       "Stop(Ask)",
+    "ESCALATE":  "Stop(Ask)",
+}
+# 非 proactive 顶层输出但会出现在 Progress Gate / permission 的词，同样收敛映射
+_AUTONOMY_EXTRA = {
+    "WARN":      "Continue",
+    "NOOP":      "Continue",
+    "DENY":      "Stop(Block)",
+    # UNKNOWN 是测量状态，不固定映射；调用方须先拆为 WAIT/VERIFY/ASK/RECOVER 之一再映射。
+}
+
+
+def autonomy_decision(proactive_decision):
+    """确定性把 Proactive 层 / Progress-Gate 决策词翻译为 Autonomy Decision 标准词。
+
+    返回 (autonomy, mapped) 结构；对无法确定性映射的词（如 UNKNOWN）标记
+    needs_disambiguation=True，禁止静默当作 Continue（fail-closed）。
+    """
+    d = str(proactive_decision or "").strip().upper()
+    if d in PROACTIVE_TO_AUTONOMY:
+        return {"autonomy": PROACTIVE_TO_AUTONOMY[d], "mapped": True,
+                "needs_disambiguation": False, "source": d}
+    if d in _AUTONOMY_EXTRA:
+        return {"autonomy": _AUTONOMY_EXTRA[d], "mapped": True,
+                "needs_disambiguation": False, "source": d}
+    # UNKNOWN / 未知词：fail-closed，不默认放行，交上层拆 WAIT/VERIFY/ASK/RECOVER。
+    return {"autonomy": "UNRESOLVED", "mapped": False,
+            "needs_disambiguation": True,
+            "source": d or "<empty>",
+            "reason": "空/未知/UNKNOWN 非确定性决策词，须先拆为 WAIT/VERIFY/ASK/RECOVER"}
+
 # 默认重试 (文档 §23)
 DEFAULT_MAX_RETRIES = 2
 
@@ -603,6 +657,9 @@ def main():
     p_evol.add_argument("--confidence", type=float, default=0.0)
     p_evol.add_argument("--no-approval", action="store_true")
 
+    p_auto = sub.add_parser("autonomy", help="Proactive 决策词 → Autonomy Decision 确定性映射")
+    p_auto.add_argument("--decision", required=True, help="Proactive/Progress-Gate 决策词 (IGNORE/OBSERVE/...)")
+
     p_record = sub.add_parser("record", help="记录执行结果到 Execution Record 并判断 no-progress")
     p_record.add_argument("--json", required=True, help="记录 JSON")
 
@@ -669,6 +726,10 @@ def main():
     if args.cmd == "verify":
         result = read_stdin_or_json(args.json, "result")
         print(json.dumps(verify_result(result, args.level), ensure_ascii=False, indent=2))
+        return
+
+    if args.cmd == "autonomy":
+        print(json.dumps(autonomy_decision(args.decision), ensure_ascii=False, indent=2))
         return
 
     if args.cmd == "evol":

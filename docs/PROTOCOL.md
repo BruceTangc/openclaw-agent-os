@@ -145,7 +145,7 @@ Permission Gate (permission-security, 所有路径必经)
 > 二者不可混为一个「过得去就继续」的开关——否则换动作空转（每次 Task 不同、Evaluation 觉得「有产出」），
 > 但 Goal Progress=0 持续很久，L3 也难检测。
 > **Progress 三态**：PROGRESS（delta>0）/ STALL（delta==0 连续达阙）/ UNKNOWN（无信号，不误判为 STALL）。
-> **UNKNOWN 是状态不是决策（v1.6 冻结补）**：UNKNOWN 是测量状态，不是可直接输出的决策目标；
+> **UNKNOWN 是状态不是决策（冻结补，`autonomy-decision` 特性 tag）**：UNKNOWN 是测量状态，不是可直接输出的决策目标；
 > 须按上下文拆分为 WAIT / VERIFY / ASK / RECOVER，再映射到标准决策词（Continue / Stop）。
 > 已知例外：Self-Evolution 窄域的 UNKNOWN→ASK 固化不视为通用模式（见 FOUNDATION §17）。
 > **Autonomy Decision ≠ State Transition**：决策词（Continue/Stop/Change Strategy/Ask）必须先产出

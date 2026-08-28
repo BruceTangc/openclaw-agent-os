@@ -83,8 +83,11 @@ x-agent-os:
   **Execution Record**（见 [schemas/execution-record.md](schemas/execution-record.md)）：
   path、steps（context/goal_task/permission/execution/verification/evaluation/writeback/evolution
   各节点的 status + result）、evidence、audit。
-- **status 三态**：`completed`（真实经过）/ `skipped`（按 Contract 条件性跳过，带 note）/ `conditional`。
-  某节点没做不能标 completed——这是审计点，不是装饰。
+- **节点经过状态 `status` 三态**：`executed`（真实经过）/ `bypassed`（按 Contract 条件性跳过，带 note）/ `not_applicable`（按任务类型）。
+  某节点没做不能标 executed——这是审计点，不是装饰。
+- **节点经过状态 ≠ 验证结果**：`status`（三态，节点是否真实经过）与 `verification.result`
+  （五态，`PASS / PARTIAL / FAIL / UNKNOWN / UNAVAILABLE`，验证是否通过）为**两个正交字段**，
+  不得混用一个词表（见 schemas/execution-record.md）。
 - 这是语义记录，不是 Runtime：OpenClaw 仍拥有执行/调度/审批；记录只回答
   “这次行为是否符合 Agent OS Protocol”，可随任务结果输出或存 memory。
 - 目的：把系统从 **Protocol-aware Agent** 提升为 **Protocol-observable Agent**——
