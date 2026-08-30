@@ -25,11 +25,14 @@ Append-only JSONL 存储 + schema 校验 + 影响分析(深度/环守卫) + 提�
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import sys
 import time
+
+import yaml  # P0 Agent OS×Obsidian: vault frontmatter/minimal .base rendering
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(BASE, "memory", "ontology")
@@ -939,6 +942,420 @@ def cmd_export_md(args):
     return 0
 
 
+# ---------------------------------------------------------------------------
+# P0 Agent OS × Obsidian — 单向只读导出（view rendering only，JSONL 仍是唯一真相）
+#
+# 边界（design doc 第 6 部分）：此处只新增“视图渲染”逻辑，不触碰
+# read_entities/read_relations/append/schema/rollback/alias/impact 等存储与语义核心。
+# 导出绝不写回 JSONL / state.json；provenance 通过相对行号 + SHA-256 可回溯。
+# 所有输出文件为纯 Markdown + YAML Properties(frontmatter) + Wikilink，
+# 不依赖 Obsidian 应用即可读取。
+# ---------------------------------------------------------------------------
+
+VAULT_SCHEMA_VERSION = 1
+
+# 只给“核心实体类型白名单”生成独立 .md；非白名单类型（自定义扩展）汇总进 _index，
+# 避免视图遗漏且不鼓励类型膨胀（对齐 CORE-19 粒度，但不重复 CORE_ENTITY_TYPES 定义）。
+
+
+def _canonical_json(obj):
+    """稳定 canonical 序列化（provenance 指纹用）。
+
+    规则（见 vault _meta/META.md）：键递归按字典序排序，值 JSON 序列化，
+    ensure_ascii=False + sort_keys + 正则空格；同一 JSONL 任意两次读取结果一致。
+    """
+    return json.dumps(
+        obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+
+
+def _canonical_entity(e):
+    """实体的稳定指纹：只取稳定字段(见 META.md 串行化规则)，忽略易变时间戳。"""
+    stable = {
+        "id": e.get("id"),
+        "type": e.get("type"),
+        "name": e.get("name"),
+        "status": e.get("status", "active"),
+        "scope": e.get("scope", "AGENT"),
+        "owner_type": e.get("owner_type"),
+        "owner_id": e.get("owner_id"),
+        "properties": e.get("properties", {}) or {},
+    }
+    return _canonical_json({k: v for k, v in stable.items() if v not in (None, "")})
+
+
+def _canonical_relation(r):
+    """关系的稳定指纹：只取稳定字段，忽略 _line 与易变时间戳。"""
+    stable = {
+        "id": r.get("id"),
+        "from_id": r.get("from_id"),
+        "predicate": r.get("predicate"),
+        "to_id": r.get("to_id"),
+        "status": r.get("status", "active"),
+        "properties": r.get("properties", {}) or {},
+    }
+    return _canonical_json({k: v for k, v in stable.items() if v not in (None, "")})
+
+
+def _sha256(s):
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+def _read_lines(path):
+    """读 JSONL 原始行，返回 (replay_obj, line_no)。用于 provenance 行号回溯。"""
+    out = []
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            for n, raw in enumerate(f, 1):
+                s = raw.strip()
+                if not s:
+                    continue
+                try:
+                    out.append((json.loads(s), n))
+                except json.JSONDecodeError:
+                    continue
+    return out
+
+
+def _esc_prop(v):
+    """把属性值转成较安全的 YAML 标量文本用于前端/正文。"""
+    if isinstance(v, (dict, list)):
+        try:
+            return json.dumps(v, ensure_ascii=False, sort_keys=True)
+        except Exception:
+            return repr(v)
+    return str(v)
+
+
+def _wikify(eid, entities):
+    """把实体 id 整理成相对路径；若目标不存在则返回空路径，避免悬空链接。"""
+    if eid in entities:
+        e = entities[eid]
+        etype = e.get("type", "Entity")
+        label = e.get("name") or eid
+        rel = "entities/{0}/{1}".format(etype, eid)
+        return (label, rel)
+    return (eid, "")
+
+
+def _frontmatter(fields):
+    """渲染 YAML frontmatter。fields 为 dict；保持中文、排序、无冗余空值。"""
+    # 剔除 None/空 list/dict，避免污染 frontmatter
+    clean = {}
+    for k, v in fields.items():
+        if v is None:
+            continue
+        if isinstance(v, (dict, list)) and not v:
+            continue
+        if isinstance(v, str) and v == "":
+            continue
+        clean[k] = v
+    body = yaml.safe_dump(
+        clean, allow_unicode=True, sort_keys=False, default_flow_style=False
+    ).rstrip("\n")
+    return "---\n{0}\n---\n".format(body)
+
+
+def _safe_mkdirs(path):
+    os.makedirs(path, exist_ok=True)
+
+
+def _emit(path, text):
+    _safe_mkdirs(os.path.dirname(path))
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def cmd_export_vault(args):
+    """P0 批量导出：Ontology Entity/Relation → Vault 视图（只读）。
+
+    生成（out 默认为 DATA/../vault-export）：
+      ontology/entities/<type>/<id>.md   —— 每个核心类型实体一张卡
+      ontology/_index.md                 —— 概览索引（含全部类型汇总）
+      ontology/relations.base            —— active 关系 Bases 视图
+      ontology/graph.canvas              —— 实体-关系图谱（text 节点 + edges）
+      _meta/META.md                      —— schema 版本 + 串行化规则 + 溯源说明
+
+    绝不写回 JSONL / state.json。可重复运行：覆盖视图文件，不改源。
+    """
+    entities = read_entities()
+    relations = read_relations()
+
+    # 多 Agent 读隔离：仅当 --agent 给定时过滤他 agent 私有实体（复用现有 _visible_to）。
+    if getattr(args, "agent", ""):
+        entities = {eid: e for eid, e in entities.items()
+                    if _visible_to(e, args.agent)}
+
+    # project 过滤（同 --export-md 语义）：scope 或 properties.project 匹配才保留。
+    if getattr(args, "project", ""):
+        prj = args.project
+        entities = {eid: e for eid, e in entities.items()
+                    if e.get("scope") == prj or e.get("properties", {}).get("project") == prj}
+
+    # 只保留仍指向现存实体的关系（避免悬空），并尊重 agent 隔离/项目过滤。
+    relations = [r for r in relations
+                 if r.get("from_id") in entities and r.get("to_id") in entities]
+
+    # provenance 行号映射：entities.jsonl/relations.jsonl 的 (id -> line_no)
+    ent_lines = {}
+    for obj, line in _read_lines(ENTITIES_FILE):
+        ent = obj.get("entity", {})
+        if ent.get("id"):
+            ent_lines[ent["id"]] = line
+    rel_lines = {}
+    for obj, line in _read_lines(RELATIONS_FILE):
+        rel = obj.get("relation", {})
+        if rel.get("id"):
+            rel_lines.setdefault(rel["id"], line)
+
+    out_dir = getattr(args, "out", None) or os.path.join(DATA, "..", "vault-export")
+    out_dir = os.path.abspath(out_dir)
+    ont_dir = os.path.join(out_dir, "ontology")
+    meta_dir = os.path.join(out_dir, "_meta")
+    _safe_mkdirs(ont_dir)
+    _safe_mkdirs(meta_dir)
+
+    # 按类型分组（只对 CORE_ENTITY_TYPES 白名单生成独立 .md）
+    by_type = {}
+    other_types = {}
+    for eid, e in entities.items():
+        et = e.get("type", "Entity")
+        if et in CORE_ENTITY_TYPES:
+            by_type.setdefault(et, {})[eid] = e
+        else:
+            other_types.setdefault(et, {})[eid] = e
+
+    # ---- 1) 每个核心类型实体一张 .md ----
+    for et, emap in by_type.items():
+        for eid, e in emap.items():
+            props = e.get("properties", {}) or {}
+            aliases = props.get("aliases") or []
+            if not isinstance(aliases, list):
+                aliases = [aliases]
+            fingerprint = _sha256(_canonical_entity(e))
+            fm = {
+                "osv": VAULT_SCHEMA_VERSION,
+                "object_type": "ontology_entity",
+                "id": eid,
+                "etype": e.get("type"),
+                "name": e.get("name"),
+                "aliases": aliases,
+                "scope": e.get("scope", "AGENT"),
+                "status": e.get("status", "active"),
+                "confidence": props.get("confidence"),
+                "freshness": props.get("freshness"),
+                "validity": props.get("validity"),
+                "source_type": props.get("source_type"),
+                "provenance_ref": (
+                    "entities.jsonl:{0}:{1}".format(
+                        ent_lines.get(eid, "?"), fingerprint[:16])
+                    if ent_lines.get(eid) else None
+                ),
+                "source_agent": props.get("source_agent"),
+                "owner_type": e.get("owner_type"),
+                "owner_id": e.get("owner_id") or None,
+                "superseded_by": props.get("superseded_by") or e.get("superseded_by"),
+                "created_at": e.get("created_at"),
+                "updated_at": e.get("updated_at"),
+                "tags": ["agent-os/view", "ontology/entity"],
+            }
+            for tk in ("description", "title", "content"):
+                if props.get(tk):
+                    fm[tk] = props[tk]
+            # 附加其它非冲突属性，保全语义不丢失
+            extra = []
+            skip = set(fm.keys()) | {"aliases", "confidence", "freshness", "validity",
+                                      "source_type", "provenance_ref", "source_agent",
+                                      "description", "title", "content", "name",
+                                      "scope", "status", "superseded_by"}
+            for k, v in props.items():
+                if k in skip:
+                    continue
+                extra.append("- {0}: {1}".format(k, _esc_prop(v)))
+
+            # 关系区：关联当前实体的 active 关系
+            rel_sec = []
+            for r in relations:
+                if r.get("from_id") == eid:
+                    tlabel, trel = _wikify(r["to_id"], entities)
+                    link = "[[{0}]]".format(trel.replace(".md", "")) if trel else tlabel
+                    rel_sec.append("- {0} → {1}".format(r["predicate"], link))
+                elif r.get("to_id") == eid:
+                    slab_, srel = _wikify(r["from_id"], entities)
+                    link = "[[{0}]]".format(srel.replace(".md", "")) if srel else slab_
+                    rel_sec.append("- {0} ⇠ {1}".format(link, r["predicate"]))
+
+            lines = []
+            lines.append(_frontmatter(fm))
+            lines.append("# {0}".format(e.get("name") or eid))
+            lines.append("")
+            body = props.get("description") or props.get("content") or props.get("title")
+            if body:
+                lines.append(body)
+                lines.append("")
+            lines.append("> [!info] 来源")
+            lines.append("> JSONL 源：`entities.jsonl` 行 {0} · 指纹 `{1}`".format(
+                ent_lines.get(eid, "?"), fingerprint))
+            if e.get("status") in ("obsolete", "superseded", "disputed"):
+                lines.append("")
+                note = {
+                    "obsolete": "该实体已标记 obsolete（视图保留，未删 JSONL）。",
+                    "superseded": "该实体已被较新声明取代（见 frontmatter `superseded_by`）。",
+                    "disputed": "该实体存在矛盾，未被静默合并。",
+                }[e["status"]]
+                lines.append("> [!warning] {0}".format(note))
+            if aliases:
+                lines.append("")
+                lines.append("**别名**：" + ", ".join(str(a) for a in aliases))
+            if extra:
+                lines.append("")
+                lines.append("**附加属性**")
+                lines.extend(extra)
+            if rel_sec:
+                lines.append("")
+                lines.append("## 关系")
+                lines.extend(rel_sec)
+            _emit(os.path.join(ont_dir, "entities", et, eid + ".md"),
+                  "\n".join(lines) + "\n")
+
+    # ---- 2) _index.md 概览 ----
+    idx = []
+    idx.append("---")
+    idx.append("osv: {0}".format(VAULT_SCHEMA_VERSION))
+    idx.append("object_type: ontology_index")
+    idx.append("tags: [agent-os/view, ontology/index]")
+    idx.append("---")
+    idx.append("")
+    idx.append("# Ontology 索引（只读导出）")
+    idx.append("")
+    idx.append("> 本目录由 `ontology.py --export-vault` 生成，**只读视图**；")
+    idx.append("> 语义真相在 `entities.jsonl` / `relations.jsonl`（append-only），请勿直接编辑本视图。")
+    idx.append("")
+    idx.append("生成时间：" + now_iso())
+    idx.append("")
+    idx.append("实体总数：{0}（核心白名单 {1}，其他类型 {2}）".format(
+        len(entities), sum(len(v) for v in by_type.values()),
+        sum(len(v) for v in other_types.values())))
+    idx.append("")
+    for et in sorted(by_type):
+        idx.append("## {0} ({1})".format(et, len(by_type[et])))
+        for eid in sorted(by_type[et]):
+            e = by_type[et][eid]
+            status = e.get("status", "active")
+            idx.append("- [[{0}|{1}]] — {2} · status=`{3}`".format(
+                "entities/{0}/{1}".format(et, eid).replace(".md", ""),
+                e.get("name") or eid, eid, status))
+        idx.append("")
+    if other_types:
+        idx.append("## 其他类型（未生成独立卡片）")
+        for et in sorted(other_types):
+            idx.append("- {0}: {1}".format(et, ", ".join(sorted(other_types[et]))))
+        idx.append("")
+    _emit(os.path.join(ont_dir, "_index.md"), "\n".join(idx) + "\n")
+
+    # ---- 3) relations.base ----
+    base = []
+    base.append("# ontology relations 视图（只读导出，Bases）")
+    base.append("# 由 ontology.py --export-vault 生成；语义真相在 relations.jsonl")
+    base.append("filters:")
+    base.append("  and:")
+    base.append("    - 'file.inFolder(\"ontology/entities\")'")
+    base.append("    - 'status == \"active\"'")
+    base.append("views:")
+    base.append("  - type: table")
+    base.append("    name: \"Active Relations\"")
+    base.append("    order:")
+    base.append("      - file.name")
+    base.append("      - id")
+    base.append("      - from_id")
+    base.append("      - predicate")
+    base.append("      - to_id")
+    base.append("      - scope")
+    base.append("      - status")
+    proto = ""
+    try:
+        # 深度优先稳定的 relations 列表（edge 候选）写入 canvas node 文本
+        proto = "active relations: {0}".format(len(relations))
+    except Exception:
+        proto = ""
+    base.append("# relations_count: {0}".format(len(relations)))
+    base.append("# " + proto)
+    _emit(os.path.join(ont_dir, "relations.base"), "\n".join(base) + "\n")
+
+    # ---- 4) graph.canvas（JSON Canvas Spec 1.0）----
+    nodes = []
+    edges = []
+    x, y = 0, 0
+    node_ids = {}
+    for eid, e in sorted(entities.items()):
+        nid = ("n" + eid).replace("-", "").lower()
+        # 稳定 16 hex 节点 id：用 id 的 sha256 头 16
+        nid = _sha256("entity:" + eid)[:16]
+        node_ids[eid] = nid
+        nodes.append({
+            "id": nid,
+            "type": "text",
+            "x": x,
+            "y": y,
+            "width": 260,
+            "height": 120,
+            "text": "**{0}**\n{1} [{2}]\n{3}".format(
+                e.get("name") or eid, eid, e.get("type"), e.get("status", "active")),
+        })
+        x += 320
+        if x > 1800:
+            x = 0
+            y += 180
+    edge_counter = 0
+    for r in relations:
+        frm = node_ids.get(r.get("from_id"))
+        to = node_ids.get(r.get("to_id"))
+        if not frm or not to:
+            continue
+        eid_ = _sha256("edge:{0}".format(r.get("id") or edge_counter))[:16]
+        edges.append({
+            "id": eid_,
+            "fromNode": frm,
+            "toNode": to,
+            "toEnd": "arrow",
+            "label": r.get("predicate"),
+        })
+        edge_counter += 1
+    canvas = {"nodes": nodes, "edges": edges}
+    _emit(os.path.join(ont_dir, "graph.canvas"),
+          json.dumps(canvas, ensure_ascii=False, indent=2) + "\n")
+
+    # ---- 5) _meta/META.md 溯源与串行化规则说明 ----
+    meta = []
+    meta.append("# P0 Ontology→Vault 导出元信息")
+    meta.append("")
+    meta.append("- **schema**：osv={0}".format(VAULT_SCHEMA_VERSION))
+    meta.append("- **truth source**：`entities.jsonl` / `relations.jsonl`（append-only，唯一真相）")
+    meta.append("- **direction**：单向只读导出，P0 不写回 JSONL")
+    meta.append("- **serialization rule（canonical 指纹）**：")
+    meta.append("  - 实体/关系用 JSON `sort_keys=True, separators=(',' , ':'), ensure_ascii=False` 序列化。")
+    meta.append("  - 只取稳定字段，忽略易变时间戳（created_at/updated_at）。")
+    meta.append("  - 属性缺失的字段不注入空占位；properties 递归键排序。")
+    meta.append("  - 指纹 = `entity`/`relation` 前缀区分命名空间，SHA-256 hexdigest。")
+    meta.append("- **provenance_ref 格式**：`<file>:<jsonl_line>:<sha256[0:16]>`")
+    meta.append("  - 例：`entities.jsonl:1:abcdef...` → 可回到 entities.jsonl 第 1 行核对。")
+    meta.append("- **生成时间**：" + now_iso())
+    meta.append("- **排除规则**：status=deleted 的实体不导出；非核心类型只进 _index")
+    _emit(os.path.join(meta_dir, "META.md"), "\n".join(meta) + "\n")
+
+    print("已导出 Vault 视图（只读）→ {0}".format(out_dir))
+    _printed = "\n".join([
+        "  实体卡片: {0} 张 · 关系: {1} 条".format(
+            sum(len(v) for v in by_type.values()), len(relations)),
+        "  ontology/entities/<type>/<id>.md · relations.base · graph.canvas · _index.md · _meta/META.md",
+    ])
+    print(_printed)
+    return 0
+
+
+
+
+
 
 def cmd_resolve(args):
     """--resolve "<text>": 解析文本，匹配实体 + 相关关系。"""
@@ -1104,6 +1521,8 @@ def main():
     parser.add_argument("--rebuild-index", action="store_true")
     parser.add_argument("--reload-alias-cache", action="store_true")
     parser.add_argument("--export-md", action="store_true")
+    parser.add_argument("--export-vault", action="store_true")  # P0: 批量只读导出到 Vault
+    parser.add_argument("--out", metavar="DIR")                  # P0: Vault 导出目标目录
     parser.add_argument("--resolve", metavar="TEXT")
     parser.add_argument("--context", metavar="ID")
 
@@ -1155,6 +1574,8 @@ def main():
         return cmd_context(args)
     if args.export_md:
         return cmd_export_md(args)
+    if args.export_vault:  # P0 批量导出视图
+        return cmd_export_vault(args)
 
     parser.print_help()
     return 0
