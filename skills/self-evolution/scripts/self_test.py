@@ -229,11 +229,24 @@ _evo_evs_before = [r for r in _core_module.load_evidence()
 # candidate 总数在产生 evolution_event 前后应只由外部 evidence 决定，不应被内部事件增加
 _cand_before = len(_core_module._list_ids("candidate"))
 # 尝试用内部 evolution_event 的 id 作为外部 evidence refs 喂给 discover，应 IGNORE（不被当外部证据）
+# F-002 修复: 原实现把 json.dumps(_internal_ev_ids)（一个 JSON 编码的字符串列表）作为
+#   单个 --evidence-refs 参数传入。而 --evidence-refs 是 nargs="+"，会把整个 JSON 字符串
+#   当成一个 EVID 值，load_evidence 无法匹配任何真实证据 id → 恒 IGNORE "EVID 不存在"，
+#   从未真正执行 EVO-04 的 compute_stats 反自激路径（测试假通过）。
+#   修复：将内部证据 id 逐一展开为独立参数，让 discover 真实走 CLI 路径：
+#   反自激闸门（compute_stats exclude_internal=True 排除 evolution_event）→ 统计不足
+#   → IGNORE，且不创建候选。
 _internal_ev_ids = [r.get("id") for r in _evo_evs_before if r.get("id")]
 if _internal_ev_ids:
-    _int_disc = run(["discover.py", "--evidence-refs", json.dumps(_internal_ev_ids)],
-                    expect=None)  # 不期望 CANDIDATE_CREATED
-    _int_ok = not _int_disc or _int_disc.get("decision") in ("IGNORE", "DEDUP_EXISTING", "DEDUP")
+    _int_disc = run(["discover.py", "--evidence-refs"] + _internal_ev_ids,
+                    expect=None)  # 真实 CLI 路径；EVO-04 应反自激 → 不得 CANDIDATE_CREATED
+    # 结构化业务结果判断：必须是被反自激机制拦截的 IGNORE（含 reason 指向阈值/过滤），
+    #   且绝不能创建候选。仅 exit 0 / 无 decision 不算通过。
+    _int_ok = (
+        _int_disc is not None
+        and _int_disc.get("decision") == "IGNORE"
+        and bool(_int_disc.get("reason"))
+    )
 else:
     _int_ok = True
 check("evo04_internal_event_no_new_candidate", _int_ok)

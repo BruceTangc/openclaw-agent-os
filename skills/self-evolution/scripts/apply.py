@@ -7,7 +7,98 @@ v2.3: SNAPSHOTTED/APPLYING 状态、evolution_id、Crash Recovery 支持。
 """
 import argparse
 import json
+import os
+import subprocess
+import sys
 import _core
+
+
+# F-001: Evolution Apply 成功后的 Execution Record 写入（协议可观测快照）。
+#   execution-record.md 明文「Evolution Apply（任何 change）MUST produce Execution Record」
+#   归责“谁执行谁创建”——由执行 Apply 的路径负责。此处只做**成功 mutation 后**的
+#   记录；REJECT / APPLY_FAILED / exception 一律不写成功记录（不得伪造成功）。
+#   复用系统已有 canonical 写入接口：execution_record.py log（append-only + 锁），
+#   不重新实现 Execution Record，不新增 runtime/database/skill。
+_EXECUTION_RECORD_PY = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "..", "proactive", "scripts", "execution_record.py")
+
+
+def _write_execution_record(prop, change, decision="APPLIED", detail=""):
+    """在 Apply 真实成功后落一条 Execution Record（幂等，失败仅告警不阻断）。
+
+    只有 decision=="APPLIED" 才代表一次成功的 Evolution Apply mutation。
+    记录可追溯：proposal / change / candidate / evolution_id / target / actor。
+    """
+    try:
+        change_id = change.get("id") or ""
+        record = {
+            # execution 顶层元数据（schema execution 块）：actor/trigger/时间
+            "execution": {
+                "actor": os.environ.get("OPENCLAW_WORKSPACE", "self-evolution").split("/")[-1],
+                "trigger": "cron",
+            },
+            # protocol 层：Evolution Apply，path 记 full（含 Governance 的受控 mutation）
+            "protocol": {
+                "version": "1.3",
+                "path": "full",
+                "contract": "x-agent-os",
+            },
+            # task 语义层
+            "task": {
+                "id": "evolution.apply." + (change_id or "unknown"),
+                "objective": "apply evolution proposal",
+                "skill": "self-evolution",
+            },
+            # evolution 层：可追溯 trace 链（schema evolution.trace 字段）
+            "evolution": {
+                "status": "applied" if decision == "APPLIED" else decision.lower(),
+                "candidate_id": change.get("candidate_id"),
+                "trace": {
+                    "execution_id": "evapply-" + change_id,
+                    "candidate_id": change.get("candidate_id"),
+                    "proposal_id": change.get("proposal_id"),
+                    "change_id": change_id,
+                    "regression_id": None,
+                    "regression_result": None,
+                },
+            },
+            # decision = APPLIED 表示 Apply 成功；其余值一律不写（调用方保证）
+            "decision": decision,
+            "result": {
+                "detail": detail,
+                "applied_files": change.get("_applied_files") or [],
+            },
+            # 节点经过状态（steps，三态：executed/bypassed/not_applicable）
+            "steps": {
+                "governance": {"status": "executed"},
+                "apply": {"status": "executed"},
+                "verify": {"status": "executed"},
+            },
+            # provenance / audit（跨 Agent 硬约束 + 幂等）
+            "audit": {
+                "operation_id": "evapply-" + change_id,
+                "correlation_id": "evo-" + str(change.get("evolution_id") or ""),
+                "actual_vs_authorized": "within",
+                "notified_user": False,
+            },
+            "provenance": {
+                "source": "self-evolution/apply.py",
+                "operation": "evolution.apply",
+            },
+            # 目标关联（供追溯）
+            "goal_id": "evolution",
+            "task_id": "evolution.apply." + (change_id or "unknown"),
+            "action_type": "evolution_apply",
+            "target": ",".join(change.get("targets") or []),
+        }
+        subprocess.run(
+            [sys.executable, _EXECUTION_RECORD_PY, "log", "--json",
+             json.dumps(record, ensure_ascii=False)],
+            capture_output=True, text=True, timeout=15)
+    except Exception:
+        # 记录层失败只告警，不阻断已成功的 Apply（记录≠执行，记录丢失不回滚 mutation）
+        pass
 
 
 def governance_check(prop):
@@ -191,6 +282,12 @@ def _apply_change_locked(prop, evo_id, approve, approver, reason):
     _core.assert_transition(prop, "APPLIED", kind="proposal")
     _core.save_artifact("proposal", prop)
 
+    # F-001: Evolution Apply 真实 mutation 成功后才写 Execution Record。
+    #   此处 change 已达 APPLIED（mutation 已落盘 + post-verify 指纹一致），
+    #   才记录；REJECT/APPLY_FAILED/exception 走上方错误 return，不落成功记录。
+    _write_execution_record(prop, change, decision="APPLIED",
+                            detail="evolution apply applied")
+
     return cid, None
 
 
@@ -266,6 +363,13 @@ def _retry_from_change(change_id):
                 return ("RETRY_FAILED + APPLY_FAILED: post-verify fingerprint mismatch: "
                         + str(mism))
             _core._core_save_artifact("change", chg)
+            # F-001: recovery re-apply 成功也产生 Execution Record（复用同一 canonical 接口）
+            try:
+                _write_execution_record(_core.load_artifact("proposal", proposal_id),
+                                        chg, decision="APPLIED",
+                                        detail="recovery re-apply success")
+            except Exception:
+                pass
             return "RETRYED files=" + str(len(applied)) + " fingerprint_ok=" + str(ok)
     except Exception as e:
         return "RETRY_FAILED: {}".format(str(e))
