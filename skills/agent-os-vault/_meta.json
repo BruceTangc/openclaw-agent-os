@@ -1,5 +1,51 @@
 {
   "name": "agent-os-vault",
   "version": "1.0.0",
-  "description": "Agent OS × Obsidian 长期知识空间桥接 Skill"
+  "description": "Agent OS × Obsidian 长期知识空间桥接 Skill——单向导出视图 / 受控反向导入 / reconcile / provenance / migration",
+  "x-agent-os": {
+    "protocol_version": "1.3",
+    "layer": "business",
+    "trigger": "user|cron|hook",
+    "path": {
+      "fast": true,
+      "full": true
+    },
+    "entry_mode": "both",
+    "requires": {
+      "context": true,
+      "goal_task_semantics": true,
+      "task": "conditional",
+      "decision": "conditional",
+      "orchestrator": "conditional",
+      "permission": true,
+      "verification": true,
+      "evaluation": "conditional",
+      "writeback": "conditional",
+      "evolution": "conditional"
+    },
+    "capabilities": ["read", "export", "reconcile", "validate", "import", "accept"],
+    "permissions": {
+      "export": "L1",
+      "reconcile": "L1",
+      "validate": "L1",
+      "provenance": "L1",
+      "import": "L1",
+      "candidate-status": "L2",
+      "accept": "L3",
+      "migrate": "L1"
+    },
+    "delegation": {
+      "max_level": "L1",
+      "inherit_parent": false,
+      "requires_scope": true
+    },
+    "outputs": {
+      "success_condition": "required",
+      "evidence": "required"
+    },
+    "verification": "V2",
+    "memory_write": "governed",
+    "knowledge_write": "governed",
+    "evolution_feedback": true
+  }
 }

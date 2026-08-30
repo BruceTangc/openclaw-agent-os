@@ -28,6 +28,26 @@ import argparse
 import hashlib
 import json
 import os
+import sys
+
+# ---------------------------------------------------------------------------
+# 统一 canonical / 指纹（shared skill/_lib/canonical —— 与 agent-os-vault 同一实现）
+# 迁移前后指纹不变：本模块不再各自维护一套 canonical 序列化。
+# ---------------------------------------------------------------------------
+try:
+    _LIB_DIR = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "_lib")
+    if _LIB_DIR not in sys.path:
+        sys.path.insert(0, _LIB_DIR)
+    import canonical as _canon_mod  # noqa: F401
+    from provenance import verify_provenance as _verify_provenance  # noqa: F401
+    _SHARED_CANONICAL = True
+except Exception:
+    _canon_mod = None
+    # 降级：保留本地内联（与历史逐字一致，指纹不变）
+    _SHARED_CANONICAL = False
+
 import re
 import sys
 import time
@@ -963,7 +983,10 @@ def _canonical_json(obj):
 
     规则（见 vault _meta/META.md）：键递归按字典序排序，值 JSON 序列化，
     ensure_ascii=False + sort_keys + 正则空格；同一 JSONL 任意两次读取结果一致。
+    由 _lib/canonical 提供；此处仅当 shared 不可用时内联。
     """
+    if _SHARED_CANONICAL:
+        return _canon_mod.canonical_json(obj)
     return json.dumps(
         obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
@@ -971,6 +994,8 @@ def _canonical_json(obj):
 
 def _canonical_entity(e):
     """实体的稳定指纹：只取稳定字段(见 META.md 串行化规则)，忽略易变时间戳。"""
+    if _SHARED_CANONICAL:
+        return _canon_mod.canonical_entity(e)
     stable = {
         "id": e.get("id"),
         "type": e.get("type"),
@@ -986,6 +1011,8 @@ def _canonical_entity(e):
 
 def _canonical_relation(r):
     """关系的稳定指纹：只取稳定字段，忽略 _line 与易变时间戳。"""
+    if _SHARED_CANONICAL:
+        return _canon_mod.canonical_relation(r)
     stable = {
         "id": r.get("id"),
         "from_id": r.get("from_id"),
@@ -998,6 +1025,8 @@ def _canonical_relation(r):
 
 
 def _sha256(s):
+    if _SHARED_CANONICAL:
+        return _canon_mod.sha256(s)
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 

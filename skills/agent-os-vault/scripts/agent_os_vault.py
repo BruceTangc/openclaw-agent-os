@@ -61,6 +61,68 @@ except ImportError:  # 极简兜底：frontmatter 用内置解析
     yaml = None
 
 # --------------------------------------------------------------------------
+# 共享 canonical / provenance helper（skills/_lib，机器真相验证唯一源）
+#  - canonical 序列化规则与 ontology.py 收敛到同一实现（迁移前后指纹不变）
+#  - provenance 验证只信任机器真相源，绝不信任 Vault 自带的 hash
+# --------------------------------------------------------------------------
+_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "_lib")
+try:
+    sys.path.insert(0, _LIB)
+    from canonical import canonical_json, canonical_entity, canonical_relation, \
+        canonical_evidence, sha256 as _sha256, fp16 as _fp16
+    import provenance as _prov
+    if hasattr(_prov, "parse_provenance_ref") and hasattr(_prov, "verify_provenance"):
+        parse_provenance_ref = _prov.parse_provenance_ref
+        verify_provenance = _prov.verify_provenance
+except Exception:  # pragma: no cover — 极端降级，保留本地内联
+    def canonical_json(obj):
+        return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+    def canonical_entity(e):
+        stable = {"id": e.get("id"), "type": e.get("type"), "name": e.get("name"),
+                  "status": e.get("status", "active"), "scope": e.get("scope", "AGENT"),
+                  "owner_type": e.get("owner_type"), "owner_id": e.get("owner_id"),
+                  "properties": e.get("properties", {}) or {}}
+        return canonical_json({k: v for k, v in stable.items() if v not in (None, "")})
+
+    def canonical_relation(r):
+        stable = {"id": r.get("id"), "from_id": r.get("from_id"),
+                  "predicate": r.get("predicate"), "to_id": r.get("to_id"),
+                  "status": r.get("status", "active"),
+                  "properties": r.get("properties", {}) or {}}
+        return canonical_json({k: v for k, v in stable.items() if v not in (None, "")})
+
+    def canonical_evidence(e):
+        return canonical_json({k: e.get(k) for k in
+                               ("id", "source", "pattern_key", "problem", "verified")
+                               if e.get(k) is not None})
+
+    def _sha256(s):
+        return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+    def _fp16(s):
+        return _sha256(s)[:16]
+
+    def parse_provenance_ref(ref):
+        if not ref or not isinstance(ref, str):
+            return {"type": "unknown"}
+        if "::" in ref:
+            src, aid = ref.split("::", 1)
+            return {"type": "artifact", "source": src, "artifact_id": aid}
+        parts = ref.split(":")
+        if len(parts) == 3:
+            try:
+                return {"type": "jsonl", "source": parts[0], "line": int(parts[1]),
+                        "declared_fp": parts[2]}
+            except ValueError:
+                return {"type": "unknown"}
+        return {"type": "unknown"}
+
+    def verify_provenance(ref, **kw):
+        return {"ok": False, "reason": "provenance helper 不可用"}
+
+
+# --------------------------------------------------------------------------
 # 路径解析
 # --------------------------------------------------------------------------
 VAULT_SCHEMA_VERSION = 1
@@ -102,22 +164,13 @@ def _ensure_dirs():
 
 
 # --------------------------------------------------------------------------
-# canonical 序列化 / 指纹
+# canonical 序列化 / 指纹（shared skill/_lib/canonical —— 与 ontology.py 同一实现）
+# 迁移前后指纹不变：本模块不再各自维护一套 canonical。canonical_json / _sha256 /
+# _fp16 已在顶部由 _lib.canonical 导入；这里仅给旧调用名取兼容别名。
 # --------------------------------------------------------------------------
-def canonical_json(obj):
-    return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
-
-def canonical(obj):
-    return canonical_json(obj)
-
-
-def sha256(s):
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()
-
-
-def fp16(s):
-    return sha256(s)[:16]
+canonical = canonical_json      # 兼容别名
+sha256 = _sha256
+fp16 = _fp16
 
 
 def now_iso():
@@ -287,20 +340,13 @@ def _load_relations():
     return rels
 
 
-# 实体稳定指纹（与 ontology.py 保持一致）
+# 实体稳定指纹（shared canonical —— 与 ontology.py 逐字一致，见 _lib/canonical）
 def _canonical_entity(e):
-    stable = {"id": e.get("id"), "type": e.get("type"), "name": e.get("name"),
-              "status": e.get("status", "active"), "scope": e.get("scope", "AGENT"),
-              "owner_type": e.get("owner_type"), "owner_id": e.get("owner_id"),
-              "properties": e.get("properties", {}) or {}}
-    return canonical_json({k: v for k, v in stable.items() if v not in (None, "")})
+    return canonical_entity(e)
 
 
 def _canonical_relation(r):
-    stable = {"id": r.get("id"), "from_id": r.get("from_id"), "predicate": r.get("predicate"),
-              "to_id": r.get("to_id"), "status": r.get("status", "active"),
-              "properties": r.get("properties", {}) or {}}
-    return canonical_json({k: v for k, v in stable.items() if v not in (None, "")})
+    return canonical_relation(r)
 
 
 # --------------------------------------------------------------------------
@@ -1235,17 +1281,48 @@ def cmd_reconcile(args):
             result["both-changed"].append({"id": vid, "vault_path": vv["path"],
                                            "note": "both-changed：机器与 Vault 均变更，需人工裁决（以 machine 为准重导出，Vault 变更保留供 review）"})
 
-    # 4) deleted：机器真相标 deleted 但 Vault 残留
+    # 4) deleted：机器真相标 deleted 但 Vault 仍残留
+    #    涵盖 entity/relation（JSONL deleted 标记）、knowledge/evidence/experience/decision
+    #    （registry/evidence/artifact 已无对应记录）、memory（源 journal/durable 消失）。
+    #    原则：Vault 删除 ≠ 删机器真相；机器真相消失才标记 deleted，只提示清理/归档，绝不动 JSONL。
     try:
-        deleted_ids = set()
+        deleted_machine = set()
+        # ontology entity / relation：JSONL 内 status=deleted 的 id
         for obj, _ in _read_lines_raw(ENTITIES_FILE):
             e = obj.get("entity", {})
-            if e.get("status") == "deleted":
-                deleted_ids.add(e["id"])
-        for did in deleted_ids:
+            if e.get("status") == "deleted" and e.get("id"):
+                deleted_machine.add(e["id"])
+        for obj, _ in _read_lines_raw(RELATIONS_FILE):
+            r = obj.get("relation", {})
+            if r.get("status") == "deleted" and r.get("id"):
+                deleted_machine.add(r["id"])
+        # evidence：当前 evidence.jsonl 已无该 id（被 self-evolution 侧删除/回滚）
+        #   → 只读 evidence projection 不再存在于机器真相，Vault 残留视图应清理
+        evidence_gone = set()
+        evo_evidence_path = os.path.join(_EVO_WS, "evidence.jsonl")
+        if os.path.exists(evo_evidence_path):
+            live_evids = {o.get("id") for o, _ in _read_lines_raw(evo_evidence_path) if o.get("id")}
+            vv_ev = {vid for vid, vv in vault_views.items()
+                     if vv.get("fm", {}).get("object_type") == "evidence"}
+            evidence_gone = vv_ev - live_evids
+        for did in evidence_gone:
+            deleted_machine.add(did)
+        # knowledge registry 已删的（无机器真相声明，仅视图书签残留）
+        #   仅当曾由本桥导出过（在 origin 中）而现在 registry 缺失才标 deleted，
+        #   避免把 vault-only 人工新增错判为 deleted。
+        regs = _load_registry()
+        for vid, vv in vault_views.items():
+            if vv.get("fm", {}).get("object_type") == "knowledge":
+                rid = vv.get("fm", {}).get("id")
+                if rid and rid not in regs and (rid in origin or vid in origin):
+                    deleted_machine.add(vid)
+        for did in sorted(deleted_machine):
             if did in vault_views:
                 result["deleted"].append({"id": did,
-                                          "note": "机器真相已标记 deleted，Vault 视图应清理/归档（绝不动 JSONL）"})
+                                          "note": "机器真相已无该对象/已标 deleted，Vault 视图应清理/归档（绝不动 JSONL）"})
+            else:
+                # 机器真相 delete 但 Vault 也无 → 无需动作
+                pass
     except Exception:
         pass
 
@@ -1338,11 +1415,34 @@ def _validate_decision_file(fm, body, vault, entities):
     return (not errors), errors
 
 
+def _validate_ontology_entity_file(fm, body, vault, entities):
+    """P1-2：ontology entity 反向导入校验（adapter，真正变更走 ontology --propose）。
+
+    本桥只做 schema/identity/ontology-consistency 的 translation；落库决策由
+    ontology 原生治理通道（--propose）承担。这里确保候选具备可路由的最小字段。
+    """
+    errors = []
+    if fm.get("object_type") not in ("ontology_entity", "ontology_relation"):
+        errors.append("object_type 应为 ontology_entity/ontology_relation")
+    if not fm.get("id") and not fm.get("name") and not fm.get("subject"):
+        errors.append("缺少 id/name/subject，无法路由 ontology 提案")
+    # 关系需有端点
+    rel = fm.get("relation") or {}
+    if fm.get("object_type") == "ontology_relation":
+        pred = rel.get("predicate") or rel.get("pred") or fm.get("predicate")
+        to = rel.get("to_id") or rel.get("object") or fm.get("to_id")
+        if not pred or not to:
+            errors.append("ontology_relation 缺少 predicate/to_id，无法生成 add_relation 提案")
+    return (not errors), errors
+
+
 _VALIDATORS = {
     "knowledge": _validate_knowledge_file,
     "evidence": _validate_evidence_file,
     "experience": _validate_experience_file,
     "decision": _validate_decision_file,
+    "ontology_entity": _validate_ontology_entity_file,
+    "ontology_relation": _validate_ontology_entity_file,
 }
 
 def cmd_validate(args):
@@ -1385,6 +1485,29 @@ def _gen_candidate_id():
     return "CAND-" + fp16(str(time.time()) + os.urandom(4).hex())[:12]
 
 
+def _identity_for_candidate(oc, vid, agent_id):
+    """P1-2：用 _lib/identity.py 为导入候选生成/校验一条 Agent OS 身份链路。
+
+    桥不自己发明身份；复用 identity.TraceContext 统一链（goal→task→execution→…）。
+    候选以「导入目标」为目标生成确定性 goal_id，附 agent 归属；accept 时经 verify_trace
+    校验归属一致性。身份检查用现有 identity 逻辑，不复制一套。
+    """
+    try:
+        from identity import make_trace, verify_trace
+        tb = make_trace("goal", objective={"bridge": "agent-os-vault",
+                                            "object_type": oc, "id": vid})
+        tb.agent(agent_id or "")
+        trace = tb.build()
+        ver = verify_trace(trace)
+        return {"goal_id": trace.get("goal_id", ""),
+                "agent_id": trace.get("agent_id", ""),
+                "verified": bool(ver.get("complete", False) if ver else False),
+                "chain": trace}
+    except Exception:  # pragma: no cover
+        return {"goal_id": "", "agent_id": agent_id or "", "verified": False,
+                "chain": {}}
+
+
 def _find_duplicate_candidate(sig):
     for c in _read_jsonl(CANDIDATES_FILE):
         if c.get("sig") == sig and c.get("status") in ("pending", "review"):
@@ -1411,12 +1534,69 @@ def _require_governance(obj_type, change_type):
     return "review", "默认走治理 review"
 
 
+def _compute_ont_auth():
+    """当前 ontology 数据源路径供 provenance 校验。"""
+    return {"entities": ENTITIES_FILE, "relations": RELATIONS_FILE}
+
+
+def _existing_contradictions(fm):
+    """knowledge contradiction 预检：对照现有 registry 中同 subject 的 active 声明。
+
+    复用现有 registry（治理导入的视图书签）；只供 review/accept 参考引用，不替代
+    knowledge-governance 的正式矛盾判定（矛盾保留 + disputed 标记）。
+    返回与该知识 subject/claim 潜在冲突的现有声明 id 列表。
+    """
+    subject = fm.get("subject")
+    claim = fm.get("claim")
+    if not subject and not claim:
+        return []
+    hits = []
+    for rid, rec in _load_registry().items():
+        if rid == fm.get("id"):
+            continue
+        if rec.get("status") in ("obsolete", "superseded"):
+            continue
+        same_subject = subject and rec.get("subject") == subject
+        same_claim = claim and rec.get("claim") == claim
+        predics = str(rec.get("contradicts") or "")
+        already_pointed = (fm.get("id") in predics)
+        if same_subject and not same_claim:
+            # 同 subject 不同 claim → 潜在矛盾，标记
+            hits.append(rid)
+    return hits
+
+
+def _provenance_ok(fm, evo_root):
+    """验证据机器真相源（不信任 Vault 自带 hash）。返回 (ok, reason, info)。
+
+    仅对携带 provenance_ref 的视图（knowledge/evidence/experience/decision/
+    ontology_entity/ontology_relation）强制校验；memory_journal/durable 等
+    投影对象用 native-memory 标记，不做 JSONL fingerprint 校验。
+    """
+    oc = fm.get("object_type")
+    if oc in ("memory_journal", "memory_durable", "vault_root", "ontology_index"):
+        # 纯投影元数据视图，无 JSONL 指纹可验，直接放行（拒绝伪造不影响机器真相）
+        return True, "projection-only", None
+    pref = fm.get("provenance_ref")
+    if not pref or not isinstance(pref, str) or not pref.strip():
+        return False, "provenance_ref 缺失", None
+    info = verify_provenance(pref, ont_auth=_compute_ont_auth(), evo_root=evo_root)
+    if not info.get("ok"):
+        return False, info.get("reason") or "provenance 无效", info
+    return True, "OK", info
+
+
 def cmd_import(args):
     """受控反向导入。绝不 obsi→ overwrite JSONL。
 
     流程：解析 Vault 文件 → schema/identity/ontology-consistency/provenance 校验 →
     生成 Import Candidate（.agent-os-vault/import-candidates.jsonl）→ governance gate 判定 →
     依 gate 输出 Action（accept-readable / ask human / approve-required / deny）。
+
+    P1-1（provenance 防伪）：candidate 生成前必须用机器真相源验证 provenance_ref，
+    伪造/不存在/指纹不匹配一律拒绝生成，不给伪造引用写入 registry 的机会。
+    P1-2（Governance）：导入只是生成候选，绝不直写 JSONL；验收走既有
+    command_accept 里对 ontology/knowledge 的原生治理通道。
     """
     vault = os.path.abspath(args.vault)
     fpth = args.file
@@ -1441,24 +1621,41 @@ def cmd_import(args):
 
     # identity / unknown-id / invalid-relation / provenance mismatch 硬校验
     vid = fm.get("id")
+    _pending_contrad = []
     if oc == "knowledge":
-        # provenance mismatch：knowledge 视图缺合法 provenance → 拒绝
-        pref = fm.get("provenance_ref") or ""
-        if not pref or pref == "none":
-            ok = False
-            errors.append("provenance_ref 缺失或非法，无法追溯")
-        # unknown subject id → ontology-consistency：subject 若引用实体必须存在
         subj = fm.get("subject")
         if subj and not subj.startswith(("EVD-", "KNW-", "K-")) and subj not in entities and \
            not re.match(r"^(KNW|K)-\w+", str(subj)):
             # 允许自由 subject 文本，但若有 relation 断言则查验 —— 此处仅提示不硬拒
             pass
 
+    # P1-1：provenance 必须经机器真相源验证（Vault 自带 hash 不可用作证据）
+    prov_ok, prov_reason, prov_info = _provenance_ok(fm, _EVO_WS)
+    if not prov_ok:
+        errors.append("provenance 校验失败：{0}".format(prov_reason))
+        ok = False
+
+    # P1-2：identity 一致性（复用 _lib/identity.py 的链校验，不复制 Governance）
+    source_agent = fm.get("source_agent") or fm.get("agent_id") or ""
+    if args.agent and source_agent and source_agent != args.agent and oc == "knowledge":
+        # 跨 Agent 导入：若与当前 Agent 归属冲突，标记需审查（不静默接受）
+        errors.append("身份校验失败：source_agent={0} 与导入 agent={1} 不一致".format(
+            source_agent, args.agent))
+        ok = False
+
+    # P1-2：knowledge contradiction 预检（复用 registry 既有声明；不新造一套治理）
+    if oc == "knowledge":
+        contrad = _existing_contradictions(fm)
+        if contrad:
+            # 不硬拒，但需在候选上标记，供 review/accept 时 reference 现有矛盾声明
+            _pending_contrad = contrad
+
     if not ok:
         print("[IMPORT-REJECTED] 校验失败：{0}".format(fpth))
         for e in errors:
             print("    - {0}".format(e))
-        _audit("import-rejected", {"file": fpth, "errors": errors})
+        _audit("import-rejected", {"file": fpth, "errors": errors,
+                                    "provenance": prov_info})
         return 1
 
     change_type = args.change_type or "upsert"
@@ -1474,6 +1671,7 @@ def cmd_import(args):
         print("  gate: {0} — {1}".format(level, reason))
         return 0
     cid = _gen_candidate_id()
+    _identity = _identity_for_candidate(oc, vid, args.agent)
     cand = {
         "id": cid,
         "created_at": now_iso(),
@@ -1485,6 +1683,12 @@ def cmd_import(args):
         "change_type": change_type,
         "source_file": os.path.relpath(fpth, vault),
         "vault_fingerprint": _fingerprint_of_vault(fm, os.path.relpath(fpth, vault)),
+        "identity": _identity,
+        "provenance_verified": bool(prov_ok),
+        "provenance_reason": prov_reason,
+        "provenance_type": prov_info.get("type") if prov_info else None,
+        "provenance_recomputed_fp": (prov_info.get("recomputed_fp") if prov_info else None),
+        "contradicts_hits": list(_pending_contrad),
         "frontmatter": {k: v for k, v in fm.items()},
         "agent_id": args.agent or "",
         "reason": args.reason or "",
@@ -1551,12 +1755,15 @@ def cmd_candidate_status(args):
 
 
 def cmd_accept(args):
-    """治理通过后，把已 accepted 的 candidate 受控写回真相源。
+    """治理通过后，把已 accepted 的 candidate 受控写回。
 
     这是唯一允许“Vault → 若真相源 JSONL/.agent-os”的路径；必须满足：
       1) candidate 已 review→accepted（治理 gate 已通过）
-      2) change_type 高影响的须已带 human 审批标记（此处以 --force 且含 approval token 表达）
-      3) 写回经 knowledge registry 或 ontology append，绝不 overwrite 原始行
+      2) change_type 高影响的须已带 human 审批标记（此处以 --approval token 表达）
+      3) P1-1：**accept 前必须重新用机器真相源验证 provenance_ref** —— 即使 import 时
+         已验证，accept 时源记录/指纹变化或候选被篡改都必须拒绝，绝不把伪造来源写入 registry
+      4) P1-2：本体真相变更走 `ontology.py --propose` 原生治理通道；本桥不直接 append JSONL
+      5) 写回经 knowledge registry（治理后书签）或 ontology proposal，绝不 overwrite 原始行
     """
     cands = _read_jsonl(CANDIDATES_FILE)
     target = [c for c in cands if c.get("id") == args.cid]
@@ -1578,12 +1785,29 @@ def cmd_accept(args):
 
     oc = cand.get("object_type")
     change_type = cand.get("change_type", "upsert")
+    fm = cand.get("frontmatter", {}) or {}
+
+    # ---- P1-1：accept 前的机器真相 provenance 复核（不以 import 时结论为准）----
+    prov_ok, prov_reason, prov_info = _provenance_ok(fm, _EVO_WS)
+    if not prov_ok:
+        print("[ACCEPT-REJECTED] provenance 复核失败：{0}".format(prov_reason))
+        print("  机器真相源未确认 provenance_ref，拒绝写回（防伪造 provenance 入 registry）。")
+        _audit("accept-rejected-provenance",
+               {"cid": args.cid, "obj_type": oc, "reason": prov_reason})
+        return 1
+    # 显式断言：声明指纹必须是机器重算值（Vault frontmatter 自带 hash 不可作证据）
+    declared = str(fm.get("provenance_ref") or "").strip()
+    prov_ref = declared or cand.get("evidence") or ""
+    recomputed = prov_info.get("recomputed_fp") if prov_info else None
+
+    # ---- P1-2：本体真相变更必须走 ontology 原生治理通道（--propose）----
+    if oc in ("ontology_entity", "ontology_relation"):
+        return _accept_ontology_proposal(cand, prov_ref, prov_reason, prov_info)
 
     # ---- 写回（仅限支持的对象；仍走治理后的聚合字段，不 overwrite 原 JSONL 行）----
     if oc == "knowledge":
         fid = cand.get("id_ref")
         regs = _load_registry()
-        fm = cand.get("frontmatter", {})
         regs[fid] = {
             "id": fid,
             "type": fm.get("type", "claim"),
@@ -1595,7 +1819,10 @@ def cmd_accept(args):
             "validity": fm.get("validity", "unverified"),
             "status": fm.get("status", "active"),
             "source_type": fm.get("source_type", "source_stated"),
-            "provenance_ref": fm.get("provenance_ref") or cand.get("evidence"),
+            # 只记录机器验证过的 provenance_ref，绝不接受伪造值
+            "provenance_ref": prov_ref,
+            "provenance_verified_at": now_iso(),
+            "provenance_recomputed_fp": recomputed,
             "source_agent": fm.get("source_agent") or cand.get("agent_id"),
             "superseded_by": fm.get("superseded_by"),
             "contradicts": fm.get("contradicts"),
@@ -1606,14 +1833,59 @@ def cmd_accept(args):
         }
         _save_registry(regs)
         print("[ACCEPT] knowledge `{0}` 已写入 knowledge registry（视图书签）。".format(fid))
+        print("  provenance 已机器验证：{0}（type={1}）".format(prov_ref, prov_info.get("type")))
         print("  知识视图已生成；真相声明供 knowledge-governance 参考，不替代其治理身份。")
-    elif oc in ("ontology_entity", "ontology_relation"):
-        print("[ACCEPT-NOT-IMPL] 本体 JSONL 变更须走 `ontology.py` 的原生提案/validate 通道；")
-        print("  本桥不直接 append JSONL。请使用 ontology CLI（--create-entity / --relate / --propose）。")
-        return 1
     else:
         print("[ACCEPT-READONLY] {0} 为只读投影对象，不写回真相源。".format(oc))
-    _audit("accept", {"cid": args.cid, "obj_type": oc, "change": change_type})
+    _audit("accept", {"cid": args.cid, "obj_type": oc, "change": change_type,
+                        "provenance_type": prov_info.get("type") if prov_info else None})
+    return 0
+
+
+def _accept_ontology_proposal(cand, prov_ref, prov_reason, prov_info):
+    """P1-2：把本体导入候选提交到 ontology.py 原生治理通道（--propose）。
+
+    桥只做 adapter：把 Vault 视图的 subject/predicate/object/evidence 翻译成
+    ontology proposal 的参数，由 ontology 自身完成 schema/identity/矛盾/批准。
+    本桥**绝不直接 append JSONL**（ontology 的变更只能通过 ontology.py 通道落库）。
+    """
+    import subprocess
+    fm = cand.get("frontmatter", {}) or {}
+    change_type = cand.get("change_type", "upsert")
+    # 根据 change_type 映射到 ontology proposal 语义
+    if change_type in ("relate", "add_relation"):
+        ct = "add_relation"
+        subject = fm.get("subject") or cand.get("id_ref")
+        if fm.get("relation"):
+            predicate = fm["relation"].get("predicate") or fm["relation"].get("pred")
+            obj = fm["relation"].get("to_id") or fm["relation"].get("object")
+        else:
+            predicate = fm.get("predicate")
+            obj = fm.get("to_id") or fm.get("object")
+        if not obj or not predicate:
+            print("[ACCEPT-IGNORED] 本体关系提案缺 object/predicate，无法路由到 ontology governance。")
+            return 1
+        cmd = [sys.executable, ONT_SCRIPT, "--propose", "--change_type", ct,
+               "--subject", str(subject), "--pred", str(predicate),
+               "--object", str(obj),
+               "--reason", cand.get("reason") or "import via agent-os-vault",
+               "--evidence", prov_ref]
+    else:  # create/upsert entity
+        ct = "create_entity"
+        subject = fm.get("subject") or fm.get("name") or cand.get("id_ref")
+        cmd = [sys.executable, ONT_SCRIPT, "--propose", "--change_type", ct,
+               "--subject", str(subject),
+               "--reason", cand.get("reason") or "import via agent-os-vault",
+               "--evidence", prov_ref]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    out = (r.stdout or "") + (r.stderr or "")
+    if r.returncode != 0:
+        print("[ACCEPT-FAILED] ontology --propose 失败 rc={0}\n{1}".format(r.returncode, out[:500]))
+        _audit("accept-ontology-failed", {"cid": cand["id"], "rc": r.returncode, "out": out[:300]})
+        return 1
+    print("[ACCEPT] 本体导入已提交到 ontology governance proposition：\n{0}".format(out[:400]))
+    print("  最后由 ontology 自身的 verify/批准流程决定是否落库；本桥不直接改 JSONL。")
+    _audit("accept-ontology-propose", {"cid": cand["id"], "change_type": ct, "out": out[:300]})
     return 0
 
 

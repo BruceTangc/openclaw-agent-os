@@ -1,3 +1,6 @@
 __pycache__/
 # 运行时数据（各 skill 运行时产生的 memory 副产物不入库）
 skills/*/memory/
+
+# agent-os-vault 桥运行时工作区（registry / import candidates / provenance map / 迁移报告）不入库
+.agent-os-vault/
