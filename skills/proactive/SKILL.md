@@ -121,7 +121,10 @@ version: 1.3.0
 
 ## Memory / Knowledge Writeback
 
-短期 Signal/Queue/Plan；中期反馈；长期授权/偏好/已验证策略/被禁行为。不存无价值噪音。长期经验走 memory-governance。
+短期 Signal/Queue/Plan；中期反馈；长期授权/偏好/已验证策略/被禁行为。不存无价值噪音。
+验证后的结构化学习事件统一走 `learning.py`：幂等登记 Evidence，达到门槛时创建
+Evolution Candidate，并按 memory/knowledge governance 执行安全写回。共享知识只写候选；
+Evolution Apply、删除和反向导入仍需各自权限门。
 
 ## Self-Evolution Feedback
 
@@ -156,6 +159,8 @@ python3 scripts/proactive.py decision --json '...'    # 决策
 python3 scripts/proactive.py queue --op list          # 维护队列
 python3 scripts/proactive.py evol --json '...'        # 生成进化候选
 python3 scripts/proactive.py noop                    # NO_ACTION 标记
+python3 scripts/learning.py --json @event.json       # 验证→Evidence→候选→治理写回
+python3 scripts/maintenance.py run-vault             # 到期时投影到 Obsidian
 ```
 
 ## Multi-Agent Contract（PROTOCOL.md §8）

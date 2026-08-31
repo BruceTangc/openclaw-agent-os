@@ -96,6 +96,9 @@
 2. **Evolution 闭环**：Evidence → Discover+Classify → Candidate → Judge → Proposal → Governance → Apply → Regression → Observe → New Evidence
    两环通过 **Verification/Evaluation → Evidence** 连接。
 
+连接点由 `skills/proactive/scripts/learning.py` 实现：验证后的结构化事件一次完成幂等
+Evidence 登记、阈值聚合和受治理写回；Heartbeat 再把已沉淀内容投影到可选 Obsidian Vault。
+
 **Task Semantics ≠ Task Manager**：所有任务必经的是 Goal/Task **Semantics**（目标+成功条件）；
 Task Manager **State Machine**（READY/RUNNING/BLOCKED/DONE）仅 Full Path / 长任务才用，简单任务不建任务对象。
 
@@ -189,6 +192,9 @@ OpenClaw Tools / Sub-agents / Skills / Runtime
 
 # 多 Agent：共享一份 Skills，只让指定主 Agent 承担 Heartbeat
 ./install.sh --heartbeat-agent main
+
+# 可选：启用 Obsidian 人工可读投影
+./install.sh --vault-dir "/absolute/path/to/Obsidian/Vault"
 ```
 
 **协议合规自检（#5 #6）**：

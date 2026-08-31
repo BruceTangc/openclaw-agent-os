@@ -30,7 +30,12 @@ import subprocess
 import sys
 import tempfile
 import time
-import yaml
+try:
+    import yaml
+except ImportError:
+    _YAML_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "skills", "_lib")
+    sys.path.insert(0, _YAML_LIB)
+    import yaml_compat as yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))

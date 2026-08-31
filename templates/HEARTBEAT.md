@@ -4,8 +4,9 @@
 2. Run `python3 <proactive-skill>/scripts/maintenance.py plan` and process only returned `due` checks.
 3. Route due checks to their owning Skills: `task_health` → task-manager scan/link;
    `memory_governance` → governed memory review; `ontology_health` → validate/duplicates/
-   contradictions; `evolution_state` → self-evolution pending state; `vault_sync` → export+
-   reconcile only when `AGENT_OS_VAULT_DIR` is configured; `weekly_review` → task/memory summary.
+   contradictions; `evolution_state` → self-evolution pending state; `vault_sync` → run
+   `maintenance.py run-vault` (export+reconcile only; never reverse-import) when configured;
+   `weekly_review` → task/memory summary.
 4. After evidence-backed completion, call `maintenance.py record --name <check> --result <status>`.
    Do not record PASS on tool success alone. UNKNOWN with possible side effects must not auto-retry.
 5. Inspect only current signals, active goals/tasks, due items, and recent verifiable failures.

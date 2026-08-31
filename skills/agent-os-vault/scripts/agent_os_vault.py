@@ -55,22 +55,24 @@ import re
 import sys
 import time
 
+_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "_lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
 try:
     import yaml
-except ImportError:  # 极简兜底：frontmatter 用内置解析
-    yaml = None
+except ImportError:
+    import yaml_compat as yaml
 
 # --------------------------------------------------------------------------
 # 共享 canonical / provenance helper（skills/_lib，机器真相验证唯一源）
 #  - canonical 序列化规则与 ontology.py 收敛到同一实现（迁移前后指纹不变）
 #  - provenance 验证只信任机器真相源，绝不信任 Vault 自带的 hash
 # --------------------------------------------------------------------------
-_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "_lib")
 try:
-    sys.path.insert(0, _LIB)
     from canonical import canonical_json, canonical_entity, canonical_relation, \
         canonical_evidence, sha256 as _sha256, fp16 as _fp16
     import provenance as _prov
+    from workspace import workspace_root, shared_state_dir, prefer_migrated_path
     if hasattr(_prov, "parse_provenance_ref") and hasattr(_prov, "verify_provenance"):
         parse_provenance_ref = _prov.parse_provenance_ref
         verify_provenance = _prov.verify_provenance
@@ -132,7 +134,8 @@ REPO = os.path.dirname(os.path.dirname(SKILL_DIR))            # /tmp/openclaw-ag
 BASE = os.path.dirname(REPO)                                    # skill 所在父级
 ONT_DIR = os.path.join(REPO, "skills", "ontology")
 ONT_SCRIPT = os.path.join(ONT_DIR, "scripts", "ontology.py")
-DATA = os.path.join(ONT_DIR, "memory", "ontology")               # ontology JSONL
+_LEGACY_DATA = os.path.join(ONT_DIR, "memory", "ontology")
+DATA = prefer_migrated_path(shared_state_dir("ontology"), _LEGACY_DATA)
 ENTITIES_FILE = os.path.join(DATA, "entities.jsonl")
 RELATIONS_FILE = os.path.join(DATA, "relations.jsonl")
 PROPOSALS_FILE = os.path.join(DATA, "proposals.jsonl")
@@ -140,7 +143,8 @@ PROPOSALS_FILE = os.path.join(DATA, "proposals.jsonl")
 # 桥 Skill 自身工作区（Vault 侧驱动，非机器真相源）：
 # 存放 provenance map / knowledge registry / import candidates / migration 报告。
 # 这属于 bridge 的书签与候选账本，原生 Agent OS 推理不消费它。
-_WS = os.environ.get("AGENT_OS_VAULT_WORKSPACE", os.path.expanduser("~/.openclaw/workspace-jarvis"))
+_WS = os.path.realpath(os.path.abspath(os.path.expanduser(
+    os.environ.get("AGENT_OS_VAULT_WORKSPACE") or workspace_root())))
 BRIDGE_DIR = os.path.join(_WS, ".agent-os-vault")
 CANDIDATES_FILE = os.path.join(BRIDGE_DIR, "import-candidates.jsonl")
 REGISTRY_FILE = os.path.join(BRIDGE_DIR, "registry.jsonl")        # vault 视图书签/knowledge manifest
@@ -254,13 +258,8 @@ def _frontmatter(fields):
         if isinstance(v, str) and v == "":
             continue
         clean[k] = v
-    if yaml:
-        body = yaml.safe_dump(clean, allow_unicode=True, sort_keys=False,
-                              default_flow_style=False).rstrip("\n")
-    else:
-        body = "\n".join("{0}: {1}".format(k, json.dumps(v, ensure_ascii=False))
-                         if isinstance(v, (dict, list)) else "{0}: {1}".format(k, v)
-                         for k, v in clean.items())
+    body = yaml.safe_dump(clean, allow_unicode=True, sort_keys=False,
+                          default_flow_style=False).rstrip("\n")
     return "---\n{0}\n---\n".format(body)
 
 
@@ -282,12 +281,9 @@ def _parse_fm(path):
     m = re.match(r"^---\n(.*?)\n---\n", txt, re.S)
     if not m:
         return {}, txt
-    if yaml:
-        try:
-            fm = yaml.safe_load(m.group(1)) or {}
-        except Exception:
-            fm = {}
-    else:
+    try:
+        fm = yaml.safe_load(m.group(1)) or {}
+    except Exception:
         fm = {}
     body = txt[m.end():]
     return fm, body
@@ -2058,7 +2054,8 @@ def cmd_migrate(args):
 # --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
-DEFAULT_VAULT = os.path.join(_WS, "tts obsidian", "tts openclaw memory")
+DEFAULT_VAULT = (os.path.realpath(os.path.abspath(os.path.expanduser(
+    os.environ.get("AGENT_OS_VAULT_DIR")))) if os.environ.get("AGENT_OS_VAULT_DIR") else "")
 
 
 def build_argparser():
@@ -2122,11 +2119,15 @@ def build_argparser():
 
 
 def main():
-    _ensure_dirs()
     args = build_argparser().parse_args()
     if not getattr(args, "func", None):
         build_argparser().print_help()
         return 0
+    if not getattr(args, "vault", ""):
+        print("ERROR: Obsidian integration is disabled; set AGENT_OS_VAULT_DIR or pass --vault DIR.",
+              file=sys.stderr)
+        return 2
+    _ensure_dirs()
     return args.func(args)
 
 

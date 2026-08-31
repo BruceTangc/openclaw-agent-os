@@ -70,7 +70,9 @@ Agent OS 本体仍是**唯一机器真相源**；Obsidian Vault 只是其**人�
 ## 机器真相源（Source of Truth）与 Vault 角色
 
 > 机器真相 = JSONL / `.agent-os` / OpenClaw native memory；Obsidian = 投影 + 人工编辑面。
-> 下列路径为 skill 内实际读取的真实真相源位置（`<REPO>` = 本仓库根，`<BRIDGE_WS>` = `AGENT_OS_VAULT_WORKSPACE` 或默认 `~/.openclaw/workspace-jarvis`）。
+> 下列路径为 Skill 实际读取的真相源位置。`<BRIDGE_WS>` 统一取 OpenClaw workspace
+>（兼容旧 `AGENT_OS_VAULT_WORKSPACE`）；Vault 根目录必须由 `AGENT_OS_VAULT_DIR`
+> 或 CLI `--vault` 显式提供，未配置时集成保持禁用。
 
 | 对象 | 机器真相源（真实路径） | Vault 角色 |
 |:--|:--|:--|

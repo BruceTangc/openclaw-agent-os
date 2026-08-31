@@ -19,6 +19,7 @@
 #   ./install.sh --profile basic      # 仅对话模式，不写 Heartbeat 配置
 #   ./install.sh --heartbeat-every 1h # Active 模式自定义周期（默认 30m）
 #   ./install.sh --heartbeat-agent main # 唯一 Heartbeat owner（默认 main）
+#   ./install.sh --vault-dir /path/to/Vault # 启用 Obsidian 投影视图
 #   ./install.sh --no-reload          # 跳过 gateway restart
 #   ./install.sh --no-verify          # 跳过 skills list 验证
 # =============================================================================
@@ -39,6 +40,7 @@ WORKSPACE_HEARTBEAT="${OPENCLAW_WS_HEARTBEAT:-}"
 PROFILE="active"
 HEARTBEAT_EVERY="30m"
 HEARTBEAT_AGENT="main"
+VAULT_DIR=""
 DO_RELOAD=1
 DO_VERIFY=1
 
@@ -49,6 +51,7 @@ while [ $# -gt 0 ]; do
     --profile)    PROFILE="$2"; shift 2 ;;
     --heartbeat-every) HEARTBEAT_EVERY="$2"; shift 2 ;;
     --heartbeat-agent) HEARTBEAT_AGENT="$2"; shift 2 ;;
+    --vault-dir) VAULT_DIR="$2"; shift 2 ;;
     --no-reload)  DO_RELOAD=0; shift ;;
     --no-verify)  DO_VERIFY=0; shift ;;
     -h|--help)    sed -n '1,30p' "$0"; exit 0 ;;
@@ -151,6 +154,18 @@ if [ "$PROFILE" = "active" ] && command -v openclaw >/dev/null 2>&1; then
   echo "==> 未创建业务 Cron（仅精确时间任务按用户需求创建）"
 elif [ "$PROFILE" = "basic" ]; then
   echo "==> Basic profile：不修改 Heartbeat 配置"
+fi
+
+# ---- 6b. 可选 Obsidian：使用 OpenClaw 官方 env.vars 持久化普通路径变量 ----
+if [ -n "$VAULT_DIR" ]; then
+  command -v openclaw >/dev/null 2>&1 \
+    || { echo "!! --vault-dir 需要 openclaw config；安装终止"; exit 6; }
+  mkdir -p "$VAULT_DIR" || { echo "!! 无法创建 Vault 目录: $VAULT_DIR"; exit 6; }
+  openclaw config set env.vars.AGENT_OS_VAULT_DIR "$VAULT_DIR" >/dev/null 2>&1 \
+    || { echo "!! 无法持久化 AGENT_OS_VAULT_DIR；安装终止"; exit 6; }
+  echo "==> Obsidian Vault 已启用：$VAULT_DIR（Heartbeat 仅自动 export+reconcile）"
+else
+  echo "==> Obsidian Vault 未配置：保持禁用，不创建默认目录"
 fi
 
 # ---- 7. 重载 / 重启 ----

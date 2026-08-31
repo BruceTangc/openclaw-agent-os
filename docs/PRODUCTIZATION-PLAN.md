@@ -17,7 +17,8 @@
 - 由 Heartbeat 驱动的低频维护，不要求客户创建业务 Cron；
 - 安装、升级、迁移和回归验证的明确结果。
 
-使用 Obsidian 时只增加一次 `AGENT_OS_VAULT_DIR`；未设置时 Vault 自动维护保持禁用。
+使用 Obsidian 时通过 `./install.sh --vault-dir <path>` 设置一次；安装器将其保存到
+OpenClaw `env.vars.AGENT_OS_VAULT_DIR`。未设置时 Vault 自动维护保持禁用。
 
 精确时间业务（例如每天 09:00 日报）仍按用户要求创建 OpenClaw Automation。安装器不预设未知业务日程。
 

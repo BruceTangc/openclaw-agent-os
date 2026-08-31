@@ -11,6 +11,8 @@
 - Use the Fast Path for simple low-risk work and the Full Path for complex, autonomous, multi-step, multi-agent, or consequential work.
 - Permission is fail-closed. External communication, production changes, money, access changes, deletion, and irreversible actions require applicable authorization.
 - Tool success is not task success. Report PASS, PARTIAL, FAIL, or UNKNOWN from evidence; never silently retry an UNKNOWN operation that may have produced side effects.
+- After verification, route reusable patterns and explicit memory/knowledge candidates once through
+  `proactive/scripts/learning.py --json <event>`. Do not separately duplicate its Evidence or writeback.
 
 ## Continuity
 

@@ -8,6 +8,7 @@ checks are due and records verified outcomes to prevent duplicate work.
 import argparse
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -111,11 +112,45 @@ def record(name, result, agent_id=None, detail="", at=None):
     return row
 
 
+def run_vault(agent_id=None, at=None):
+    """Run due Vault projection maintenance; never performs reverse import."""
+    vault = os.environ.get("AGENT_OS_VAULT_DIR", "").strip()
+    if not vault:
+        return {"name": "vault_sync", "result": "SKIPPED", "reason": "vault_not_configured"}
+    due = {row["name"] for row in plan(agent_id, at).get("due", [])}
+    if "vault_sync" not in due:
+        return {"name": "vault_sync", "result": "SKIPPED", "reason": "not_due"}
+    skills_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    script = os.path.join(skills_root, "agent-os-vault", "scripts", "agent_os_vault.py")
+    common = ["--vault", vault]
+    if agent_id:
+        common += ["--agent", current_agent_id(agent_id)]
+    commands = [
+        [sys.executable, script, "export", "--sources", "all"] + common,
+        [sys.executable, script, "reconcile"] + common,
+    ]
+    evidence = []
+    result = "PASS"
+    for command in commands:
+        completed = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, encoding="utf-8", errors="replace")
+        evidence.append({"command": os.path.basename(script) + " " + command[2],
+                         "returncode": completed.returncode,
+                         "output": (completed.stdout + completed.stderr)[-1000:]})
+        if completed.returncode:
+            result = "FAIL"
+            break
+    record("vault_sync", result, agent_id, "export+reconcile", at)
+    return {"name": "vault_sync", "result": result, "vault": os.path.realpath(vault),
+            "persisted_truth_changes": False, "evidence": evidence}
+
+
 def main():
     parser = argparse.ArgumentParser(description="Agent OS heartbeat maintenance gate")
     parser.add_argument("--agent", default="")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("plan")
+    sub.add_parser("run-vault")
     rec = sub.add_parser("record")
     rec.add_argument("--name", required=True, choices=sorted(CADENCES))
     rec.add_argument("--result", required=True,
@@ -124,6 +159,8 @@ def main():
     args = parser.parse_args()
     if args.cmd == "plan":
         out = plan(args.agent)
+    elif args.cmd == "run-vault":
+        out = run_vault(args.agent)
     else:
         out = record(args.name, args.result, args.agent, args.detail)
     print(json.dumps(out, ensure_ascii=False, indent=2))

@@ -52,7 +52,13 @@ import re
 import sys
 import time
 
-import yaml  # P0 Agent OS×Obsidian: vault frontmatter/minimal .base rendering
+try:
+    import yaml  # optional; PyYAML gives traditional block-style output
+except ImportError:
+    _YAML_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "_lib")
+    if _YAML_LIB not in sys.path:
+        sys.path.insert(0, _YAML_LIB)
+    import yaml_compat as yaml  # dependency-free YAML 1.2-compatible JSON output
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

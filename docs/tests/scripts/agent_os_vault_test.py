@@ -21,7 +21,12 @@ import subprocess
 import sys
 import tempfile
 import time
-import yaml
+try:
+    import yaml
+except ImportError:
+    _YAML_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "skills", "_lib")
+    sys.path.insert(0, _YAML_LIB)
+    import yaml_compat as yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
@@ -166,7 +171,10 @@ def build_synthetic_evo(ws):
 
 
 def vault_cmd(args, ws, vault, agent=None):
-    env = {"AGENT_OS_VAULT_WORKSPACE": ws}
+    env = os.environ.copy()
+    env.update({"AGENT_OS_VAULT_WORKSPACE": ws,
+                "OPENCLAW_WORKSPACE": ws,
+                "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
     cmd = [sys.executable, VAULT_SCRIPT] + args + ["--vault", vault]
     if agent:
         cmd += ["--agent", agent]
@@ -462,6 +470,8 @@ def t_p3_reconcile(ws, vault):
     if os.path.exists(card):
         txt = open(card).read()
         txt2 = txt.replace("status: active", "status: disputed")
+        if txt2 == txt:  # dependency-free yaml_compat emits JSON (valid YAML 1.2)
+            txt2 = txt.replace('"status": "active"', '"status": "disputed"')
         open(card, "w").write(txt2)
         out2, _ = vault_cmd(["reconcile"], ws, vault)
         ck("reconcile 检测 vault-changed", "vault-changed" in out2, out2[-300:])

@@ -18,6 +18,15 @@ Designed for OpenClaw 2026.7.1 or newer. Agent OS v1.3（Protocol v1.3；v1.2 Sk
 `--heartbeat-agent main` 指定唯一的主巡检 Agent。所有 Agent 共用同一份 Skills，安装器不会
 为子 Agent 复制 Skills 或单独开启 Heartbeat。
 
+可选启用 Obsidian：
+
+```bash
+./install.sh --vault-dir "/absolute/path/to/Obsidian/Vault"
+```
+
+安装器通过 OpenClaw 官方 `env.vars.AGENT_OS_VAULT_DIR` 保存路径。未设置时完全禁用 Vault
+维护且不创建默认目录；启用后 Heartbeat 每日只自动执行单向 `export + reconcile`。
+
 ## 手动安装
 
 ### Step 0 — 确认 OpenClaw

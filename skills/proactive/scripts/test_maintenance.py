@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import os
 import tempfile
+from types import SimpleNamespace
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 
 
@@ -25,7 +27,12 @@ with tempfile.TemporaryDirectory(prefix="agentos_maintenance_") as tmp:
     os.environ["AGENT_OS_VAULT_DIR"] = os.path.join(tmp, "vault")
     with_vault = maintenance.plan(at=now)
     assert any(row["name"] == "vault_sync" for row in with_vault["due"])
+    completed = SimpleNamespace(returncode=0, stdout="ok", stderr="")
+    with mock.patch.object(maintenance.subprocess, "run", return_value=completed) as runner:
+        synced = maintenance.run_vault(at=now)
+    assert synced["result"] == "PASS" and synced["persisted_truth_changes"] is False
+    assert runner.call_count == 2
     other = maintenance.state_path("agent-b")
     assert other != maintenance.state_path("agent-a")
 
-print("Maintenance cadence tests: 9 PASS / 0 FAIL")
+print("Maintenance cadence tests: 12 PASS / 0 FAIL")

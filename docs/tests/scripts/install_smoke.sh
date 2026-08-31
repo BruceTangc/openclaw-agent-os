@@ -53,8 +53,10 @@ fi
 # Upgrade is retryable and preserves customer runtime files.
 printf '%s\n' '# customer-owned' > "$TMP/workspace/AGENTS.md"
 bash "$REPO/install.sh" --skills-dir "$TMP/skills" \
-  --ws-agents "$TMP/workspace/AGENTS.md" --no-reload
+  --ws-agents "$TMP/workspace/AGENTS.md" --vault-dir "$TMP/vault" --no-reload
 grep -Fq '# customer-owned' "$TMP/workspace/AGENTS.md"
 find "$TMP/skills" -maxdepth 1 -type d -name '*.prepatch*' | grep -q .
+grep -Fq "config set env.vars.AGENT_OS_VAULT_DIR $TMP/vault" "$TMP/openclaw.log"
+test -d "$TMP/vault"
 
 echo "Install smoke passed."

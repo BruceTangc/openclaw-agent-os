@@ -77,6 +77,10 @@ python3 skills/self-evolution/scripts/discover.py --status   # 查看候选
 | Proactive（主动决策） | proactive | Heartbeat 唤醒时 |
 | Evolution（受控改进） | self-evolution | 有证据的重复失败 |
 
+验证后的可复用成功/失败模式由 Runtime 指令统一送入 `proactive/scripts/learning.py`：
+Evidence 自动登记；满足重复与跨 Session 门槛后自动生成 Evolution Candidate；合格的
+daily/durable memory 自动写回。共享知识、Evolution Apply、删除与 Obsidian 反向导入不会自动批准。
+
 ## 下一步
 
 - 看 11 个 Skill 怎么协作 → [SKILL-MAP.md](SKILL-MAP.md)
