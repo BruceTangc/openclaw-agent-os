@@ -31,6 +31,7 @@ Cron/Heartbeat/Hook  (OpenClaw 唤醒)
 
 ## 3. 每小时/每日唤醒建议
 
+- 默认安装只使用 OpenClaw 系统拥有的 Heartbeat automation，不创建业务 Cron。
 - Heartbeat 承担"是否有值得做的事"的低成本巡检。
 - 无价值候选 → 保持安静（NOOP/IGNORE），不打扰用户。
 - 有价值候选 → 按价值/紧急度 ≤ 预算内行动或排队。

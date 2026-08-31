@@ -28,16 +28,18 @@ _LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
 if _LIB not in sys.path:
     sys.path.insert(0, _LIB)
 from persistence import append_atomic  # noqa: E402
+from workspace import agent_state_dir, prefer_migrated_path
 
 # ---------------------------------------------------------------------------
 # 路径
 # ---------------------------------------------------------------------------
-MEMORY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          "..", "memory")
+_LEGACY_MEMORY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "memory")
 
 
 def _record_path():
-    return os.path.join(MEMORY_DIR, "execution_records.jsonl")
+    return prefer_migrated_path(
+        os.path.join(agent_state_dir("execution"), "execution_records.jsonl"),
+        os.path.join(_LEGACY_MEMORY_DIR, "execution_records.jsonl"))
 
 
 def utcnow_iso():

@@ -3,22 +3,14 @@
 > Agent OS v1.3。真正装完、并且**确认装成功了**的最小路径。
 > 装完跑一遍下面的 5 个问题，全过 = 你的 OpenClaw 已经是 Agent OS。
 
-## 安装（3 步）
+## 一键安装
 
 ```bash
-# 1. 确认 OpenClaw
-openclaw --version
-
-# 2. 复制 11 个 Core Skills（用你实际的 skills 目录）
-cp -r skills/*  <你的-skills-目录>/
-# ⚠️ 若目标目录已有同名 Skill，先备份再覆盖（见 INSTALL.md 升级说明）
-
-# 3. 安装 AGENTS.md（关键：协议的注入载体）
-cp AGENTS.md  <你的-openclaw-workspace>/
-# ⚠️ 若已有 AGENTS.md，勿直接覆盖——先备份，再合并 Agent OS 协议段
-
-openclaw gateway restart
+./install.sh
 ```
+
+它会安装 11 Core Skills、`agent-os-vault` 扩展、共享 `_lib`、运行时 AGENTS/Heartbeat
+模板，自动配置 OpenClaw 原生 Heartbeat 并重启验证；不会创建业务 Cron。
 
 > 详细分级安装见 [INSTALL.md](INSTALL.md)（Basic / Active / Full 三级）。
 
@@ -30,9 +22,10 @@ openclaw gateway restart
 ```bash
 openclaw skills list | grep -c "✓ ready"
 ```
-应 ≥ 11：`proactive / context-orchestration / task-manager / orchestrator /
+应至少包含 11 Core：`proactive / context-orchestration / task-manager / orchestrator /
 permission-security / verification-evaluation / memory-governance /
-knowledge-governance / ontology / self-evolution / summarize`
+knowledge-governance / ontology / self-evolution / summarize`；默认安装还包含
+`agent-os-vault`。
 
 ### ② Agent OS 生效了吗？（Goal + Verification）
 给 Agent 发：
@@ -53,11 +46,12 @@ knowledge-governance / ontology / self-evolution / summarize`
 ### ④ Proactive 生效了吗？
 手动触发一次 heartbeat（或等下一次自动唤醒）：
 ```bash
-openclaw config get agents.defaults.heartbeat.every   # 应已配置（如 10m）
+openclaw config get agents.defaults.heartbeat.every   # 一键安装默认 30m
+openclaw config get agents.defaults.heartbeat.agentId # 默认 main；只由它巡检
 ```
 正常：有事件 → 提醒；无事件 → `HEARTBEAT_OK` / 安静。
-**装 Skill ≠ 自动主动**：主动性需要 Heartbeat + Proactive + 有价值 Signal
-（见 [RUNNING-GUIDE.md](RUNNING-GUIDE.md) §1.1 与 FAQ Q3b）。
+一键安装已配置 Heartbeat + Proactive；客户无需另建 Cron。没有提醒通常表示当前没有
+新价值 Signal（见 [RUNNING-GUIDE.md](RUNNING-GUIDE.md) §1.1 与 FAQ Q3b）。
 
 ### ⑤ Evolution 生效了吗？
 构造一次可复现的重复失败（如让一个检查脚本两次漏同一项），然后：

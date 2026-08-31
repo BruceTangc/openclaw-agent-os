@@ -128,7 +128,12 @@ python3 scripts/summarize.py --chunk <file> --overlap 0.15   # 语义分块
 python3 scripts/summarize.py --dedup <file>                  # 多文档去重
 python3 scripts/summarize.py --aggregate <dir>               # 多文档聚合
 python3 scripts/summarize.py --extract <text> --mode agent   # 结构化提取骨架
+python3 scripts/govern.py --json @summary.json               # 候选送治理（不持久化）
 ```
+
+`govern.py` 只处理 `integrations.memory_candidates`、
+`integrations.knowledge_candidates` 与 `integrations.ontology_candidates`。
+它不会把规则抽取骨架或未经判断的 `structured.facts` 自动提升为知识。
 
 完整模式说明与输出 schema 见 `references/modes-and-schema.md`。
 

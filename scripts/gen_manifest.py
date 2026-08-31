@@ -16,8 +16,14 @@ ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIR = ROOT / "skills"
 OUT = ROOT / "MANIFEST.yml"
 
-AGENT_OS_VERSION = "1.3.0"
+VERSION_FILE = ROOT / "VERSION"
+AGENT_OS_VERSION = VERSION_FILE.read_text(encoding="utf-8").strip()
 PROTOCOL_VERSION = "1.3"
+CORE_SKILLS = {
+    "context-orchestration", "knowledge-governance", "memory-governance",
+    "ontology", "orchestrator", "permission-security", "proactive",
+    "self-evolution", "summarize", "task-manager", "verification-evaluation",
+}
 
 
 def skill_version(skill_dir: Path) -> str:
@@ -48,7 +54,8 @@ def protocol_version(skill_dir: Path) -> str:
 def main() -> int:
     skills = []
     for skill_dir in sorted(SKILLS_DIR.iterdir()):
-        if not skill_dir.is_dir() or not (skill_dir / "SKILL.md").exists():
+        if (not skill_dir.is_dir() or skill_dir.name not in CORE_SKILLS
+                or not (skill_dir / "SKILL.md").exists()):
             continue
         skills.append(
             {

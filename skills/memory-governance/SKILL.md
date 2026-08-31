@@ -180,6 +180,17 @@ version: 1.3.0
 - 某 API 反复超时（跨 3 次独立会话，已验证）→ durable lesson。
 - 用户 A 说「喜欢详细」，用户 B 上下文说「要结论」→ 保留矛盾并按作用域区分，不覆盖。
 
+## Script
+
+写回治理器（只作决策，不写文件）：
+
+```bash
+python3 scripts/memory.py --json @candidate.json
+```
+
+输出 `KEEP_SESSION/WRITE_DAILY/PROMOTE_DURABLE/USER_PROFILE_CANDIDATE`
+等决策；敏感信息拒绝，删除请求必须经过权限门。
+
 ## Multi-Agent Contract（PROTOCOL.md §8）
 
 对齐统一 10 项契约，本 Skill 涉及: 1,2,3,4,5,9,10（Private Memory 默认隔离；Shared 经行 governance 晋升）。不重写已有机制；跨 Agent 场景以 PROTOCOL.md §8 总规则 + 本 SKILL.md 对应章节为准。

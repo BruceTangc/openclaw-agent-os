@@ -23,6 +23,7 @@
 
 > 官方协议：见 [docs/PROTOCOL.md](docs/PROTOCOL.md)（统一行为协议）。
 > 冻结存档：见 [FINALIZE-REPORT.md](FINALIZE-REPORT.md)、[DEEP-AUDIT.md](DEEP-AUDIT.md)、[SCRIPTS-AUDIT-FINAL.md](SCRIPTS-AUDIT-FINAL.md)。
+> 开箱即用产品化路线与验收标准：见 [docs/PRODUCTIZATION-PLAN.md](docs/PRODUCTIZATION-PLAN.md)。
 
 > **Design rule:** OpenClaw native runtime first. These skills must **not** create
 > parallel runtimes for memory, context, tasks, scheduling, events, agents or permissions.
@@ -142,7 +143,7 @@ OpenClaw Tools / Sub-agents / Skills / Runtime
 | [SKILL-INTEGRATION.md](docs/SKILL-INTEGRATION.md) | 业务 Skill 接入协议（x-agent-os 声明块） |
 | [HEARTBEAT-CRON-POLICY.md](docs/HEARTBEAT-CRON-POLICY.md) | Trigger 边界；Proactive 是决策层不是定时器 |
 | [PROTOCOL-CHECKLIST.md](docs/PROTOCOL-CHECKLIST.md) | 逐文件审计清单 |
-| [templates/](templates/) | 通用主动模板：HEARTBEAT.md + proactive-registry.yaml（让 Proactive 知道每轮检查什么） |
+| [templates/](templates/) | 客户运行时模板：AGENTS.runtime.md + HEARTBEAT.md |
 
 ## Design guardrails
 
@@ -167,23 +168,12 @@ OpenClaw Tools / Sub-agents / Skills / Runtime
 - agent runtime
 - parallel permission enforcement runtime
 
-## Install（5 分钟）
+## Install（默认 Active，零手工 Heartbeat/Cron 配置）
 
 ```bash
-# 1. 确认 OpenClaw
-openclaw --version         # ≥ 2026.7.1-2
-
-# 2. 复制 11 个 Core Skills 到你的 skills 目录
-cp -r skills/*  <你的-skills-目录>/
-
-# 3. 安装 AGENTS.md（协议的注入载体，勿跳过）
-cp AGENTS.md  <你的-openclaw-workspace>/
-
-# 4. 重启
-openclaw gateway restart
-
-# 5. 验证 11 个 Skill ready
-openclaw skills list | grep -c "✓ ready"        # ≥ 11
+# 安装 11 Core Skills + agent-os-vault + 共享 _lib + Runtime 模板，
+# 自动固定 OpenClaw 原生 Heartbeat=30m；不创建业务 Cron。
+./install.sh
 ```
 
 > 详细安装 + 三级等级（Basic/Active/Full）见 [docs/INSTALL.md](docs/INSTALL.md)；
@@ -191,8 +181,14 @@ openclaw skills list | grep -c "✓ ready"        # ≥ 11
 > 见 [docs/QUICK-START.md](docs/QUICK-START.md)。
 
 ```bash
-# 推荐：用 install.sh 一键安装（检测版本/备份同名 Skill/合并 AGENTS.md/验证 11 ready）
-./install.sh            # 或 bash install.sh
+# 只安装基础对话能力、不修改 Heartbeat：
+./install.sh --profile basic
+
+# 自定义主动巡检周期：
+./install.sh --heartbeat-every 1h
+
+# 多 Agent：共享一份 Skills，只让指定主 Agent 承担 Heartbeat
+./install.sh --heartbeat-agent main
 ```
 
 **协议合规自检（#5 #6）**：
@@ -201,7 +197,7 @@ openclaw skills list | grep -c "✓ ready"        # ≥ 11
 python3 docs/tests/scripts/compliance.py   # 全 PASS（26）+ 退出码 0 即可
 ```
 
-Target baseline: OpenClaw 2026.7.1-2.
+Target baseline: OpenClaw 2026.7.1 or newer.
 
 ## Docs
 

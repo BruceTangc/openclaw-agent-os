@@ -43,6 +43,7 @@ from persistence import FileLock
 # v1.4 C1: Task 状态机也收敛到统一中央门（跳转校验 + 事实不变量 + audit）
 from transitions import transition as _task_transition
 from transitions import valid_states as _valid_task_states
+from workspace import agent_state_dir, prefer_migrated_path
 
 # ---------------------------------------------------------------------------
 # 常量
@@ -55,8 +56,10 @@ PRIORITY_LEVELS = ["P0", "P1", "P2", "P3", "P4"]
 # 默认 (文档 §35 §23)
 DEFAULT_MAX_RETRIES = 2
 
-DATA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                         "..", "memory", "tasks.json")
+_LEGACY_DATA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 "..", "memory", "tasks.json")
+DATA_PATH = prefer_migrated_path(
+    os.path.join(agent_state_dir("tasks"), "tasks.json"), _LEGACY_DATA_PATH)
 
 
 def utcnow_iso():

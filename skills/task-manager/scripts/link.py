@@ -37,12 +37,17 @@ from datetime import datetime, timezone
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILLS_DIR = os.path.dirname(BASE)
 
+_LIB = os.path.join(SKILLS_DIR, "_lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+from workspace import native_memory_dir, shared_state_dir, prefer_migrated_path
+
 TASK_MGR = os.path.join(BASE, "scripts", "task_manager.py")
 PROACTIVE = os.path.join(SKILLS_DIR, "proactive", "scripts", "proactive.py")
 ORCH = os.path.join(SKILLS_DIR, "orchestrator", "scripts", "orchestrator.py")
 ONTOLOGY = os.path.join(SKILLS_DIR, "ontology", "scripts", "ontology.py")
 DISCOVER = os.path.join(SKILLS_DIR, "self-evolution", "scripts", "discover.py")
-MEMORY_DIR = os.path.join(os.path.dirname(SKILLS_DIR), "memory")
+MEMORY_DIR = native_memory_dir()
 
 
 def utcnow_iso():
@@ -343,7 +348,9 @@ def cmd_sync_ontology(args):
 
     # 幂等: 已存在的 Task 实体跳过创建（L4 修复: 直接读 entities.jsonl, 不解析 print 输出）
     existing = set()
-    ent_file = os.path.join(SKILLS_DIR, "ontology", "memory", "ontology", "entities.jsonl")
+    ent_file = os.path.join(prefer_migrated_path(
+        shared_state_dir("ontology"),
+        os.path.join(SKILLS_DIR, "ontology", "memory", "ontology")), "entities.jsonl")
     try:
         with open(ent_file, encoding="utf-8") as f:
             for line in f:

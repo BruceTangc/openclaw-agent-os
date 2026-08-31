@@ -8,9 +8,9 @@
 
 ## 0. 前置确认
 
-- OpenClaw 版本：`2026.7.1-2`（Agent OS v1.3 以此为目标基线）
-- 复制 `skills/` 下的 11 个目录到你的 OpenClaw skills 目录（见 `docs/INSTALL.md`）
-- 装完后用 `openclaw skills list` 确认 11 个 skill 均为 `✓ ready`：
+- OpenClaw 版本：`2026.7.1` 或更新版本（Agent OS v1.3 目标基线）
+- 推荐直接运行 `./install.sh`；它会复制全部 Skills 与共享 `_lib`（见 `docs/INSTALL.md`）
+- 装完后用 `openclaw skills list` 确认 11 个 Core Skill 均为 `✓ ready`：
   `proactive / context-orchestration / task-manager / orchestrator / permission-security /
    verification-evaluation / memory-governance / knowledge-governance / ontology /
    self-evolution / summarize`
@@ -19,29 +19,33 @@
 
 ---
 
-## 1. 可选环境配置（让 Agent OS 真正"活起来"）
+## 1. 可选环境配置（安装器已处理常用默认值）
 
 以下配置都在 `openclaw.json` 的 `agents.defaults.*` 下。**均非必须**（Agent OS 在对话时也能运行），
 但配置后能解锁持续主动性 / 跨 Agent / 跨 Session 记忆能力。
 
-### 1.1 Heartbeat（解锁 Proactive 持续主动）
+### 1.1 Heartbeat（默认不需要客户手动配置）
 
-让 OpenClaw 周期性唤醒 Agent，Proactive 醒来后判断"有没有值得主动处理的事项"。
+现代 OpenClaw 默认启用 Heartbeat；`./install.sh` 的默认 Active profile 仍会显式写入
+`30m`，从而避免不同认证方式的默认周期差异。客户无需编辑 `openclaw.json`，也无需
+创建 Cron。只有要改变周期或关闭主动性时才需要调整。
 
 ```json5
 {
   agents: {
     defaults: {
       heartbeat: {
+        agentId: "main",  // 多 Agent 时唯一的环境巡检 owner
         every: "10m",     // 推荐：开发/测试 10m；轻量长期运行 30m；低频 1h-2h。0m 关闭。默认 30m
-        target: "last",   // 投递：last(最近渠道) | none(只内部)  | <channel-id>(指定渠道)
+        target: "owner",  // 默认投递给 operator owner；也可选 last / none / channel-id
       },
     },
   },
 }
 ```
 
-- 配置命令：`openclaw config set agents.defaults.heartbeat.every "10m"`
+- 安装器默认已执行：`openclaw config set agents.defaults.heartbeat.every "30m"`
+- 安装器同时设置 `agents.defaults.heartbeat.agentId=main`；用 `--heartbeat-agent <id>` 可改 owner。
 - **推荐配置（按主动性需求选）**：
   - 开发/测试/验证期：`10m`（快速反馈，本文档仓库 agent-session-e2e 实测值）
   - 轻量长期运行：`30m`
@@ -67,8 +71,8 @@
 }
 ```
 
-- 说明：`allowAgents: ["*"]` 表示 Main 可 spawn 到任意 `agents.list[]` 里配置过的 agent。
-- 需在 `agents.list[]` 里有实际配置的目标 agent，否则 spawn 会被拒绝（可 `openclaw doctor --fix` 清理失效条目）。
+- 说明：`allowAgents: ["*"]` 表示 Main 可 spawn 到任意 `agents.entries` 中配置过的 agent。
+- 目标 Agent 必须真实存在；安装器不自动生成业务 Agent，也不扩大已有委派权限。
 - 权限边界见 `docs/ACTION-PROTOCOL.md` §5（Multi-Agent 权限委托）。
 
 ### 1.3 Memory Search（解锁跨 Session 记忆恢复）
@@ -92,7 +96,7 @@
 - 配置命令：`openclaw config set agents.defaults.memorySearch.enabled true`
 - 详见官方文档 `reference/memory-config`。
 
-### 1.4 Skills 注册（确保 11 个 skill 被加载）
+### 1.4 Skills 注册（确保 Core Skills 被加载）
 
 若某 skill 被误禁用，确认 `skills.entries.<name>.enabled` 为 true：
 
@@ -111,33 +115,35 @@
   openclaw gateway restart
   ```
 - 重启后验证：
-  - `openclaw skills list` → 11 个 `✓ ready`
+  - `openclaw skills list` → 11 Core Skills 均为 `✓ ready`；默认另含 `agent-os-vault`
   - 手动触发一次 heartbeat 或用 `openclaw config get agents.defaults.heartbeat` 确认运行时已读入
 
 ---
 
 ## 3. 常见问题（FAQ）
 
-**Q1：Agent OS 需要 Cron 吗？**
-不需要。Agent OS 是加载在 OpenClaw Agent 上的治理/决策层，不建自己的 scheduler。
-对话时即自动参与；持续主动靠 OpenClaw Heartbeat/Cron/事件 等 Trigger 唤醒。
+**Q1：Agent OS 需要客户配置 Cron 吗？**
+通常不需要。OpenClaw Heartbeat 本身由原生 Automations scheduler 承载，安装器默认启用
+Heartbeat。只有"每天 9:00"这类精确时间业务才按用户要求创建独立 Automation；Agent OS
+不会预设未知业务日程。
 
 **Q2：装完但 skill 显示 disabled？**
 看 `skills.entries` 是否误设为 `enabled:false`（常见误禁 `summarize`）。
 
 **Q3：proactive 不提醒我？**
-先确认 heartbeat 已配置（§1.1）并重启；且 Proactive 只在"有值得处理的事项"才打扰，
+先确认 `cron.enabled` 没有被客户显式关闭，并重启 Gateway；且 Proactive 只在"有值得处理的事项"才打扰，
 无价值时会 NOOP（保持安静）——这是设计，不是故障。
 
 **Q3b：我装完了，为什么 Agent 没有主动找我？**
-**安装 Skill ≠ 自动获得主动性。** 主动性需要三件事同时成立：
+使用手动复制方式时，**仅安装 Skill 不等于自动获得主动性**；一键安装器已补齐前两项：
 ① OpenClaw Heartbeat/Cron/Hook（外部 Trigger，§1.1）
 ② Proactive Skill（决策层，判断值不值得做）
 ③ 有价值的 Signal（有异常/机会/到期项才提醒）
-只装 proactive 而没配 Heartbeat，Agent 永远不会主动找你——这是预期行为。
+若使用 `./install.sh` 默认 Active profile，Heartbeat 与运行指令已安装；仍没有提醒通常表示
+没有新价值 Signal，或客户显式设置了 `cron.enabled=false`。
 
 **Q4：spawn sub-agent 失败？**
-确认 `subagents.allowAgents` 非空、目标 agent 在 `agents.list[]` 里真实配置。
+确认 `subagents.allowAgents` 非空、目标 agent 在 `agents.entries` 中真实配置。
 
 ---
 

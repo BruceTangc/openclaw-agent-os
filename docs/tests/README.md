@@ -2,6 +2,26 @@
 
 These are behavioral test cases, not a replacement for OpenClaw's own test suite.
 
+## Phase 1 automated quality gate
+
+Run the same deterministic checks used by CI from the repository root:
+
+```bash
+python scripts/quality_gate.py
+```
+
+GitHub Actions runs this entry point on every push and pull request. The gate performs
+Python syntax compilation plus the shared-transition, orchestrator, proactive anti-loop,
+self-evolution, multi-agent protocol, and protocol-compliance regressions. The POSIX-only
+self-evolution E2E is explicitly skipped on Windows and always runs in Linux CI. The gate
+is read-only with respect to repository data and does not install dependencies or publish
+artifacts.
+
+Linux CI additionally checks `install.sh` syntax and runs an isolated installer smoke test.
+The smoke test verifies the shared `_lib`, all bundled Skills, runtime templates, automatic
+30-minute Heartbeat configuration, and the invariant that installation creates no business
+Cron/Automation jobs.
+
 Run manually after installation.
 
 > **Automated compliance guard（#5 #6）**: `scripts/compliance.py` converts the

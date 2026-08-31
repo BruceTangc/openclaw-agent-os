@@ -153,6 +153,17 @@ Research 声称 X、Trading 声称 Y 时：不得静默 A+B=TRUE，必须 `CONFL
 - 工具版本升级使某知识失效 → 标 obsolete + superseded_by。
 - 两来源对同一事实矛盾且都无更强证据 → 都保留 + disputed，交人工。
 
+## Script
+
+知识声明治理器（规范化和分类，不落库）：
+
+```bash
+python3 scripts/knowledge.py --json @claim.json
+```
+
+它校验来源、证据、置信度、新鲜度、冲突和 scope；PROJECT/USER/GLOBAL
+只产生 `SHARED_CANDIDATE`，不会绕过共享治理。
+
 ## Multi-Agent Contract（PROTOCOL.md §8）
 
 对齐统一 10 项契约，本 Skill 涉及: 1,2,3,4,5,6,10（Shared Knowledge 须经 governance，见 SKILL.md §10）。不重写已有机制；跨 Agent 场景以 PROTOCOL.md §8 总规则 + 本 SKILL.md 对应章节为准。

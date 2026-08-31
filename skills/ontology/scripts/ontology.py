@@ -55,7 +55,6 @@ import time
 import yaml  # P0 Agent OS×Obsidian: vault frontmatter/minimal .base rendering
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA = os.path.join(BASE, "memory", "ontology")
 
 # v1.3 Hardening B2: 统一 ID helper
 _LIB = os.path.join(os.path.dirname(BASE), "_lib")
@@ -63,6 +62,10 @@ if _LIB not in sys.path:
     sys.path.insert(0, _LIB)
 from id_utils import generate_id
 from persistence import atomic_write_json, append_atomic
+from workspace import shared_state_dir, prefer_migrated_path
+
+DATA = prefer_migrated_path(shared_state_dir("ontology"),
+                            os.path.join(BASE, "memory", "ontology"))
 
 SCHEMA_FILE = os.path.join(DATA, "schema.json")
 ENTITIES_FILE = os.path.join(DATA, "entities.jsonl")

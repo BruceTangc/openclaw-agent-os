@@ -369,6 +369,7 @@ def cmd_extract(args):
         "state": {"completed": [], "in_progress": [], "pending": []},
         "integrations": {
             "memory_candidates": [],
+            "knowledge_candidates": [],
             "ontology_candidates": {"entities": [], "relations": []},
             "experience": None,
         },

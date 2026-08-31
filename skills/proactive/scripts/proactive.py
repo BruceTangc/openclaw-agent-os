@@ -132,6 +132,7 @@ if _LIB not in sys.path:
 from id_utils import generate_id, deterministic_id
 from persistence import atomic_write_json
 from persistence import FileLock
+from workspace import agent_state_dir, prefer_migrated_path
 
 import hashlib as _hashlib
 
@@ -313,8 +314,10 @@ def decide(score, risk_type=None, has_ask_flag=False, failure_count=0):
 # ---------------------------------------------------------------------------
 # Queue (文档 §15)
 # ---------------------------------------------------------------------------
-QUEUE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          "..", "memory", "queue.json")
+_LEGACY_MEMORY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "memory")
+QUEUE_PATH = prefer_migrated_path(
+    os.path.join(agent_state_dir("proactive"), "queue.json"),
+    os.path.join(_LEGACY_MEMORY_DIR, "queue.json"))
 
 
 def _load_queue():
@@ -404,16 +407,18 @@ def queue_cmd(sub, args):
 # ---------------------------------------------------------------------------
 # State (文档 §43)
 # ---------------------------------------------------------------------------
-STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          "..", "memory", "state.json")
+STATE_PATH = prefer_migrated_path(
+    os.path.join(agent_state_dir("proactive"), "state.json"),
+    os.path.join(_LEGACY_MEMORY_DIR, "state.json"))
 
 
 def _state_path(agent_id=None):
     """MA-1.0 (规格 14.1 Agent-local State): 有 agent_id 时用 per-agent 状态文件，
     避免多 Agent 共享同一 proactive 状态相互污染；无 agent_id 时用默认全局 state.json。"""
     if agent_id:
-        base = os.path.dirname(STATE_PATH)
-        return os.path.join(base, "state-%s.json" % str(agent_id))
+        return prefer_migrated_path(
+            os.path.join(agent_state_dir("proactive", agent_id), "state.json"),
+            os.path.join(_LEGACY_MEMORY_DIR, "state-%s.json" % str(agent_id)))
     return STATE_PATH
 
 

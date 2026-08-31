@@ -157,6 +157,17 @@ per-agent workspace/session 隔离，不另建 Agent Registry）。
 - 交易任务 → 取资金账户约束、行情时间戳知识、相关决策，排除无关社媒上下文。
 - 上下文接近预算 → 只保留目标 + 已确认决策 + 冲突点 + 下一步，其余降级检索。
 
+## Script
+
+确定性选择器（只返回 Selected Context，不自行注入）：
+
+```bash
+python3 scripts/context.py --json @request.json
+```
+
+输入包含 `goal/agent_id/task_id/project_id/budget_chars/items[]`；输出包含
+`selected/conflicts/excluded/expand_retrieval`。跨 Agent 私有 scope 默认拒绝，冲突双方会成组保留。
+
 ## Multi-Agent Contract（PROTOCOL.md §8）
 
 对齐统一 10 项契约，本 Skill 涉及: 1,2,3,5,6,8,10（跨 Agent 上下文只走显式委托，见 SKILL.md §7）。不重写已有机制；跨 Agent 场景以 PROTOCOL.md §8 总规则 + 本 SKILL.md 对应章节为准。
