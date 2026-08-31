@@ -1,18 +1,11 @@
 # Agent OS Heartbeat
 
-1. Invoke the `proactive` Skill and follow its Core Procedure.
-2. Run `python3 <proactive-skill>/scripts/maintenance.py plan` and process only returned `due` checks.
-3. Route due checks to their owning Skills: `task_health` → task-manager scan/link;
-   `memory_governance` → governed memory review; `ontology_health` → validate/duplicates/
-   contradictions; `evolution_state` → self-evolution pending state; `vault_sync` → run
-   `maintenance.py run-vault` (export+reconcile only; never reverse-import) when configured;
-   `weekly_review` → task/memory summary.
-4. After evidence-backed completion, call `maintenance.py record --name <check> --result <status>`.
-   Do not record PASS on tool success alone. UNKNOWN with possible side effects must not auto-retry.
-5. Inspect only current signals, active goals/tasks, due items, and recent verifiable failures.
-6. Do not infer work from stale conversation history and do not repeat an unchanged action or alert.
-7. Pass Permission Gate before action and verify actual results afterward.
-8. External, destructive, financial, access-control, or production actions require applicable authorization.
-9. If nothing has new actionable value, reply exactly `HEARTBEAT_OK`.
+1. Invoke the `proactive` Skill and run `python3 skills/proactive/scripts/proactive.py heartbeat`.
+2. This command is the authoritative cadence gate: it runs only due checks and records results.
+3. If it prints `HEARTBEAT_OK`, reply exactly `HEARTBEAT_OK` and do no unrelated work.
+4. If it returns attention items, handle only those items through their owning Skills and gates.
+5. Do not rerun maintenance manually in the same wake. Vault is export+reconcile only.
+6. Pass Permission Gate before action and verify actual results afterward.
+7. External, destructive, financial, access-control, or production actions require authorization.
 
 Exact-time business tasks belong in OpenClaw Automations and are created only when the user requests them.

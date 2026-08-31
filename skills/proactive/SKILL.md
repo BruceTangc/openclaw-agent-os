@@ -159,7 +159,9 @@ python3 scripts/proactive.py decision --json '...'    # 决策
 python3 scripts/proactive.py queue --op list          # 维护队列
 python3 scripts/proactive.py evol --json '...'        # 生成进化候选
 python3 scripts/proactive.py noop                    # NO_ACTION 标记
+python3 scripts/proactive.py heartbeat               # code-driven due maintenance
 python3 scripts/learning.py --json @event.json       # 验证→Evidence→候选→治理写回
+python3 scripts/maintenance.py run                   # run and record due checks only
 python3 scripts/maintenance.py run-vault             # 到期时投影到 Obsidian
 ```
 

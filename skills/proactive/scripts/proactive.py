@@ -577,6 +577,9 @@ def main():
     p_evol.add_argument("--no-approval", action="store_true")
 
     sub.add_parser("noop", help="NO_ACTION 标记")
+    p_heartbeat = sub.add_parser("heartbeat", help="运行到期维护")
+    p_heartbeat.add_argument("--agent", default="")
+    p_heartbeat.add_argument("--json", action="store_true")
 
     args = parser.parse_args()
 
@@ -645,6 +648,17 @@ def main():
 
     if args.cmd == "noop":
         print("NO_ACTION")
+        return
+
+    if args.cmd == "heartbeat":
+        import maintenance
+        outcome = maintenance.run_due(args.agent)
+        if outcome.get("heartbeat_ok") and not args.json:
+            print("HEARTBEAT_OK")
+        else:
+            # Heartbeat may relay output from UTF-8 child tools through a legacy
+            # console encoding. ASCII-safe JSON keeps the entry point portable.
+            print(json.dumps(outcome, ensure_ascii=True, indent=2))
         return
 
 

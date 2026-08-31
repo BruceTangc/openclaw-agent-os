@@ -9,7 +9,7 @@
 #   2. 定位用户 skills 目录（默认 ~/.openclaw/skills，可用 --skills-dir 覆盖）
 #   3. 备份同名 Skill（若目标已存在同目录先备份为 skill.prepatch备份时间戳）
 #   4. cp -r skills/* -> 目标 skills 目录（包括共享 _lib）
-#   5. 安装客户运行时 AGENTS.md 与 HEARTBEAT.md（已有文件不覆盖）
+#   5. 安装运行时 AGENTS.md，并为旧 HEARTBEAT.md 补充代码化维护入口
 #   6. Active profile 显式启用 OpenClaw 原生 Heartbeat；不创建业务 Cron
 #   7. 重载 / 重启 OpenClaw gateway 并动态验证全部 Core Skills ready
 #
@@ -133,7 +133,18 @@ else
 fi
 
 if [ -e "$WORKSPACE_HEARTBEAT" ]; then
-  echo "==> 目标 HEARTBEAT.md 已存在 → 保留用户现有配置"
+  if grep -Fq "proactive.py heartbeat" "$WORKSPACE_HEARTBEAT"; then
+    echo "==> 目标 HEARTBEAT.md 已包含 Agent OS 代码化维护入口 → 保留"
+  else
+    cp "$WORKSPACE_HEARTBEAT" "${WORKSPACE_HEARTBEAT}.prepatch${NOW}" 2>/dev/null \
+      && echo "==> 旧 HEARTBEAT.md 已备份到 ${WORKSPACE_HEARTBEAT}.prepatch${NOW}"
+    {
+      printf '\n<!-- agent-os-maintenance-entry -->\n'
+      cat "$HEARTBEAT_SRC"
+      printf '<!-- /agent-os-maintenance-entry -->\n'
+    } >> "$WORKSPACE_HEARTBEAT"
+    echo "==> 已保留原内容并追加 Agent OS 代码化维护入口"
+  fi
 else
   cp "$HEARTBEAT_SRC" "$WORKSPACE_HEARTBEAT" \
     && echo "==> 已安装 Agent OS HEARTBEAT.md"
