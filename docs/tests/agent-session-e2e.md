@@ -22,7 +22,7 @@
 ### 1.2 载体选择（爸爸 2026-08-17 确认）
 - ✅ **主工作区真实任务**（不用 AI-MFG-OS 报价——涉及厂长工作区真实生产数据，避免副作用）
 - ✅ 每日复盘已取消，不作为载体
-- 每日复盘类 cron 8/16 已全部 remove，调度器仅剩 singbox（待修复，另有单）
+- 历史环境中的每日复盘类 Cron 已取消；当前产品基线不创建业务 Cron
 
 ### 1.3 成功判定（V2 级）
 - 真实用户指令进入主 session
@@ -115,14 +115,14 @@
 
 | 环节 | 配置/命令 | 实测结果 |
 |:----|:----|:----|
-| Trigger | OpenClaw Heartbeat：`every: 10m`，06:00-22:00，target=last | ✅ 已启用 |
+| Trigger | OpenClaw 原生 Heartbeat（默认 Active 安装为 `every: 30m`，唯一 owner） | ✅ 自动配置 |
 | 唤醒打点 | `proactive.py state --op wake` | ✅ `{"wake": "ok"}` |
 | 巡检①候选状态 | `discover.py --status` | ✅ 无 pending 候选 |
 | 巡检②晋升候选 | `propose.py`/`regression.py` | ✅ 无待审批 |
 | 判定 | 有 due → 处理；有候选 → SUGGEST；都无 → HEARTBEAT_OK | ✅ HEARTBEAT_OK（不打扰） |
 
 ### 7.2 写入位置
-- `~/.openclaw/workspace/HEARTBEAT.md` 新增「学习系统巡检」段（L0 只读自动；晋升/修改走 L1+ 与 permission-security）
+- `agents.entries.<owner>.heartbeat.prompt` 注入学习系统巡检入口（L0 只读自动；晋升/修改走 L1+ 与 permission-security）
 
 ### 7.3 验证结论
 - 真实 heartbeat 巡检流程跑通：wake → verify → propose → 判定 → HEARTBEAT_OK

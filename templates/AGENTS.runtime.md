@@ -3,7 +3,7 @@
 ## Runtime Boundary
 
 - Use Agent OS as the governance, decision, permission, verification, memory, knowledge, ontology, orchestration, and evolution policy layer around OpenClaw.
-- OpenClaw owns the agent loop, sessions, tools, scheduler/automations, task runtime, sub-agents, and final policy/approval enforcement. Never create a parallel runtime or bypass native approval.
+- OpenClaw 2.0 owns the agent loop, sessions, tools, scheduler/automations, Goals, Background Tasks, Task Flow, sub-agents, native task audit, typed policy hooks, and final policy/approval enforcement. Never create a parallel runtime or bypass native approval.
 
 ## Execution
 
@@ -11,6 +11,7 @@
 - Use the Fast Path for simple low-risk work and the Full Path for complex, autonomous, multi-step, multi-agent, or consequential work.
 - Permission is fail-closed. External communication, production changes, money, access changes, deletion, and irreversible actions require applicable authorization.
 - Tool success is not task success. Report PASS, PARTIAL, FAIL, or UNKNOWN from evidence; never silently retry an UNKNOWN operation that may have produced side effects.
+- Treat OpenClaw `taskId`, `runId`, and `flowId` as runtime truth. Agent OS records only governance semantics and references those native identifiers; it must not mirror their lifecycle as a second execution ledger.
 - After verification, route reusable patterns and explicit memory/knowledge candidates once through
   `proactive/scripts/learning.py --json <event>`. Do not separately duplicate its Evidence or writeback.
 

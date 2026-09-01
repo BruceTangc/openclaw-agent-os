@@ -45,14 +45,15 @@ version: 1.3.0
 | 触发方式 | 何时发生 | 载体 |
 |:--|:--|:--|
 | ① 写入/冲突事件 | 会话收尾/复盘/总结、收到「记住这个」、检测到矛盾/敏感/重复 | 事件驱动，随任务流自然发生，**无需定时配置** |
-| ② 周期性 memory 维护（合并/去重/清理过期） | 低频整理长期记忆，防止日记层膨胀 | **需外部 Trigger**：heartbeat 携带（低频，每日或每周）或用户手动触发 |
+| ② 周期性 memory 维护（合并/去重/清理过期） | 低频整理长期记忆，防止日记层膨胀 | 默认由 Agent OS maintenance gate 借 OpenClaw Heartbeat 携带；无需业务 Cron |
 
-**② 示例（heartbeat 每 6-12h 携带，或 cron 每日 04:00）：**
+**② 默认链路：**
 
-```yaml
-# 每日 04:00 低频维护：合并/去重/清理过期条目
-0 4 * * *  cd <workspace> && openclaw session run "按 memory-governance 规则做一次周期性 memory 维护（只读检查 + 可逆合并，删除走 trash/归档）"
+```text
+OpenClaw Heartbeat → proactive → maintenance gate → memory_governance（仅到期时）
 ```
+
+精确时间是业务要求时才使用 OpenClaw Cron；不要为常规记忆维护另建 Cron。
 
 > 维护默认只做可逆动作（合并/归档优先），涉及删除历史、覆盖长期条目属 L2/L3 需确认，见下「Permission」。
 

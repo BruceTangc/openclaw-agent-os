@@ -22,7 +22,7 @@
 > 后续迭代不必强求两者同步递增。
 
 > 官方协议：见 [docs/PROTOCOL.md](docs/PROTOCOL.md)（统一行为协议）。
-> 冻结存档：见 [FINALIZE-REPORT.md](FINALIZE-REPORT.md)、[DEEP-AUDIT.md](DEEP-AUDIT.md)、[SCRIPTS-AUDIT-FINAL.md](SCRIPTS-AUDIT-FINAL.md)。
+> 当前发布基线与边界以本文、`docs/` 协议和自动化质量门为准。
 > 开箱即用产品化路线与验收标准：见 [docs/PRODUCTIZATION-PLAN.md](docs/PRODUCTIZATION-PLAN.md)。
 
 > **Design rule:** OpenClaw native runtime first. These skills must **not** create
@@ -146,7 +146,7 @@ OpenClaw Tools / Sub-agents / Skills / Runtime
 | [SKILL-INTEGRATION.md](docs/SKILL-INTEGRATION.md) | 业务 Skill 接入协议（x-agent-os 声明块） |
 | [HEARTBEAT-CRON-POLICY.md](docs/HEARTBEAT-CRON-POLICY.md) | Trigger 边界；Proactive 是决策层不是定时器 |
 | [PROTOCOL-CHECKLIST.md](docs/PROTOCOL-CHECKLIST.md) | 逐文件审计清单 |
-| [templates/](templates/) | 客户运行时模板：AGENTS.runtime.md + HEARTBEAT.md |
+| [templates/](templates/) | 客户运行时模板：AGENTS.runtime.md + OpenClaw 2.0 Heartbeat prompt |
 
 ## Design guardrails
 
@@ -197,24 +197,27 @@ OpenClaw Tools / Sub-agents / Skills / Runtime
 ./install.sh --vault-dir "/absolute/path/to/Obsidian/Vault"
 ```
 
+OpenClaw 2.0 单 Agent或有唯一默认 Agent 时，安装器会自动解析 owner；多 Agent 且没有
+唯一默认 owner 时会 fail-closed，要求显式传 `--heartbeat-agent`，不会擅自创建 `main`。
+
 **协议合规自检（#5 #6）**：
 
 ```bash
 python3 docs/tests/scripts/compliance.py   # 全 PASS（26）+ 退出码 0 即可
 ```
 
-Target baseline: OpenClaw 2026.7.1 or newer.
+Target baseline: OpenClaw 2026.8.1 or newer.
 
 ## Docs
 
-- `docs/ARCHITECTURE.md` — v1.3 执行模型图（Fast/Full 分流 + 失败闭环）
-- `docs/INSTALL.md` — 安装（5 步 + Basic/Active/Full 三级）
-- `docs/QUICK-START.md` — 5 分钟安装 + 安装后 5 项验收
-- `docs/SKILL-MAP.md` — 11 Skill 协作总图 + 责任表（新用户先看这个）
-- `docs/COMPATIBILITY.md`
-- `docs/OPERATIONS.md`
-- `docs/schemas/` — decision / evidence / execution-record / state / task models
-- `docs/tests/` — smoke test cases + evolution-e2e + agent-session-e2e + long-running
+客户使用入口（正常安装和运维只需阅读这些）：
+
+- `docs/QUICK-START.md` — 5 分钟安装 + 安装后验收
+- `docs/INSTALL.md` — Basic / Active / Full 安装说明
+- `docs/OPERATIONS.md` — 日常诊断、维护与故障处理
+
+维护者入口：`docs/ARCHITECTURE.md`、`docs/SKILL-MAP.md`、`docs/COMPATIBILITY.md`、
+`docs/schemas/` 和 `docs/tests/`。历史材料统一放在 `docs/archive/`，不属于当前产品配置。
 
 ## License
 

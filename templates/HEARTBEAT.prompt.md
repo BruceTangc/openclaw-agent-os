@@ -1,4 +1,4 @@
-# Agent OS Heartbeat
+# Agent OS Heartbeat Prompt
 
 1. Invoke the `proactive` Skill and run `python3 skills/proactive/scripts/proactive.py heartbeat`.
 2. This command is the authoritative cadence gate: it runs only due checks and records results.

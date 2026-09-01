@@ -155,6 +155,6 @@ cross_agent_ok: true               # 委托链完整、未丢失 origin
 
 ## 与 OpenClaw 边界
 
-- OpenClaw 拥有：session / execution / tools / tasks / memory storage / approvals / sandbox。
-- Agent OS 只记录：本次行为是否符合协议（语义记录，可放 memory 或随任务结果输出）。
+- OpenClaw 2.0 拥有：session / run / Background Tasks / Task Flow / tools / memory storage / approvals / sandbox / native audit。
+- Agent OS 只记录：本次行为是否符合协议，并引用可用的原生 `taskId` / `runId` / `flowId`；不得复制这些原生对象的运行状态。
 - 不建并行 runtime、不拦截执行、不替代 approval。

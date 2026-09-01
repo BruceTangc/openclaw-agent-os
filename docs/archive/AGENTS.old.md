@@ -1,5 +1,5 @@
 ---
-summary: "AGENTS.md reference template for Agent OS v1.3: OpenClaw workspace instructions + Agent OS governance/decision/workflow policy layer"
+summary: "Archived AGENTS.md reference template for Agent OS v1.3"
 title: "AGENTS.md (Agent OS v1.3 template)"
 read_when:
   - Bootstrapping a new machine/workspace with Agent OS installed

@@ -1,7 +1,7 @@
 # Installation
 
 ## Compatibility
-Requires OpenClaw 2026.7.1 or newer and Python 3.9 or newer. Agent OS v1.3（Protocol v1.3；v1.2 Skill 属 legacy compatibility mode，可兼容运行）。
+Requires OpenClaw 2026.8.1 (OpenClaw 2.0) or newer and Python 3.9 or newer. Agent OS v1.3（Protocol v1.3；v1.2 Skill 属 legacy compatibility mode，可兼容运行）。
 
 ## 一键安装（默认 Active，客户无需手配 Heartbeat/Cron）
 
@@ -9,10 +9,13 @@ Requires OpenClaw 2026.7.1 or newer and Python 3.9 or newer. Agent OS v1.3（Pro
 ./install.sh
 ```
 
-默认行为：安装全部 Core Skills、共享 `_lib`、客户运行时 `AGENTS.md` 和
-`HEARTBEAT.md`，将 OpenClaw 原生 Heartbeat 固定为 `30m`，重启 Gateway 并动态
+默认行为：安装全部 Core Skills、共享 `_lib` 和客户运行时 `AGENTS.md`，把维护入口写入
+指定 Agent 的 OpenClaw 2.0 原生 Heartbeat prompt，并将周期固定为 `30m`，重启 Gateway 并动态
 验证 Skills。升级时会先把旧 Skill-local 状态非破坏性复制到 workspace，逐文件
 校验且不删除源；发现目标冲突即停止。不会创建任何业务 Cron。
+
+安装器会从 `agents.entries` 自动选择唯一默认 Agent（或唯一 Agent）。多 Agent roster
+没有明确默认 owner 时会安全停止，请显式传 `--heartbeat-agent <id>`，不会擅自创建 `main`。
 
 可选：`--profile basic` 不修改 Heartbeat；`--heartbeat-every 1h` 修改主动巡检周期；
 `--heartbeat-agent main` 指定唯一的主巡检 Agent。所有 Agent 共用同一份 Skills，安装器不会
@@ -31,7 +34,7 @@ Requires OpenClaw 2026.7.1 or newer and Python 3.9 or newer. Agent OS v1.3（Pro
 
 ### Step 0 — 确认 OpenClaw
 ```bash
-openclaw --version   # ≥ 2026.7.1
+openclaw --version   # ≥ 2026.8.1
 ```
 
 ### Step 1 — 找到你的 Skills 目录
@@ -49,7 +52,7 @@ cp -r skills/*  <你的-skills-目录>/
 Agent OS 的治理/决策/协议全靠 AGENTS.md 注入行为约束；不装它 = 只有 Skill 没有协议层。
 ```bash
 cp templates/AGENTS.runtime.md  <你的-openclaw-workspace>/AGENTS.md
-cp templates/HEARTBEAT.md       <你的-openclaw-workspace>/HEARTBEAT.md
+# Heartbeat 不再复制 workspace 文件；安装器写入 agents.entries.<agent>.heartbeat.prompt
 # 如已存在同名文件：先备份，再按需合并；不要覆盖客户已有个性化规则
 # 注：AGENTS.md 保留项目边界、权限与验证要求；代码审查方式按项目风险和用户要求决定
 ```
@@ -74,7 +77,7 @@ openclaw skills list                         # 11 Core + 默认 bundled agent-os
 | 等级 | 包含 | 得到 |
 |:--|:--|:--|
 | **Level 1 — Basic** | Core Skills + `_lib` + Runtime AGENTS.md | 基础治理能力：Fast/Full Path、Permission Gate、Verification、Memory/Knowledge/Ontology、Evolution |
-| **Level 2 — Active（安装器默认）** | Level 1 + OpenClaw Heartbeat + HEARTBEAT.md | 主动性：Proactive 决策 + Evolution 巡检；无需另建 Cron |
+| **Level 2 — Active（安装器默认）** | Level 1 + per-agent OpenClaw Heartbeat prompt | 主动性：Proactive 决策 + Evolution 巡检；无需另建 Cron |
 | **Level 3 — Full** | Level 2 + Memory Search + Sub-agents + Execution Record + Long-running monitoring | 完整 Agent OS：跨 Session 记忆、Multi-Agent 委派、可追溯执行、长期运行验证 |
 
 ---
@@ -82,7 +85,7 @@ openclaw skills list                         # 11 Core + 默认 bundled agent-os
 ## Upgrade procedure（升级已有安装）
 
 再次运行同一条 `./install.sh` 即可。安装器会先迁移旧运行状态，再备份并替换共享
-Skill；客户的 `AGENTS.md`、`HEARTBEAT.md` 和各 Agent 私有 workspace 状态不会被覆盖。
+Skill；客户的 `AGENTS.md`、已有 Heartbeat/Automation 配置和各 Agent 私有 workspace 状态不会被整文件覆盖。
 迁移冲突或任一 bundled Skill 未 ready 时安装以非零状态退出。
 
 ## Do not install

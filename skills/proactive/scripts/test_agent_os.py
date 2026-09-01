@@ -12,10 +12,22 @@ with tempfile.TemporaryDirectory(prefix="agentos_doctor_") as tmp:
     assert report["status"] == "READY_WITH_WARNINGS"
     assert report["agent_id"] == "doctor-agent"
     assert next(x for x in report["checks"] if x["name"] == "core_skills")["status"] == "PASS"
-    with open(os.path.join(tmp, "HEARTBEAT.md"), "w", encoding="utf-8") as handle:
-        handle.write("python3 skills/proactive/scripts/proactive.py heartbeat\n")
-    with mock.patch.object(agent_os.shutil, "which", return_value=None):
+    def run_config(args, **kwargs):
+        key = args[-1]
+        value = "30m" if key.endswith(".every") else "run proactive.py heartbeat"
+        return mock.Mock(returncode=0, stdout=value + "\n", stderr="")
+    with mock.patch.object(agent_os.shutil, "which", return_value="/bin/openclaw"), \
+         mock.patch.object(agent_os.subprocess, "run", side_effect=run_config):
         report = agent_os.inspect()
-    assert next(x for x in report["checks"] if x["name"] == "heartbeat_entry")["status"] == "PASS"
+    assert report["status"] == "READY_WITH_WARNINGS"
+    assert next(x for x in report["checks"] if x["name"] == "heartbeat_prompt")["status"] == "PASS"
+    assert next(x for x in report["checks"] if x["name"] == "heartbeat_cadence")["status"] == "PASS"
+    os.environ["AGENT_OS_PROFILE"] = "basic"
+    with mock.patch.object(agent_os.shutil, "which", return_value="/bin/openclaw"), \
+         mock.patch.object(agent_os.subprocess, "run", side_effect=AssertionError("config must not run")):
+        report = agent_os.inspect()
+    assert report["status"] == "READY_WITH_WARNINGS"
+    assert next(x for x in report["checks"] if x["name"] == "heartbeat")["status"] == "SKIP"
+    os.environ.pop("AGENT_OS_PROFILE", None)
 
 print("Agent OS doctor tests: PASS")

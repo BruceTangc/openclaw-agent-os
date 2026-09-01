@@ -22,7 +22,7 @@ version: 1.3.0
 
 ## Non-Goals
 
-- 不实现授权执行/沙箱/审批机制（OpenClaw 拥有）
+- 不实现授权执行/沙箱/审批机制（OpenClaw 2.0 native policy、typed hooks 与 approval surfaces 拥有）
 - 不替代 OpenClaw native policy / approval
 - 不建独立 Permission Runtime / 审批队列
 - 不决定任务该不该做（走 proactive/orchestrator）
@@ -55,7 +55,7 @@ version: 1.3.0
 
 ## Core Procedure
 
-本 Skill 只负责生命周期中的 **Permission（授权）** 节点：做风险分级与建议。最终由 OpenClaw native policy/approval 执行。
+本 Skill 只负责生命周期中的 **Permission（授权）** 节点：做风险分级与建议。强制阻断和审批必须落到 OpenClaw 2.0 native policy / `before_tool_call` typed hook / approval surface；模型内的 ALLOW/DENY 文本不是执行边界。
 
 1. **分级 classify**：对动作判定 L0–L4。
 2. **默认策略**：L0 auto（原生允许即放行）；L1 auto（可逆且在 scope 内）；L2 确认；L3 显式审批 + 目标/scope 验证；L4 deny。

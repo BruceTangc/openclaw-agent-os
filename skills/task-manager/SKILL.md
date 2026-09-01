@@ -10,7 +10,7 @@ version: 1.3.0
 
 ## Purpose
 
-管理「任务是什么 + 处于什么状态 + 下一步是什么」。核心区分：Goal=期望结果，Task=具体工作，Step=组件，Runtime task=OpenClaw 执行记录。`memory/tasks.json` 是任务语义索引/缓存，不是执行运行时；真正执行走 OpenClaw 原生 Background Tasks / Task Flow / Sub-agents / Cron。
+管理「任务语义是什么 + 成功条件是什么 + 下一步建议是什么」。核心区分：Goal=期望结果，Task=具体工作，Step=组件，Runtime task=OpenClaw 2.0 执行记录。`memory/tasks.json` 仅保存 Agent OS 特有的语义补充/兼容缓存；一旦存在原生 `taskId/flowId`，其状态和生命周期以 OpenClaw Background Tasks / Task Flow 为唯一真值。
 
 ## Scope
 
@@ -32,7 +32,7 @@ version: 1.3.0
 
 ## OpenClaw Boundary
 
-复用 OpenClaw 原生 Task/Automation runtime、Background Tasks、Task Flow、Sub-agents、Cron。**不创建自己的 Scheduler、Event Bus、Task Runtime、Memory Runtime**。scripts/task_manager.py 提供创建/查询/状态机校验，scripts/link.py 提供跨模块联动。
+复用 OpenClaw 2.0 原生 Goals、Background Tasks、Task Flow、Sub-agents 和 Automations。**不创建自己的 Scheduler、Event Bus、Task Runtime、Memory Runtime，也不镜像原生 task/run/flow 状态**。scripts/task_manager.py 只校验治理语义和兼容记录，scripts/link.py 提供跨模块语义关联。
 
 ## When to Activate
 

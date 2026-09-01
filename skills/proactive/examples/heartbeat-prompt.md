@@ -8,4 +8,4 @@ When the OpenClaw heartbeat wakes this agent:
 4. Otherwise handle only its structured attention items through the owning Skills and gates.
 5. Do not manually repeat maintenance or perform unrelated work.
 
-Periodic exact-time tasks (e.g. "check market at 9:00") should use OpenClaw cron, not HEARTBEAT.md.
+Periodic exact-time tasks (e.g. "check market at 9:00") should use OpenClaw Automations, not the heartbeat prompt.

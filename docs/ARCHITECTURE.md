@@ -140,3 +140,7 @@ Context → Decision → Action → Verification → Evaluation → Writeback
 OpenClaw owns runtime, sessions, context engine, memory storage/recall, goals, automation/heartbeat, background tasks, task flow, hooks, standing orders, sub-agents, tools and native policy/approval.
 
 Agent OS owns policy, semantic models, decision procedures, governance, verification/evaluation and controlled evolution.
+
+For OpenClaw 2.0, native Goals/Background Tasks/Task Flow and task audit are the runtime truth;
+typed hooks/native approvals are the enforcement truth. Agent OS may annotate them with governance
+semantics and evidence, but must not maintain a competing lifecycle or approval decision.

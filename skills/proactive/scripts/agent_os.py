@@ -33,18 +33,12 @@ def _check(name, status, detail, evidence=None):
 
 def inspect(agent_id=None):
     agent = current_agent_id(agent_id)
+    profile = os.environ.get("AGENT_OS_PROFILE", "active").strip().lower() or "active"
     root = workspace_root()
     checks = []
     missing = [name for name in CORE if not os.path.isfile(os.path.join(SKILLS, name, "SKILL.md"))]
     checks.append(_check("core_skills", "FAIL" if missing else "PASS",
                          "missing=" + ",".join(missing) if missing else "11 core skills present"))
-    heartbeat = os.path.join(root, "HEARTBEAT.md")
-    heartbeat_ok = False
-    if os.path.isfile(heartbeat):
-        with open(heartbeat, encoding="utf-8") as handle:
-            heartbeat_ok = "proactive.py heartbeat" in handle.read()
-    checks.append(_check("heartbeat_entry", "PASS" if heartbeat_ok else "WARN",
-                         heartbeat if heartbeat_ok else "runtime HEARTBEAT.md entry not detected"))
     state = maintenance.state_path(agent)
     try:
         data = maintenance.load_state(state)
@@ -64,24 +58,27 @@ def inspect(agent_id=None):
     executable = shutil.which("openclaw")
     checks.append(_check("openclaw_cli", "PASS" if executable else "WARN",
                          executable or "not available in current PATH"))
-    if executable:
+    if executable and profile == "active":
         def config(key):
             done = subprocess.run([executable, "config", "get", key],
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                   text=True, encoding="utf-8", errors="replace")
             return done.returncode, done.stdout.strip().strip('"')
-        owner_rc, owner = config("agents.defaults.heartbeat.agentId")
-        every_rc, every = config("agents.defaults.heartbeat.every")
-        owner_ok = owner_rc == 0 and owner == agent
+        heartbeat_path = "agents.entries.{}.heartbeat".format(agent)
+        every_rc, every = config(heartbeat_path + ".every")
+        prompt_rc, prompt = config(heartbeat_path + ".prompt")
         cadence_ok = every_rc == 0 and every not in ("", "0", "0m", "false")
-        checks.append(_check("heartbeat_owner", "PASS" if owner_ok else "FAIL",
-                             "expected={} actual={}".format(agent, owner or "<empty>")))
+        prompt_ok = prompt_rc == 0 and "proactive.py heartbeat" in prompt
+        checks.append(_check("heartbeat_prompt", "PASS" if prompt_ok else "FAIL",
+                             heartbeat_path + (" configured" if prompt_ok else " missing Agent OS entry")))
         checks.append(_check("heartbeat_cadence", "PASS" if cadence_ok else "FAIL",
                              every or "<empty>"))
+    elif executable:
+        checks.append(_check("heartbeat", "SKIP", "basic profile does not configure heartbeat"))
     failed = [row for row in checks if row["status"] == "FAIL"]
     warned = [row for row in checks if row["status"] == "WARN"]
     return {"status": "FAILED" if failed else ("READY_WITH_WARNINGS" if warned else "READY"),
-            "agent_id": agent, "workspace": root,
+            "agent_id": agent, "profile": profile, "workspace": root,
             "checked_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "state_dir": agent_state_dir("maintenance", agent), "checks": checks}
 

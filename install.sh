@@ -5,12 +5,12 @@
 # 把本仓库的 Core Skills + 共享库 + Runtime 模板安装到用户的 OpenClaw 环境，
 # 消除「cp -r + 手合 AGENTS.md」的摩擦。行为对齐 docs/INSTALL.md。
 #
-#   1. 检测 OpenClaw 版本（≥ 2026.7.1-2）
+#   1. 检测 OpenClaw 版本（≥ 2026.8.1 / OpenClaw 2.0）
 #   2. 定位用户 skills 目录（默认 ~/.openclaw/skills，可用 --skills-dir 覆盖）
 #   3. 备份同名 Skill（若目标已存在同目录先备份为 skill.prepatch备份时间戳）
 #   4. cp -r skills/* -> 目标 skills 目录（包括共享 _lib）
-#   5. 安装运行时 AGENTS.md，并为旧 HEARTBEAT.md 补充代码化维护入口
-#   6. Active profile 显式启用 OpenClaw 原生 Heartbeat；不创建业务 Cron
+#   5. 安装运行时 AGENTS.md
+#   6. Active profile 把维护入口写入指定 Agent 的原生 Heartbeat prompt；不创建业务 Cron
 #   7. 重载 / 重启 OpenClaw gateway 并动态验证全部 Core Skills ready
 #
 # 用法:
@@ -18,7 +18,7 @@
 #   ./install.sh --skills-dir /path   # 指定 skills 目录
 #   ./install.sh --profile basic      # 仅对话模式，不写 Heartbeat 配置
 #   ./install.sh --heartbeat-every 1h # Active 模式自定义周期（默认 30m）
-#   ./install.sh --heartbeat-agent main # 唯一 Heartbeat owner（默认 main）
+#   ./install.sh --heartbeat-agent main # 多 Agent 无唯一默认 owner 时显式指定
 #   ./install.sh --vault-dir /path/to/Vault # 启用 Obsidian 投影视图
 #   ./install.sh --no-reload          # 跳过 gateway restart
 #   ./install.sh --no-verify          # 跳过 skills list 验证
@@ -28,19 +28,18 @@ set -u
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILLS_SRC="$REPO/skills"
 AGENTS_SRC="$REPO/templates/AGENTS.runtime.md"
-HEARTBEAT_SRC="$REPO/templates/HEARTBEAT.md"
+HEARTBEAT_SRC="$REPO/templates/HEARTBEAT.prompt.md"
 NOW="$(date +%Y%m%d-%H%M%S)"
 
-MIN_VERSION="2026.7.1"
+MIN_VERSION="2026.8.1"
 MIN_PYTHON="3.9"
 
 # ---- 参数解析 ----
 SKILLS_DIR="${OPENCLAW_SKILLS_DIR:-${HOME}/.openclaw/skills}"
 WORKSPACE_AGENTS="${OPENCLAW_WS_AGENTS:-${HOME}/.openclaw/AGENTS.md}"
-WORKSPACE_HEARTBEAT="${OPENCLAW_WS_HEARTBEAT:-}"
 PROFILE="active"
 HEARTBEAT_EVERY="30m"
-HEARTBEAT_AGENT="main"
+HEARTBEAT_AGENT="${OPENCLAW_HEARTBEAT_AGENT:-}"
 VAULT_DIR=""
 DO_RELOAD=1
 DO_VERIFY=1
@@ -64,9 +63,6 @@ case "$PROFILE" in
   basic|active) ;;
   *) echo "未知 profile: $PROFILE（可选 basic|active）"; exit 2 ;;
 esac
-[ -n "$HEARTBEAT_AGENT" ] || { echo "Heartbeat Agent ID 不能为空"; exit 2; }
-[ -n "$WORKSPACE_HEARTBEAT" ] || WORKSPACE_HEARTBEAT="$(dirname "$WORKSPACE_AGENTS")/HEARTBEAT.md"
-
 echo "==> Agent OS 安装：源=$REPO  目标skills=$SKILLS_DIR"
 
 # ---- 1. 检测强制运行依赖 ----
@@ -92,6 +88,35 @@ if command -v openclaw >/dev/null 2>&1; then
   fi
 fi
 
+# OpenClaw 2.0 显式 roster：默认/唯一 Agent 可零配置，多 Agent 无默认时必须明确选择。
+if [ -z "$HEARTBEAT_AGENT" ]; then
+  ENTRIES_JSON="$(openclaw config get agents.entries --json 2>/dev/null || printf '{}')"
+  HEARTBEAT_AGENT="$(printf '%s' "$ENTRIES_JSON" | "$PYTHON_BIN" -c '
+import json, sys
+try:
+    rows = json.load(sys.stdin)
+except Exception:
+    rows = {}
+if isinstance(rows, list):
+    rows = {str(x.get("id", "")): x for x in rows if isinstance(x, dict) and x.get("id")}
+if not isinstance(rows, dict):
+    rows = {}
+defaults = [k for k, v in rows.items() if isinstance(v, dict) and v.get("default") is True]
+if len(defaults) == 1:
+    print(defaults[0])
+elif len(rows) == 1:
+    print(next(iter(rows)))
+elif not rows:
+    print("main")
+' )"
+fi
+[ -n "$HEARTBEAT_AGENT" ] \
+  || { echo "!! 多 Agent roster 没有唯一默认 owner；请传 --heartbeat-agent <id>"; exit 2; }
+printf '%s' "$HEARTBEAT_AGENT" | grep -Eq '^[A-Za-z0-9_-]+$' \
+  || { echo "Heartbeat Agent ID 只能包含字母、数字、下划线和连字符"; exit 2; }
+HEARTBEAT_CONFIG="agents.entries.$HEARTBEAT_AGENT.heartbeat"
+echo "==> Heartbeat owner 已解析：$HEARTBEAT_AGENT"
+
 # ---- 2. 创建目标 skills 目录 ----
 mkdir -p "$SKILLS_DIR" || { echo "!! 无法创建 $SKILLS_DIR"; exit 1; }
 mkdir -p "$(dirname "$WORKSPACE_AGENTS")" 2>/dev/null || true
@@ -102,10 +127,10 @@ mkdir -p "$(dirname "$WORKSPACE_AGENTS")/.agent-os/agents/$HEARTBEAT_AGENT" \
 
 # ---- 2b. 旧版 Skill-local 状态安全迁移（复制+校验，不删除源） ----
 if [ -n "$PYTHON_BIN" ] && [ -f "$REPO/scripts/migrate_runtime_state.py" ]; then
-  echo "==> 检查旧版运行状态（目标 Agent: main）"
+  echo "==> 检查旧版运行状态（目标 Agent: $HEARTBEAT_AGENT）"
   if ! "$PYTHON_BIN" "$REPO/scripts/migrate_runtime_state.py" \
       --skills-root "$SKILLS_DIR" --workspace "$(dirname "$WORKSPACE_AGENTS")" \
-      --agent main --apply >/dev/null; then
+      --agent "$HEARTBEAT_AGENT" --apply >/dev/null; then
     echo "!! 运行状态迁移存在冲突，已停止安装；旧数据和现有目标均未被覆盖"
     exit 4
   fi
@@ -139,32 +164,14 @@ else
     && echo "==> 目标 AGENTS.md 不存在 → 已复制到 $WORKSPACE_AGENTS"
 fi
 
-if [ -e "$WORKSPACE_HEARTBEAT" ]; then
-  if grep -Fq "proactive.py heartbeat" "$WORKSPACE_HEARTBEAT"; then
-    echo "==> 目标 HEARTBEAT.md 已包含 Agent OS 代码化维护入口 → 保留"
-  else
-    cp "$WORKSPACE_HEARTBEAT" "${WORKSPACE_HEARTBEAT}.prepatch${NOW}" 2>/dev/null \
-      && echo "==> 旧 HEARTBEAT.md 已备份到 ${WORKSPACE_HEARTBEAT}.prepatch${NOW}"
-    {
-      printf '\n<!-- agent-os-maintenance-entry -->\n'
-      cat "$HEARTBEAT_SRC"
-      printf '<!-- /agent-os-maintenance-entry -->\n'
-    } >> "$WORKSPACE_HEARTBEAT"
-    echo "==> 已保留原内容并追加 Agent OS 代码化维护入口"
-  fi
-else
-  cp "$HEARTBEAT_SRC" "$WORKSPACE_HEARTBEAT" \
-    && echo "==> 已安装 Agent OS HEARTBEAT.md"
-fi
-
 # ---- 6. Active profile：使用 OpenClaw 原生 Heartbeat，零业务 Cron ----
 if [ "$PROFILE" = "active" ] && command -v openclaw >/dev/null 2>&1; then
-  echo "==> Active profile：配置 OpenClaw Heartbeat every=$HEARTBEAT_EVERY"
-  openclaw config set agents.defaults.heartbeat.every "$HEARTBEAT_EVERY" >/dev/null 2>&1 \
-    || { echo "!! Heartbeat 配置失败；可稍后手工设置，不影响 Basic 对话能力"; }
-  openclaw config set agents.defaults.heartbeat.agentId "$HEARTBEAT_AGENT" >/dev/null 2>&1 \
-    || { echo "!! Heartbeat owner 配置失败；为避免多 Agent 同时巡检，安装终止"; exit 5; }
-  echo "==> Heartbeat owner：$HEARTBEAT_AGENT（其他 Agent 不单独启用）"
+  echo "==> Active profile：配置 OpenClaw 2.0 Heartbeat agent=$HEARTBEAT_AGENT every=$HEARTBEAT_EVERY"
+  openclaw config set "$HEARTBEAT_CONFIG.every" "$HEARTBEAT_EVERY" >/dev/null 2>&1 \
+    || { echo "!! Heartbeat cadence 配置失败，安装终止"; exit 5; }
+  openclaw config set "$HEARTBEAT_CONFIG.prompt" "$(cat "$HEARTBEAT_SRC")" >/dev/null 2>&1 \
+    || { echo "!! Heartbeat prompt 配置失败，安装终止"; exit 5; }
+  echo "==> Heartbeat owner：$HEARTBEAT_AGENT（使用原生 per-agent heartbeat block）"
   CRON_ENABLED="$(openclaw config get cron.enabled 2>/dev/null || true)"
   if [ "$CRON_ENABLED" = "false" ]; then
     echo "!! 检测到 cron.enabled=false；OpenClaw 不会运行 Heartbeat。保留用户显式设置，未自动开启。"
@@ -213,14 +220,18 @@ if [ "$DO_VERIFY" -eq 1 ] && command -v openclaw >/dev/null 2>&1; then
     echo "!! 请确认共享目录 $SKILLS_DIR 已被 OpenClaw 加载"
     exit 3
   fi
-  OWNER="$(openclaw config get agents.defaults.heartbeat.agentId 2>/dev/null || true)"
-  if [ "$PROFILE" = "active" ] && [ "$OWNER" != "$HEARTBEAT_AGENT" ]; then
-    echo "!! Heartbeat owner 验证失败：期望=$HEARTBEAT_AGENT 实际=${OWNER:-<empty>}"
-    exit 5
+  if [ "$PROFILE" = "active" ]; then
+    EVERY="$(openclaw config get "$HEARTBEAT_CONFIG.every" 2>/dev/null || true)"
+    PROMPT="$(openclaw config get "$HEARTBEAT_CONFIG.prompt" 2>/dev/null || true)"
+    if [ "$EVERY" != "$HEARTBEAT_EVERY" ] || ! printf '%s' "$PROMPT" | grep -Fq 'proactive.py heartbeat'; then
+      echo "!! Heartbeat 验证失败：agent=$HEARTBEAT_AGENT cadence=${EVERY:-<empty>} prompt=$( [ -n "$PROMPT" ] && echo present || echo missing )"
+      exit 5
+    fi
   fi
-  echo "==> $VERIFIED 个 bundled Skills 全部 ready；Heartbeat owner 验证通过 ✓"
+  echo "==> $VERIFIED 个 bundled Skills 全部 ready；OpenClaw 2.0 Heartbeat 验证通过 ✓"
   if [ -n "$PYTHON_BIN" ]; then
     OPENCLAW_WORKSPACE="$(dirname "$WORKSPACE_AGENTS")" OPENCLAW_AGENT_ID="$HEARTBEAT_AGENT" \
+      AGENT_OS_PROFILE="$PROFILE" \
       AGENT_OS_VAULT_DIR="$VAULT_DIR" \
       "$PYTHON_BIN" "$SKILLS_DIR/proactive/scripts/agent_os.py" doctor \
       || { echo "!! Agent OS Doctor 验收失败"; exit 7; }

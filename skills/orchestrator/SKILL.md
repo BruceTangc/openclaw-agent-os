@@ -31,7 +31,7 @@ version: 1.3.0
 
 ## OpenClaw Boundary
 
-复用 OpenClaw 原生 Sub-agents / Task Flow / Skills / Tools / agent loop。**不创建自己的 Scheduler、Event Bus、Task Runtime、Memory Runtime、Agent Runtime**。scripts/orchestrator.py 是纯函数逻辑层（parse/goal/decompose/dag/route/plan/verify/evol），不持久化状态。
+复用 OpenClaw 2.0 原生 Sub-agents / Background Tasks / Task Flow / Skills / Tools / agent loop。规划结果需要持久执行时必须落到原生 Task Flow，并保留其 `flowId/taskId`；**不创建自己的 Scheduler、Event Bus、Task Runtime、Memory Runtime、Agent Runtime**。scripts/orchestrator.py 是纯函数逻辑层（parse/goal/decompose/dag/route/plan/verify/evol），不持久化运行状态。
 
 ## When to Activate
 

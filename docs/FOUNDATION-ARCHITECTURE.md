@@ -367,7 +367,7 @@ goal_id → task_id → execution_id → action_id → observation_id
 
 ## 21. Proactive
 
-Proactive **不是 Runtime**，只是自主控制的**触发机制**。
+Proactive **不是 Runtime，也不是触发机制**，而是外部 Trigger 唤醒后的自主决策层。
 `Heartbeat → Proactive → Eligibility Check → 有没有该做的 → YES → Goal/Task → 正常 Control Plane`。
 必须经过 Permission/Eligibility/Cooldown/Dependency/Ownership/Goal State/Anti-loop，
 禁止直接 `Heartbeat → Execute`。

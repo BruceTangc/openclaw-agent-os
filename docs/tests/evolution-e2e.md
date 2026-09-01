@@ -129,5 +129,6 @@ change-20260817-001 → T4 Regression PASS。
 → Regression → T4 PASS**。E2E 测试还真实暴露并修复了一个 learn.py bug
 （`show_status` 将 promotion 元组当 dict 使用，已修）。
 
-下一步（P4）：配置 Heartbeat → Proactive 自动巡检 Evidence →
-Candidate discovery，让系统长期运行中持续产出真实进化案例。
+当前版本已由默认 Active 安装链路配置单一 OpenClaw Heartbeat，并通过
+`Heartbeat → Proactive → maintenance gate → Evidence/Candidate` 做低频巡检；
+本文此处仅保留为历史测试结论，不再要求额外 Heartbeat 或业务 Cron。

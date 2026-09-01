@@ -11,7 +11,7 @@
 安装后应获得：
 
 - 11 个 Core Skills、`agent-os-vault` 可选桥接能力和共享 `_lib`；
-- 客户运行时 `AGENTS.md` 与 `HEARTBEAT.md`；
+- 客户运行时 `AGENTS.md` 与 per-agent OpenClaw 2.0 Heartbeat prompt；
 - OpenClaw 原生 Heartbeat（默认 `30m`）；
 - Task、Proactive、Memory、Ontology、Execution Record、Self-Evolution 的安全持久化；
 - 由 Heartbeat 驱动的低频维护，不要求客户创建业务 Cron；

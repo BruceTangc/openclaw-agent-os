@@ -1,8 +1,8 @@
 # OpenClaw Agent OS v1.3 Production
 
-Target baseline: OpenClaw 2026.7.1-2.
+Target baseline: OpenClaw 2026.8.1 (OpenClaw 2.0).
 
-> 协议总纲见 [PROTOCOL.md](PROTOCOL.md)，冻结存档见根目录 FINALIZE-REPORT.md。
+> 协议总纲见 [PROTOCOL.md](PROTOCOL.md)；当前发布状态以自动化质量门为准。
 
 This package provides the governance, decision and workflow layer around OpenClaw's native runtime.
 
