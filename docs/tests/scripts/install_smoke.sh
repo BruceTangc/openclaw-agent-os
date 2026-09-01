@@ -17,6 +17,8 @@ case "${1:-}" in
       echo "true"
     elif [ "${2:-}" = "get" ] && [ "${3:-}" = "agents.defaults.heartbeat.agentId" ]; then
       echo "main"
+    elif [ "${2:-}" = "get" ] && [ "${3:-}" = "agents.defaults.heartbeat.every" ]; then
+      echo "30m"
     fi
     ;;
   skills)
@@ -42,6 +44,7 @@ test -f "$TMP/workspace/AGENTS.md"
 test -f "$TMP/workspace/HEARTBEAT.md"
 grep -Fq 'config set agents.defaults.heartbeat.every 30m' "$TMP/openclaw.log"
 grep -Fq 'config set agents.defaults.heartbeat.agentId main' "$TMP/openclaw.log"
+grep -Fq 'config get agents.defaults.heartbeat.every' "$TMP/openclaw.log"
 test -d "$TMP/workspace/.agent-os/agents/main"
 test -d "$TMP/workspace/.agent-os/projects"
 test -d "$TMP/workspace/.agent-os/shared"
