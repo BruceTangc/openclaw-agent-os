@@ -28,6 +28,8 @@ TESTS = [
     ("orchestrator", ["skills/orchestrator/scripts/test_orchestrator.py"], False),
     ("proactive anti-loop", ["skills/proactive/scripts/test_anti_loop.py"], False),
     ("heartbeat maintenance", ["skills/proactive/scripts/test_maintenance.py"], False),
+    ("agent os doctor", ["skills/proactive/scripts/test_agent_os.py"], False),
+    ("evolution proposal pipeline", ["skills/self-evolution/scripts/test_pipeline.py"], False),
     ("self-evolution", ["skills/self-evolution/scripts/self_test.py"], True),
     ("multi-agent protocol", ["docs/tests/scripts/ma_regression.py"], False),
     ("protocol compliance", ["docs/tests/scripts/compliance.py"], False),

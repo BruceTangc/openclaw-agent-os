@@ -32,6 +32,7 @@ HEARTBEAT_SRC="$REPO/templates/HEARTBEAT.md"
 NOW="$(date +%Y%m%d-%H%M%S)"
 
 MIN_VERSION="2026.7.1"
+MIN_PYTHON="3.9"
 
 # ---- 参数解析 ----
 SKILLS_DIR="${OPENCLAW_SKILLS_DIR:-${HOME}/.openclaw/skills}"
@@ -68,18 +69,27 @@ esac
 
 echo "==> Agent OS 安装：源=$REPO  目标skills=$SKILLS_DIR"
 
-# ---- 1. 检测 OpenClaw 版本 ----
+# ---- 1. 检测强制运行依赖 ----
+command -v openclaw >/dev/null 2>&1 \
+  || { echo "!! 未找到 openclaw；Agent OS 不是独立 Runtime，安装终止"; exit 2; }
+PYTHON_BIN=""
+command -v python3 >/dev/null 2>&1 && PYTHON_BIN="python3"
+[ -n "$PYTHON_BIN" ] || { command -v python >/dev/null 2>&1 && PYTHON_BIN="python"; }
+[ -n "$PYTHON_BIN" ] \
+  || { echo "!! 未找到 Python 3；Agent OS 核心脚本无法运行，安装终止"; exit 2; }
+"$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' \
+  || { echo "!! Python 版本低于 $MIN_PYTHON，安装终止"; exit 2; }
+echo "==> Python $("$PYTHON_BIN" -c 'import sys; print(".".join(map(str, sys.version_info[:3])))') OK"
+
 if command -v openclaw >/dev/null 2>&1; then
   VER="$(openclaw --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
   if [ -z "${VER:-}" ]; then
-    echo "!! 无法解析 openclaw 版本；继续但请手工确认 ≥ $MIN_VERSION"
+    echo "!! 无法解析 openclaw 版本，安装终止"; exit 2
   elif [ "$(printf '%s\n' "$MIN_VERSION" "$VER" | sort -V | head -1)" = "$MIN_VERSION" ]; then
     echo "==> OpenClaw 版本 $VER ≥ $MIN_VERSION OK"
   else
-    echo "!! OpenClaw 版本 $VER < $MIN_VERSION(建议)；可能不兼容，继续但请谨慎"
+    echo "!! OpenClaw 版本 $VER < $MIN_VERSION，安装终止"; exit 2
   fi
-else
-  echo "!! 未找到 openclaw 命令；跳过版本检测（请确保已装 OpenClaw ≥ $MIN_VERSION）"
 fi
 
 # ---- 2. 创建目标 skills 目录 ----
@@ -91,9 +101,6 @@ mkdir -p "$(dirname "$WORKSPACE_AGENTS")/.agent-os/agents/$HEARTBEAT_AGENT" \
   "$(dirname "$WORKSPACE_AGENTS")/memory" || { echo "!! 无法初始化 Agent OS 状态目录"; exit 1; }
 
 # ---- 2b. 旧版 Skill-local 状态安全迁移（复制+校验，不删除源） ----
-PYTHON_BIN=""
-command -v python3 >/dev/null 2>&1 && PYTHON_BIN="python3"
-[ -n "$PYTHON_BIN" ] || { command -v python >/dev/null 2>&1 && PYTHON_BIN="python"; }
 if [ -n "$PYTHON_BIN" ] && [ -f "$REPO/scripts/migrate_runtime_state.py" ]; then
   echo "==> 检查旧版运行状态（目标 Agent: main）"
   if ! "$PYTHON_BIN" "$REPO/scripts/migrate_runtime_state.py" \
@@ -212,6 +219,13 @@ if [ "$DO_VERIFY" -eq 1 ] && command -v openclaw >/dev/null 2>&1; then
     exit 5
   fi
   echo "==> $VERIFIED 个 bundled Skills 全部 ready；Heartbeat owner 验证通过 ✓"
+  if [ -n "$PYTHON_BIN" ]; then
+    OPENCLAW_WORKSPACE="$(dirname "$WORKSPACE_AGENTS")" OPENCLAW_AGENT_ID="$HEARTBEAT_AGENT" \
+      AGENT_OS_VAULT_DIR="$VAULT_DIR" \
+      "$PYTHON_BIN" "$SKILLS_DIR/proactive/scripts/agent_os.py" doctor \
+      || { echo "!! Agent OS Doctor 验收失败"; exit 7; }
+    echo "==> Agent OS Doctor 验收通过 ✓"
+  fi
 else
   echo "==> 跳过验证（--no-verify 或 openclaw 命令不可用），请手工确认: openclaw skills list | grep -c '✓ ready'"
 fi

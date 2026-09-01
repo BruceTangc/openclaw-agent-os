@@ -1,7 +1,7 @@
 # Installation
 
 ## Compatibility
-Designed for OpenClaw 2026.7.1 or newer. Agent OS v1.3（Protocol v1.3；v1.2 Skill 属 legacy compatibility mode，可兼容运行）。
+Requires OpenClaw 2026.7.1 or newer and Python 3.9 or newer. Agent OS v1.3（Protocol v1.3；v1.2 Skill 属 legacy compatibility mode，可兼容运行）。
 
 ## 一键安装（默认 Active，客户无需手配 Heartbeat/Cron）
 

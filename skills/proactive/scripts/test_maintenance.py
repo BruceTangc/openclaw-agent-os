@@ -10,8 +10,11 @@ with tempfile.TemporaryDirectory(prefix="agentos_maintenance_") as tmp:
     os.environ["OPENCLAW_WORKSPACE"] = tmp
     os.environ["OPENCLAW_AGENT_ID"] = "agent-a"
     import maintenance
+    import dispatcher
 
     now = datetime(2026, 8, 31, tzinfo=timezone.utc)
+    assert dispatcher.authorize("task_health")["allowed"] is True
+    assert dispatcher.authorize("unknown_action")["allowed"] is False
     first = maintenance.plan(at=now)
     assert len(first["due"]) == 6
     assert any(row["name"] == "vault_sync" for row in first["due"])

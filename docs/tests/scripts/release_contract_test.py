@@ -40,6 +40,11 @@ check("agent-os-vault is bundled extension", "agent-os-vault" in bundled and "ag
 check("installer sets one heartbeat owner", "agents.defaults.heartbeat.agentId" in installer)
 check("installer verifies skills by name", 'grep -F "$name"' in installer)
 check("installer creates no business cron", not re.search(r"openclaw\s+(?:cron|automations)\s+(?:add|create)", installer))
+check("installer requires OpenClaw", "Agent OS 不是独立 Runtime，安装终止" in installer)
+check("installer requires Python 3.9+", 'MIN_PYTHON="3.9"' in installer
+      and "Agent OS 核心脚本无法运行，安装终止" in installer)
+check("installer runs Agent OS doctor", "proactive/scripts/agent_os.py" in installer
+      and "Agent OS Doctor 验收失败" in installer)
 check("README baseline matches installer", "OpenClaw 2026.7.1 or newer" in readme and 'MIN_VERSION="2026.7.1"' in installer)
 child_env = os.environ.copy()
 child_env["PYTHONUTF8"] = "1"

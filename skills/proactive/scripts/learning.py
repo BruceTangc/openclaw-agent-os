@@ -147,6 +147,12 @@ def _register_learning(event, verdict):
             result.update({"candidate_decision": "DEDUP_EXISTING",
                            "candidate_id": candidate["id"]})
         else:
+            candidate["automation"] = {
+                key: learning.get(key) for key in (
+                    "root_cause", "target", "proposed_change", "expected_metric",
+                    "reproducible", "level", "test_plan", "operations")
+                if learning.get(key) not in (None, "")
+            }
             result.update({"candidate_decision": "CANDIDATE_CREATED",
                            "candidate_id": EVO.save_artifact("candidate", candidate)})
     return result

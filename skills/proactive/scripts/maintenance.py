@@ -20,6 +20,7 @@ if LIB not in sys.path:
 from id_utils import generate_id
 from persistence import FileLock, atomic_write_json
 from workspace import agent_state_dir, current_agent_id, native_memory_dir
+from dispatcher import dispatch
 
 
 CADENCES = {
@@ -216,8 +217,9 @@ def _run_standard(name, at=None):
         data = _json(evidence)
         return evidence, _task_findings(data)
     if name == "evolution_state":
-        evidence = _command("self-evolution/scripts/discover.py", "--status")
-        return evidence, bool(_json(evidence).get("pending_candidates"))
+        evidence = _command("self-evolution/scripts/pipeline.py", "scan")
+        data = _json(evidence)
+        return evidence, bool(data.get("ready_for_review") or data.get("needs_manual_review"))
     if name == "memory_governance":
         audit = _memory_audit(at)
         return {"returncode": 0, "audit": audit}, audit["requires_semantic_review"]
@@ -248,7 +250,10 @@ def _run_standard(name, at=None):
 
 def run_check(name, agent_id=None, at=None):
     if name == "vault_sync":
-        return run_vault(agent_id, at)
+        return dispatch(name, lambda: run_vault(agent_id, at))
+    gate_result = dispatch(name, lambda: {"result": "AUTHORIZED"})
+    if gate_result.get("result") == "FAIL":
+        return gate_result
     try:
         evidence, actionable = _run_standard(name, at)
         result = "PASS" if evidence.get("returncode", 1) == 0 else "FAIL"
@@ -267,7 +272,8 @@ def run_check(name, agent_id=None, at=None):
             actionable = False
     record(name, result, agent_id, detail, at, fingerprint)
     return {"name": name, "result": result, "actionable": bool(actionable),
-            "suppressed_unchanged": suppressed, "evidence": evidence}
+            "suppressed_unchanged": suppressed, "evidence": evidence,
+            "permission": gate_result["permission"]}
 
 
 def run_due(agent_id=None, at=None):

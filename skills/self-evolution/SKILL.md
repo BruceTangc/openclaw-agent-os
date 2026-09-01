@@ -75,6 +75,10 @@ Evidence → Discover → Candidate → Diagnose → Proposal → Governance →
 ## Evolution State（心跳巡检）
 
 Self-Evolution **不自己创建 cron/heartbeat/scheduler**。
+
+结构化经验达到 Evidence 门槛后，可由 Heartbeat 调用
+`python3 scripts/pipeline.py scan` 自动生成并评估待审批 Skill Proposal。
+该入口绝不自动 Apply；修改、回归观察和回滚继续经过既有治理与审批门。
 OpenClaw Heartbeat 唤醒 Agent → `Proactive` → 检查 Evolution State：
 
 ```
