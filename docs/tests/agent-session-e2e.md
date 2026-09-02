@@ -122,7 +122,7 @@
 | 判定 | 有 due → 处理；有候选 → SUGGEST；都无 → HEARTBEAT_OK | ✅ HEARTBEAT_OK（不打扰） |
 
 ### 7.2 写入位置
-- `agents.entries.<owner>.heartbeat.prompt` 注入学习系统巡检入口（L0 只读自动；晋升/修改走 L1+ 与 permission-security）
+- `agents.defaults.heartbeat.prompt` 注入学习系统巡检入口（L0 只读自动；晋升/修改走 L1+ 与 permission-security）
 
 ### 7.3 验证结论
 - 真实 heartbeat 巡检流程跑通：wake → verify → propose → 判定 → HEARTBEAT_OK

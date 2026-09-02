@@ -46,8 +46,8 @@ knowledge-governance / ontology / self-evolution / summarize`；默认安装还�
 ### ④ Proactive 生效了吗？
 手动触发一次 heartbeat（或等下一次自动唤醒）：
 ```bash
-openclaw config get agents.entries.main.heartbeat.every  # 默认 owner=main 时为 30m
-openclaw config get agents.entries.main.heartbeat.prompt # 应包含 proactive.py heartbeat
+openclaw config get agents.defaults.heartbeat.every  # 默认 owner=main 时为 30m
+openclaw config get agents.defaults.heartbeat.prompt # 应包含 proactive.py heartbeat
 ```
 正常：有事件 → 提醒；无事件 → `HEARTBEAT_OK` / 安静。
 一键安装已配置 Heartbeat + Proactive；客户无需另建 Cron。没有提醒通常表示当前没有

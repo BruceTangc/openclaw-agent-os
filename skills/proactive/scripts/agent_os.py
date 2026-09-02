@@ -64,11 +64,16 @@ def inspect(agent_id=None):
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                   text=True, encoding="utf-8", errors="replace")
             return done.returncode, done.stdout.strip().strip('"')
-        heartbeat_path = "agents.entries.{}.heartbeat".format(agent)
+        heartbeat_path = "agents.defaults.heartbeat"
+        owner_rc, owner = config(heartbeat_path + ".agentId")
         every_rc, every = config(heartbeat_path + ".every")
         prompt_rc, prompt = config(heartbeat_path + ".prompt")
         cadence_ok = every_rc == 0 and every not in ("", "0", "0m", "false")
-        prompt_ok = prompt_rc == 0 and "proactive.py heartbeat" in prompt
+        owner_ok = owner_rc == 0 and owner == agent
+        prompt_ok = (prompt_rc == 0 and "proactive.py" in prompt and "heartbeat" in prompt
+                     and "OPENCLAW_AGENT_ID={}".format(agent) in prompt)
+        checks.append(_check("heartbeat_owner", "PASS" if owner_ok else "FAIL",
+                             owner or "<empty>"))
         checks.append(_check("heartbeat_prompt", "PASS" if prompt_ok else "FAIL",
                              heartbeat_path + (" configured" if prompt_ok else " missing Agent OS entry")))
         checks.append(_check("heartbeat_cadence", "PASS" if cadence_ok else "FAIL",

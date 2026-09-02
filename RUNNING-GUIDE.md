@@ -8,7 +8,7 @@
 
 ## 0. 前置确认
 
-- OpenClaw 版本：`2026.7.1` 或更新版本（Agent OS v1.3 目标基线）
+- OpenClaw 版本：`2026.8.1` 或更新版本（Agent OS v1.3 目标基线）
 - 推荐直接运行 `./install.sh`；它会复制全部 Skills 与共享 `_lib`（见 `docs/INSTALL.md`）
 - 装完后用 `openclaw skills list` 确认 11 个 Core Skill 均为 `✓ ready`：
   `proactive / context-orchestration / task-manager / orchestrator / permission-security /

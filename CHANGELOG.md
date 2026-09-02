@@ -9,4 +9,4 @@
 - Add executable context, memory, and knowledge governance plus summarize routing.
 - Add installation, upgrade, migration, governance, maintenance, and protocol gates.
 
-Compatibility baseline: OpenClaw 2026.7.1 or newer.
+Compatibility baseline: OpenClaw 2026.8.1 (OpenClaw 2.0) or newer.

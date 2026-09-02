@@ -52,7 +52,7 @@ cp -r skills/*  <你的-skills-目录>/
 Agent OS 的治理/决策/协议全靠 AGENTS.md 注入行为约束；不装它 = 只有 Skill 没有协议层。
 ```bash
 cp templates/AGENTS.runtime.md  <你的-openclaw-workspace>/AGENTS.md
-# Heartbeat 不再复制 workspace 文件；安装器写入 agents.entries.<agent>.heartbeat.prompt
+# Heartbeat 不再复制 workspace 文件；安装器写入 agents.defaults.heartbeat.prompt
 # 如已存在同名文件：先备份，再按需合并；不要覆盖客户已有个性化规则
 # 注：AGENTS.md 保留项目边界、权限与验证要求；代码审查方式按项目风险和用户要求决定
 ```
@@ -77,7 +77,7 @@ openclaw skills list                         # 11 Core + 默认 bundled agent-os
 | 等级 | 包含 | 得到 |
 |:--|:--|:--|
 | **Level 1 — Basic** | Core Skills + `_lib` + Runtime AGENTS.md | 基础治理能力：Fast/Full Path、Permission Gate、Verification、Memory/Knowledge/Ontology、Evolution |
-| **Level 2 — Active（安装器默认）** | Level 1 + per-agent OpenClaw Heartbeat prompt | 主动性：Proactive 决策 + Evolution 巡检；无需另建 Cron |
+| **Level 2 — Active（安装器默认）** | Level 1 + single-owner OpenClaw Heartbeat prompt | 主动性：Proactive 决策 + Evolution 巡检；无需另建 Cron |
 | **Level 3 — Full** | Level 2 + Memory Search + Sub-agents + Execution Record + Long-running monitoring | 完整 Agent OS：跨 Session 记忆、Multi-Agent 委派、可追溯执行、长期运行验证 |
 
 ---

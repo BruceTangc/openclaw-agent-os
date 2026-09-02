@@ -54,7 +54,7 @@
 
 ## 6. 关联
 
-- 巡检入口：`agents.entries.<owner>.heartbeat.prompt`（OpenClaw 2.0 原生配置）
+- 巡检入口：`agents.defaults.heartbeat.prompt`（OpenClaw 2.0 原生配置）
 - 学习引擎：`skills/self-evolution/scripts/`（discover.py --status / regression.py / rollback.py）
 - 生产 trail：`~/.openclaw/workspace/memory/.learning-trail.json`
 - 协议：`docs/EVOLUTION-PROTOCOL.md`（§10 不允许的行为 = anti-loop 的文字版）

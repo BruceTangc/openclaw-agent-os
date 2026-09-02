@@ -10,7 +10,7 @@
 #   3. 备份同名 Skill（若目标已存在同目录先备份为 skill.prepatch备份时间戳）
 #   4. cp -r skills/* -> 目标 skills 目录（包括共享 _lib）
 #   5. 安装运行时 AGENTS.md
-#   6. Active profile 把维护入口写入指定 Agent 的原生 Heartbeat prompt；不创建业务 Cron
+#   6. Active profile 由 defaults.heartbeat.agentId 指定唯一 owner；不创建业务 Cron
 #   7. 重载 / 重启 OpenClaw gateway 并动态验证全部 Core Skills ready
 #
 # 用法:
@@ -114,7 +114,7 @@ fi
   || { echo "!! 多 Agent roster 没有唯一默认 owner；请传 --heartbeat-agent <id>"; exit 2; }
 printf '%s' "$HEARTBEAT_AGENT" | grep -Eq '^[A-Za-z0-9_-]+$' \
   || { echo "Heartbeat Agent ID 只能包含字母、数字、下划线和连字符"; exit 2; }
-HEARTBEAT_CONFIG="agents.entries.$HEARTBEAT_AGENT.heartbeat"
+HEARTBEAT_CONFIG="agents.defaults.heartbeat"
 echo "==> Heartbeat owner 已解析：$HEARTBEAT_AGENT"
 
 # ---- 2. 创建目标 skills 目录 ----
@@ -167,11 +167,19 @@ fi
 # ---- 6. Active profile：使用 OpenClaw 原生 Heartbeat，零业务 Cron ----
 if [ "$PROFILE" = "active" ] && command -v openclaw >/dev/null 2>&1; then
   echo "==> Active profile：配置 OpenClaw 2.0 Heartbeat agent=$HEARTBEAT_AGENT every=$HEARTBEAT_EVERY"
+  HEARTBEAT_PROMPT="$(cat "$HEARTBEAT_SRC")"
+  HEARTBEAT_PROMPT="${HEARTBEAT_PROMPT//\{\{WORKSPACE\}\}/$(dirname "$WORKSPACE_AGENTS")}"
+  HEARTBEAT_PROMPT="${HEARTBEAT_PROMPT//\{\{AGENT_ID\}\}/$HEARTBEAT_AGENT}"
+  HEARTBEAT_PROMPT="${HEARTBEAT_PROMPT//\{\{PROACTIVE_SCRIPT\}\}/$SKILLS_DIR/proactive/scripts/proactive.py}"
+  openclaw config set "$HEARTBEAT_CONFIG.agentId" "$HEARTBEAT_AGENT" >/dev/null 2>&1 \
+    || { echo "!! Heartbeat owner 配置失败，安装终止"; exit 5; }
   openclaw config set "$HEARTBEAT_CONFIG.every" "$HEARTBEAT_EVERY" >/dev/null 2>&1 \
     || { echo "!! Heartbeat cadence 配置失败，安装终止"; exit 5; }
-  openclaw config set "$HEARTBEAT_CONFIG.prompt" "$(cat "$HEARTBEAT_SRC")" >/dev/null 2>&1 \
+  openclaw config set "$HEARTBEAT_CONFIG.prompt" "$HEARTBEAT_PROMPT" >/dev/null 2>&1 \
     || { echo "!! Heartbeat prompt 配置失败，安装终止"; exit 5; }
-  echo "==> Heartbeat owner：$HEARTBEAT_AGENT（使用原生 per-agent heartbeat block）"
+  openclaw config set "$HEARTBEAT_CONFIG.target" "owner" >/dev/null 2>&1 \
+    || { echo "!! Heartbeat owner route 配置失败，安装终止"; exit 5; }
+  echo "==> Heartbeat owner：$HEARTBEAT_AGENT（单一 defaults heartbeat；未给 helper 创建 heartbeat block）"
   CRON_ENABLED="$(openclaw config get cron.enabled 2>/dev/null || true)"
   if [ "$CRON_ENABLED" = "false" ]; then
     echo "!! 检测到 cron.enabled=false；OpenClaw 不会运行 Heartbeat。保留用户显式设置，未自动开启。"

@@ -17,10 +17,12 @@ case "${1:-}" in
       echo "true"
     elif [ "${2:-}" = "get" ] && [ "${3:-}" = "agents.entries" ]; then
       echo '{"main":{"id":"main","default":true}}'
-    elif [ "${2:-}" = "get" ] && [ "${3:-}" = "agents.entries.main.heartbeat.every" ]; then
+    elif [ "${2:-}" = "get" ] && [ "${3:-}" = "agents.defaults.heartbeat.agentId" ]; then
+      echo "main"
+    elif [ "${2:-}" = "get" ] && [ "${3:-}" = "agents.defaults.heartbeat.every" ]; then
       echo "30m"
-    elif [ "${2:-}" = "get" ] && [ "${3:-}" = "agents.entries.main.heartbeat.prompt" ]; then
-      echo "Run python3 skills/proactive/scripts/proactive.py heartbeat"
+    elif [ "${2:-}" = "get" ] && [ "${3:-}" = "agents.defaults.heartbeat.prompt" ]; then
+      echo "OPENCLAW_WORKSPACE='${OPENCLAW_MOCK_WORKSPACE:?}' OPENCLAW_AGENT_ID=main python3 '${OPENCLAW_MOCK_SKILLS:?}/proactive/scripts/proactive.py' heartbeat"
     fi
     ;;
   skills)
@@ -34,6 +36,7 @@ chmod +x "$TMP/bin/openclaw"
 export PATH="$TMP/bin:$PATH"
 export OPENCLAW_MOCK_LOG="$TMP/openclaw.log"
 export OPENCLAW_MOCK_SKILLS="$TMP/skills"
+export OPENCLAW_MOCK_WORKSPACE="$TMP/workspace"
 
 bash "$REPO/install.sh" \
   --skills-dir "$TMP/skills" \
@@ -44,10 +47,14 @@ test -d "$TMP/skills/proactive"
 test -d "$TMP/skills/agent-os-vault"
 test -f "$TMP/workspace/AGENTS.md"
 test ! -e "$TMP/workspace/HEARTBEAT.md"
-grep -Fq 'config set agents.entries.main.heartbeat.every 30m' "$TMP/openclaw.log"
-grep -Fq 'config set agents.entries.main.heartbeat.prompt' "$TMP/openclaw.log"
+grep -Fq 'config set agents.defaults.heartbeat.agentId main' "$TMP/openclaw.log"
+grep -Fq 'config set agents.defaults.heartbeat.target owner' "$TMP/openclaw.log"
+grep -Fq 'config set agents.defaults.heartbeat.every 30m' "$TMP/openclaw.log"
+grep -Fq 'config set agents.defaults.heartbeat.prompt' "$TMP/openclaw.log"
+grep -Fq 'OPENCLAW_AGENT_ID=main' "$TMP/openclaw.log"
+grep -Fq "OPENCLAW_WORKSPACE='$TMP/workspace'" "$TMP/openclaw.log"
 grep -Fq 'config get agents.entries --json' "$TMP/openclaw.log"
-grep -Fq 'config get agents.entries.main.heartbeat.every' "$TMP/openclaw.log"
+grep -Fq 'config get agents.defaults.heartbeat.every' "$TMP/openclaw.log"
 test -d "$TMP/workspace/.agent-os/agents/main"
 test -d "$TMP/workspace/.agent-os/projects"
 test -d "$TMP/workspace/.agent-os/shared"

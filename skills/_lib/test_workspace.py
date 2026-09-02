@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import tempfile
+import json
 
 import workspace
 
@@ -8,7 +9,7 @@ import workspace
 def main():
     old = {k: os.environ.get(k) for k in (
         "OPENCLAW_WORKSPACE", "OPENCLAW_WORKSPACE_DIR", "AGENT_OS_WORKSPACE",
-        "OPENCLAW_AGENT_ID", "AGENT_OS_AGENT_ID")}
+        "OPENCLAW_AGENT_ID", "AGENT_OS_AGENT_ID", "OPENCLAW_CONFIG_PATH")}
     try:
         with tempfile.TemporaryDirectory(prefix="agentos_workspace_") as tmp:
             os.environ["OPENCLAW_WORKSPACE"] = tmp
@@ -32,7 +33,31 @@ def main():
             with open(canonical, "w", encoding="utf-8") as handle:
                 handle.write("new")
             assert workspace.prefer_migrated_path(canonical, legacy) == canonical
-        print("Workspace path tests: 10 PASS / 0 FAIL")
+        for key in ("OPENCLAW_WORKSPACE", "OPENCLAW_WORKSPACE_DIR", "AGENT_OS_WORKSPACE",
+                    "OPENCLAW_AGENT_ID", "AGENT_OS_AGENT_ID", "OPENCLAW_CONFIG_PATH"):
+            os.environ.pop(key, None)
+        with tempfile.TemporaryDirectory(prefix="agentos_identity_") as tmp:
+            jarvis = os.path.join(tmp, "workspace-jarvis")
+            os.makedirs(os.path.join(jarvis, "skills"))
+            config = os.path.join(tmp, "openclaw.json")
+            with open(config, "w", encoding="utf-8") as handle:
+                json.dump({"agents": {"entries": [
+                    {"id": "main", "workspace": os.path.join(tmp, "workspace")},
+                    {"id": "jarvis", "workspace": jarvis}],
+                    "defaults": {"heartbeat": {"agentId": "jarvis"}}}}, handle)
+            os.environ["OPENCLAW_CONFIG_PATH"] = config
+            previous = os.getcwd()
+            try:
+                os.chdir(os.path.join(jarvis, "skills"))
+                assert workspace.current_agent_id() == "jarvis"
+                assert workspace.workspace_root() == os.path.realpath(jarvis)
+                os.environ["OPENCLAW_AGENT_ID"] = "explicit-agent"
+                assert workspace.current_agent_id() == "explicit-agent"
+            finally:
+                os.chdir(previous)
+                os.environ.pop("OPENCLAW_CONFIG_PATH", None)
+                os.environ.pop("OPENCLAW_AGENT_ID", None)
+        print("Workspace path tests: 13 PASS / 0 FAIL")
         return 0
     finally:
         for key, value in old.items():

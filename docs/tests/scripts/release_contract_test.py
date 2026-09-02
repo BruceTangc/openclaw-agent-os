@@ -37,8 +37,10 @@ check("manifest version matches VERSION", "  version: {}\n".format(version) in m
 check("manifest contains exactly 11 core skills", len(manifest_skills) == 11)
 check("all manifest skills are bundled", set(manifest_skills).issubset(set(bundled)))
 check("agent-os-vault is bundled extension", "agent-os-vault" in bundled and "agent-os-vault" not in manifest_skills)
-check("installer sets one per-agent heartbeat owner", "agents.entries.$HEARTBEAT_AGENT.heartbeat" in installer
-      and "agents.defaults.heartbeat.agentId" not in installer)
+check("installer sets one defaults heartbeat owner",
+      'HEARTBEAT_CONFIG="agents.defaults.heartbeat"' in installer
+      and '"$HEARTBEAT_CONFIG.agentId"' in installer
+      and "agents.entries.$HEARTBEAT_AGENT.heartbeat" not in installer)
 check("installer verifies skills by name", 'grep -F "$name"' in installer)
 check("installer creates no business cron", not re.search(r"openclaw\s+(?:cron|automations)\s+(?:add|create)", installer))
 check("installer requires OpenClaw", "Agent OS 不是独立 Runtime，安装终止" in installer)
