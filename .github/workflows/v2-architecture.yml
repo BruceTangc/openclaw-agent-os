@@ -1,0 +1,22 @@
+name: Agent OS v2 Architecture Gate
+on:
+  push:
+    branches: [agent-os-v2]
+  pull_request:
+    paths:
+      - 'SKILL.md'
+      - 'protocols/**'
+      - 'schemas/**'
+      - 'native/**'
+      - 'docs/*V2*'
+      - 'scripts/validate_v2.py'
+      - 'tests/acceptance-v2.md'
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - run: python scripts/validate_v2.py
