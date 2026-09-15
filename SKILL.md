@@ -29,14 +29,15 @@ When uncertain choose the lower coverage class. Automatic does not mean omniscie
 
 1. **GOAL** — preserve what the user actually asked for and explicit constraints.
 2. **DO** — execute with OpenClaw Native.
-3. **VERIFY** — compare observable evidence with the user goal: PASS / PARTIAL / FAIL / UNKNOWN.
-4. **LEARN OR SKIP** — persist only a durable, reusable, evidence-backed lesson; otherwise finish without learning overhead.
+3. **OBSERVE EVIDENCE** — select factual, provenance-bearing observations. A tool/agent assertion is Evidence at most; it is not a verdict.
+4. **VERIFY** — compare Evidence with the goal/criteria and produce a `VerificationResult`: PASS / PARTIAL / FAIL / UNKNOWN.
+5. **LEARN OR SKIP** — derive Experience only when the relevant outcome has been evaluated and the lesson is durable, reusable and evidence-backed; otherwise finish without learning overhead.
 
-Tool success is evidence only, never proof of task/user-outcome success.
+**Evidence != VerificationResult.** Tool success is evidence only, never proof of run/task/delegation/user-outcome success. `UNKNOWN` must not be silently promoted to PASS or used to justify durable causal/general learning.
 
 ## Deep Path — only when triggered
 
-`Verification -> Experience -> Evolution Candidate (if justified) -> Governance -> OpenClaw Native -> Future Verification`
+`Evidence -> VerificationResult -> Experience -> Evolution Candidate (if justified) -> Governance -> OpenClaw Native -> Future Verification`
 
 Read detailed protocol files only when needed; do not load every protocol for simple tasks.
 
@@ -44,7 +45,7 @@ Read detailed protocol files only when needed; do not load every protocol for si
 
 For exposed work use:
 
-`Native trajectory -> Evidence selection -> Verification -> Learn? -> Experience -> Deduplicate/Contradiction -> Scope -> Native persistence -> Native recall -> Future verification`
+`Native trajectory -> Evidence selection -> VerificationResult -> Learn? -> Experience -> Deduplicate/Contradiction -> Scope -> Native persistence -> Native recall -> Future verification`
 
 Do **not** archive all raw data. OpenClaw remains source-of-truth for sessions/tasks/memory. Keep/select only evidence needed for trustworthy learning.
 
@@ -80,6 +81,8 @@ Evolution is not immediate editing. Default sequence:
 
 `Evidence -> Experience -> Pattern -> Hypothesis -> Candidate -> Governance -> Native Workshop -> Verify`.
 
+Governance authorization and observed runtime state are distinct. **`APPROVED != APPLIED != VERIFIED`.** Governance may authorize a candidate, but `APPROVED` must never be reported as `APPLIED` until native application is directly evidenced. `APPLIED` must never be reported as `VERIFIED` until post-application verification produces PASS. If application or verification cannot be observed, retain the last evidenced state; never advance status by assumption. `REJECT` maps to `REJECTED`; `DEFER` does not advance the candidate unless an explicit review is opened.
+
 Shared, user-owned, security-sensitive, or risky changes follow native approval. Strong models have more reasoning capacity, not more authority.
 
 ## Multi-agent
@@ -105,6 +108,10 @@ OpenClaw owns runtime, sessions, workspaces, tasks, task flow, subagents/A2A, ro
 Agent OS owns only **Verification -> Experience -> Evolution -> Governance** semantics.
 
 Capability preference: OpenClaw Native -> official OpenClaw plugin -> thin Agent OS adapter -> minimal fallback only when unavoidable. Native FULL equivalents supersede Agent OS fallbacks.
+
+## Acceptance truth boundary
+
+Repository/static gate success proves package/contract integrity only. It does **not** prove runtime Agent behavior. Runtime acceptance requires observable execution in real OpenClaw; never report an A-scenario PASS merely because its specification exists or static CI passed.
 
 ## Supporting protocols
 
