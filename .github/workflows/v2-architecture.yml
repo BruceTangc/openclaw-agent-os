@@ -1,16 +1,18 @@
-name: Agent OS v2 Architecture Gate
+name: Agent OS v2 Gate
 on:
   push:
     branches: [agent-os-v2]
   pull_request:
     paths:
       - 'SKILL.md'
+      - 'VERSION'
+      - 'MANIFEST.yml'
       - 'protocols/**'
       - 'schemas/**'
       - 'native/**'
-      - 'docs/*V2*'
+      - 'docs/**'
       - 'scripts/validate_v2.py'
-      - 'tests/acceptance-v2.md'
+      - 'tests/**'
 jobs:
   validate:
     runs-on: ubuntu-latest

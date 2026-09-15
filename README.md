@@ -1,68 +1,44 @@
-# OpenClaw Agent OS v2 — Architecture Preview
+# OpenClaw Agent OS v2
 
-> Active v2 development branch. v1.3 remains the stable baseline on `main` until v2 acceptance is complete.
+**Adaptive Nervous System for OpenClaw — zero-config Skill edition**
 
-**Agent OS is OpenClaw's adaptive learning nervous system.** It learns from verified real work and user feedback without rebuilding OpenClaw's runtime.
+Agent OS v2 is one OpenClaw Skill with four learning semantics: **Verification, Experience, Evolution, Governance**. It uses OpenClaw's native runtime instead of rebuilding it.
 
-## Architecture Freeze
+## Install
 
-One Skill, four stable core capabilities:
+```bash
+openclaw skills install git:BruceTangc/openclaw-agent-os@agent-os-v2
+```
 
-- **Verification** — did reality satisfy the goal?
-- **Experience** — what reusable lesson follows from verified evidence?
-- **Evolution** — what future behavior should improve and why?
-- **Governance** — what may be learned, promoted or changed?
+That is the complete Agent OS setup. Git Skill installation expects `SKILL.md` at the repository root, which this branch provides. No Agent OS config file, Python runtime, heartbeat, cron, database, agent id, memory path, or post-install script is required.
 
-OpenClaw owns agent runtime, sessions, workspaces, tasks/task flow, subagents/A2A, routing, tools, memory persistence/recall, context, automation, sandbox/approval and actual Workshop skill mutation.
+Check it with:
 
-## Multi-agent native
+```bash
+openclaw skills info agent-os
+openclaw skills check
+```
 
-Agent OS does not orchestrate agents. It learns from OpenClaw's native work graph. It preserves agent/requester/parent/root/session/task/delegation provenance and isolates durable learning into `AGENT -> TEAM -> SHARED` scopes.
+Git installs are refreshed by reinstalling the Git source (OpenClaw's `skills update` tracks ClawHub installs, not unmanaged Git installs).
 
-Ephemeral subagents can produce Evidence but do not become permanent learning identities by default.
+## What happens automatically
 
-## Core invariant
+When OpenClaw selects Agent OS for substantive work, the current agent preserves the user's goal, executes through native OpenClaw, verifies the real outcome, derives only useful verified lessons, uses native memory/user-memory for durable writeback when available, and routes reusable improvement candidates through native self-learning/Skill Workshop when available.
 
-`Tool success != Run success != Task success != Delegation success != User outcome success`
+It stays quiet by default; it does not print an Agent OS report after every task.
 
-Local PASS never proves global PASS.
+## Multi-agent
+
+Agent OS does not orchestrate agents. OpenClaw does. Agent OS learns from native agent/session/task/delegation provenance. Permanent agents may own AGENT-scoped experience; ephemeral subagents contribute evidence but do not become permanent learning identities by default. TEAM and SHARED promotion is explicit and governed.
+
+## Hard invariant
+
+`Tool success != Run success != Task success != Delegation success != User outcome success`.
 
 ## Native-first
 
-Core protocols depend on stable capabilities, not OpenClaw version strings. Resolution order:
-
-1. OpenClaw native
-2. official OpenClaw plugin
-3. Agent OS adapter
-4. minimal Agent OS fallback
-
-When OpenClaw adds a FULL equivalent capability, the fallback is deprecated and removed after compatibility validation. **OpenClaw gets stronger; Agent OS gets thinner.**
-
-## v2 structure
-
-```text
-SKILL.md                         single skill entry
-protocols/                       Verification / Experience / Evolution / Governance / Multi-Agent / Native-first
-schemas/                         stable Evidence / Experience / Candidate / Identity contracts
-native/                          capability registry + adapter boundary
-docs/ARCHITECTURE-V2.md          frozen architecture
-docs/CONTRACTS-V2.md             contract specification
-docs/OPENCLAW-CAPABILITY-MATRIX-V2.md
-docs/V1.3-TO-V2-MIGRATION.md
-tests/acceptance-v2.md           architecture acceptance A1-A8
-scripts/validate_v2.py           dependency-free architecture gate
-```
-
-Run the static gate with:
-
-```bash
-python scripts/validate_v2.py
-```
-
-## v1.3 migration
-
-The old 11-Skill control-plane model is not carried forward as 11 v2 Skills. Native-overlapping modules retire; useful semantics are absorbed into the four core protocols. See `docs/V1.3-TO-V2-MIGRATION.md`.
+OpenClaw owns runtime, sessions, tasks, routing, subagents, tools, memory, context, automation, approvals and Workshop application. Agent OS owns the learning semantics only. If OpenClaw gets a stronger native equivalent, Agent OS delegates to it and gets thinner.
 
 ## Status
 
-`2.0.0-dev`: architecture/contracts/protocols/capability boundary frozen on this branch. Runtime integration must continue to use OpenClaw native facilities and pass A1-A8 before v1.3 is removed from the stable branch.
+`2.0.0-rc.1` is packaged as an installable zero-configuration OpenClaw Skill. Repository static architecture gates cover contracts and packaging. Real behavior still depends on the native capabilities exposed by the user's OpenClaw version; when a capability is absent, Agent OS must degrade safely rather than fabricate persistence or bypass governance.

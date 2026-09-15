@@ -1,76 +1,60 @@
 ---
 name: agent-os
-version: 2.0.0
+description: Adaptive learning layer for OpenClaw. Use automatically on substantive work, tool-using tasks, delegated or multi-agent work, user corrections, repeated successes/failures, and reusable workflow lessons. Verify real outcomes, learn scoped experience, and propose governed improvements using OpenClaw native memory and Skill Workshop. Zero configuration; do not create a parallel runtime.
+version: 2.0.0-rc.1
 protocol_version: "2.0"
-description: Adaptive learning nervous system for OpenClaw. Verifies real outcomes, extracts scoped experience, proposes evidence-driven evolution, and governs learning/change without duplicating OpenClaw runtime capabilities.
+user-invocable: true
 ---
 
 # Agent OS v2
 
-Agent OS is OpenClaw's adaptive learning nervous system.
+Agent OS is OpenClaw's adaptive learning nervous system. It is an operating protocol executed by the current OpenClaw agent with the native tools/capabilities already available in that turn. Do not require setup, an Agent OS daemon, cron, database, profile, fixed agent id, or a separate runtime.
 
-## Mission
+## Automatic operating loop
 
-Make OpenClaw and its agent teams improve from real work while becoming easier for the user to work with over time.
+For every substantive task where this skill is eligible:
 
-## Native-first boundary
+1. **Goal** — preserve the user's original goal and explicit constraints. Infer success criteria only when needed; do not make the user configure them.
+2. **Native execution** — use OpenClaw's existing agent/session/task/subagent/tool flow. Do not replace routing, task management, context, memory, approvals, or orchestration.
+3. **Verification** — before claiming completion, compare observable results with the original goal. Tool success is evidence only. Use PASS, PARTIAL, FAIL, or UNKNOWN internally; surface caveats when the outcome is not PASS.
+4. **Experience** — when the episode contains a reusable success, failure, correction, preference, tool lesson, workflow lesson, or delegation lesson, derive the narrowest useful lesson from verified evidence.
+5. **Native writeback** — if the lesson is durable and the current OpenClaw environment exposes an appropriate native memory/user-memory mechanism, use that mechanism. Do not create Agent OS-owned memory files or databases. Do not write transient/noisy facts merely to prove learning occurred.
+6. **Evolution** — when repeated or strong evidence indicates a reusable behavior/skill improvement, form a narrow change hypothesis. Use OpenClaw native self-learning/Skill Workshop proposal flow when available. Do not directly mutate user-owned/shared skills when native governance expects a proposal or approval.
+7. **Governance** — preserve evidence/provenance, choose the narrowest valid scope, and obey all native approval/security restrictions. Never silently promote an agent-specific lesson to TEAM or SHARED.
+8. **Close the loop** — after an improvement is applied by OpenClaw, verify future outcomes; failed improvements become new evidence.
 
-OpenClaw owns agent runtime, reasoning loop, sessions, workspaces, tasks, task flow, subagents, agent-to-agent communication, routing, tools, skills, memory storage/retrieval, context assembly, automation, sandboxing, approvals, and Workshop application.
+Do not narrate this loop on every response. It should improve work without adding user friction. Mention verification/learning only when useful, requested, uncertain, risky, or when an approval/proposal needs attention.
 
-Agent OS MUST NOT create parallel implementations of those facilities.
+## Zero-configuration rules
 
-If OpenClaw gains a native capability equivalent to an Agent OS fallback, prefer the native capability, deprecate the fallback, then remove it after a compatibility window.
+- Never ask the user to configure `agent_id`, main/root agent, team membership, memory paths, Workshop paths, cron, heartbeat, or Agent OS storage just to use this skill.
+- Resolve identity and delegation from native session/task context when available. If identity is ambiguous, keep learning local and do not promote scope.
+- Never treat literal `agent_id == "main"` as semantic proof of root ownership.
+- If a native capability is unavailable, degrade safely: verify the current outcome and keep the lesson in current reasoning; do not invent a replacement runtime or claim persistence occurred.
+- Installation itself is sufficient activation when OpenClaw marks this skill eligible. No post-install configuration is required by Agent OS.
 
-## Four core capabilities
-
-1. **Verification** — determine whether reality satisfies the user's goal and success criteria. Tool success is evidence, never proof of outcome success.
-2. **Experience** — derive reusable lessons from verified outcomes, failures, corrections, delegation and interaction. Experience is interpretation; OpenClaw owns memory persistence and recall.
-3. **Evolution** — detect repeated patterns, form hypotheses and produce improvement candidates. OpenClaw Workshop/native learning owns actual skill changes.
-4. **Governance** — control learning scope, evidence sufficiency, promotion, risk and approval requirements. OpenClaw owns enforcement runtime.
-
-## Multi-agent invariant
-
-Agent OS is multi-agent native but is not a multi-agent orchestrator.
-
-OpenClaw decides which agent works, creates subagents, routes sessions and executes task flows. Agent OS consumes native identity/provenance and learns from the resulting work graph.
-
-Never hard-code `agent_id == "main"` as the root-owner rule. Resolve ownership from native provenance/session/delegation context.
-
-Ephemeral subagents may produce evidence but do not receive permanent learning identities by default; their durable experience belongs to the requester/owning permanent agent unless governance explicitly promotes a team/shared lesson.
-
-## Verification hierarchy
+## Verification invariant
 
 `Tool success != Run success != Task success != Delegation success != User outcome success`.
 
-Local PASS does not imply global PASS. Final outcome verification is against the original user goal and success criteria.
+For delegated work, verify child output, parent integration, and final user outcome separately. Local PASS does not imply global PASS.
 
-## Scope model
+## Learning scope
 
-Evidence scopes: `RUN`, `SESSION`, `TASK`, `DELEGATION`.
+Execution evidence scopes: `RUN`, `SESSION`, `TASK`, `DELEGATION`.
 
 Durable learning scopes: `AGENT`, `TEAM`, `SHARED`.
 
-Learning MUST NOT silently jump scopes. Agent experience requires repeated/strong evidence before team promotion; team experience requires cross-agent evidence and governance before shared promotion.
+Default durable owner is the permanent agent doing/owning the work. Ephemeral subagents may produce evidence but do not receive permanent learning identities by default; attribute durable lessons to the requester/owning permanent agent unless governance supports broader promotion.
 
-## Stable contracts
+## Native-first boundary
 
-Agent OS reasons in terms of stable contracts: Evidence, Verification, Experience, EvolutionCandidate, AgentIdentity, DelegationTrace and Capability.
+OpenClaw owns agent runtime, sessions, workspaces, tasks, task flow, subagents/A2A, routing, tools, skills, memory persistence/recall, context, automation, sandboxing, approvals, and Workshop application.
 
-Core logic MUST depend on capability contracts rather than OpenClaw version numbers or concrete storage APIs.
+Agent OS owns only the semantics of **Verification -> Experience -> Evolution -> Governance**.
 
-## Capability resolution
+Capability preference: OpenClaw Native -> official OpenClaw plugin -> thin Agent OS adapter -> minimal fallback only when unavoidable. If OpenClaw adds an equivalent native capability, use it and retire the fallback.
 
-Resolution order:
+## Supporting protocols
 
-1. OpenClaw native capability
-2. Official OpenClaw plugin
-3. Agent OS adapter
-4. Minimal Agent OS fallback only when necessary
-
-See `protocols/NATIVE-FIRST.md` and `docs/ARCHITECTURE-V2.md`.
-
-## Learning loop
-
-User goal -> OpenClaw execution -> Verification -> Evidence -> Experience -> Pattern -> Evolution candidate -> Governance -> OpenClaw native Workshop/approval -> future execution -> Verification.
-
-User corrections and explicit preferences are evidence too. Stable user adaptation should be persisted through OpenClaw's native user/memory mechanisms, not an Agent OS profile database.
+Read `{baseDir}/protocols/VERIFICATION.md`, `EXPERIENCE.md`, `EVOLUTION.md`, `GOVERNANCE.md`, and `MULTI-AGENT.md` when the task requires the detailed contract. Read `{baseDir}/protocols/NATIVE-FIRST.md` when adapting to a changed OpenClaw capability.

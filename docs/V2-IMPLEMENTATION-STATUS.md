@@ -1,27 +1,20 @@
 # Agent OS v2 Implementation Status
 
-## Complete in architecture layer
-- one-Skill v2 entrypoint
-- four core protocols
-- multi-agent learning protocol
-- stable contracts and JSON schemas
-- capability registry and native adapter boundary
-- OpenClaw capability ownership matrix
-- native-first / supersession protocol
-- v1.3 migration map
+## Packaged and ready for user-side install testing
+- single root `SKILL.md` accepted by OpenClaw Git skill installation model
+- zero Agent OS configuration/post-install setup
+- operational Verification -> Experience -> Evolution -> Governance loop in Skill instructions
+- native memory/user-memory and Skill Workshop delegation rules
+- multi-agent attribution and scope-isolation rules
+- stable contracts/schemas
+- native-first capability boundary and supersession protocol
 - A1-A8 acceptance specification
-- dependency-free static architecture gate + CI workflow
+- dependency-free static architecture gate and CI
 
-## Intentionally not duplicated
-No Agent OS runtime, scheduler, task DB, memory DB, context engine, agent router/orchestrator, communication bus, permission runtime or skill mutation runtime is introduced.
+## Intentionally absent
+No Agent OS daemon, scheduler, heartbeat, cron, task DB, memory DB, context engine, agent router/orchestrator, communication bus, permission runtime, or direct skill-mutation runtime.
 
-## Remaining before stable v2 release
-These require execution against an installed OpenClaw runtime rather than repository-only architecture work:
-1. bind adapter to the concrete OpenClaw APIs/events available in the target installation;
-2. run A1-A8 end-to-end with real main/root, permanent specialist and ephemeral subagent sessions;
-3. validate native Memory/USER writeback and Workshop proposal/apply behavior;
-4. validate scope isolation across at least two permanent agents;
-5. run native-supersession simulation against adapter implementation;
-6. only after PASS, retire v1.3 modules and promote v2 to stable/main.
+## Runtime truth
+A Skill cannot manufacture OpenClaw capabilities that the active agent/runtime does not expose. When native persistence, self-learning, Workshop, identity or delegation provenance is unavailable, Agent OS must degrade safely and must not claim durable learning/promotion occurred.
 
-Do not claim runtime acceptance before these E2E tests have actually run.
+Repository gates validate package/contract integrity. User-side OpenClaw smoke/E2E testing validates actual native integration behavior.
