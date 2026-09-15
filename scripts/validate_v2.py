@@ -3,6 +3,7 @@
 from pathlib import Path
 import json, sys
 ROOT=Path(__file__).resolve().parents[1]
+SELF=Path(__file__).resolve()
 required=[
 'SKILL.md','VERSION','MANIFEST.yml','docs/INSTALL.md','docs/QUICK-START.md','docs/ARCHITECTURE-V2.md','docs/CONTRACTS-V2.md','docs/V1.3-TO-V2-MIGRATION.md','docs/V2-PACKAGE-POLICY.md','docs/OPENCLAW-CAPABILITY-MATRIX-V2.md','docs/V2-IMPLEMENTATION-STATUS.md',
 'protocols/VERIFICATION.md','protocols/EXPERIENCE.md','protocols/EVOLUTION.md','protocols/GOVERNANCE.md','protocols/MULTI-AGENT.md','protocols/NATIVE-FIRST.md','protocols/MODEL-ROBUSTNESS.md','protocols/AUTOMATIC-COVERAGE.md',
@@ -38,19 +39,21 @@ for base in scan_roots:
     if not base.exists(): continue
     for path in base.rglob('*'):
         if not path.is_file() or path.suffix.lower() not in text_ext: continue
+        # The gate contains the denylist by definition; scanning itself makes every run fail.
+        if path.resolve() == SELF: continue
         try: text=path.read_text(encoding='utf-8')
         except UnicodeDecodeError: continue
         for ref in retired_refs:
             if ref in text: errors.append(f'executable legacy reference: {path.relative_to(ROOT)} -> {ref}')
 # Contract-shape sentinels for known RC3 drift regressions.
 try:
-    ai=json.loads((ROOT/'schemas/agent-identity.schema.json').read_text())
+    ai=json.loads((ROOT/'schemas/agent-identity.schema.json').read_text(encoding='utf-8'))
     if 'UNKNOWN' not in ai['properties']['kind']['enum'] or ai.get('additionalProperties') is not False: errors.append('agent identity schema is not frozen')
-    ex=json.loads((ROOT/'schemas/experience.schema.json').read_text())
+    ex=json.loads((ROOT/'schemas/experience.schema.json').read_text(encoding='utf-8'))
     if 'contradicts' not in ex['properties'] or ex.get('additionalProperties') is not False: errors.append('experience schema is not frozen')
-    ev=json.loads((ROOT/'schemas/evolution-candidate.schema.json').read_text())
+    ev=json.loads((ROOT/'schemas/evolution-candidate.schema.json').read_text(encoding='utf-8'))
     if 'experience_ids' not in ev['properties'] or 'experiences' in ev['properties']: errors.append('evolution candidate schema uses stale experience field')
-    reg=json.loads((ROOT/'native/capability-registry.json').read_text())
+    reg=json.loads((ROOT/'native/capability-registry.json').read_text(encoding='utf-8'))
     if reg.get('runtime_detection') is not False: errors.append('capability registry must not claim runtime detection')
 except Exception as e: errors.append(f'contract sentinel failed: {e}')
 if errors:
