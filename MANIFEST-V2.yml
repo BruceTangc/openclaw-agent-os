@@ -1,0 +1,19 @@
+name: openclaw-agent-os
+version: 2.0.0-dev
+protocol_version: "2.0"
+architecture: adaptive-nervous-system
+entrypoint: SKILL.md
+cores:
+  - verification
+  - experience
+  - evolution
+  - governance
+multi_agent:
+  native: true
+  orchestrator: false
+  evidence_scopes: [RUN, SESSION, TASK, DELEGATION]
+  learning_scopes: [AGENT, TEAM, SHARED]
+native_first: true
+capability_registry: native/capability-registry.json
+acceptance: tests/acceptance-v2.md
+stable_baseline: v1.3-on-main
