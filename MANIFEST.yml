@@ -1,10 +1,14 @@
 agent_os:
-  version: 2.0.0-rc.2
+  version: 2.0.0-rc.3
   protocol_version: "2.0"
   architecture: adaptive-nervous-system
   entrypoint: SKILL.md
   install_mode: openclaw-git-skill
   zero_config: true
+  automatic_coverage: true
+  coverage_classes: [C0_IGNORE, C1_VERIFY, C2_LEARN, C3_DEEP_ADAPT]
+  automatic_data_lifecycle: true
+  raw_data_archive: false
   model_robust: true
   execution_paths: [FAST, DEEP]
   conservative_defaults: true
@@ -16,4 +20,4 @@ agent_os:
   native_first: true
   capability_registry: native/capability-registry.json
   acceptance: tests/acceptance-v2.md
-  acceptance_scenarios: 22
+  acceptance_scenarios: 30
