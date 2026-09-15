@@ -1,224 +1,68 @@
-# OpenClaw Agent OS v1.3 (Freeze)
+# OpenClaw Agent OS v2 — Architecture Preview
 
-让 OpenClaw 从“会调用 Skill”变成“有治理、会验证、能长期学习的 Agent”。
+> Active v2 development branch. v1.3 remains the stable baseline on `main` until v2 acceptance is complete.
 
-> **v1.3 Freeze（2026-08-17）**：Core Protocol / Fast-Full Path / Proactive / Permission /
-> Verification / Memory-Knowledge-Ontology / Evolution / Heartbeat 已冻结，不再新增 Core Skill。
-> 后续只做三件事：协议文字收敛、Execution Record 追溯、Long-running 验证。
->
-> Governance, decision and workflow policy layer around OpenClaw's native runtime.
->
-> ### 版本正交说明（skill_version vs protocol_version）
->
-> 技能文件中有**两层正交的版本号**，不要混为一谈（审计 🔴2）：
-> - `protocol_version`（协议版本）：该 Skill 声明的 **Agent OS 协议兼容版本**，统一为 `1.3`，
->   决定其是否满足 Core Protocol 的执行链/权限/验证契约（legacy 1.2 Skill 以兼容模式运行）。
-> - 技能 `version`（自迭代版本）：该 Skill **自身独立迭代节奏**，可偏离协议主版本：
->   - 11 个核心 Skill 中 10 个为 `1.3.0`（紧随协议）；
->   - **`self-evolution` 为 `2.0.0`**（同时声明 `protocol_version: "1.3"`）——它按自迭代节奏独立演进，
->     skill 版本领先不等于协议版本领先，两者互不影响（正交）。
->
-> 因此库内：`protocol_version` 统一（1.3）；`version` 允许各 Skill 独立（1.3.0 / 2.0.0…），
-> 后续迭代不必强求两者同步递增。
+**Agent OS is OpenClaw's adaptive learning nervous system.** It learns from verified real work and user feedback without rebuilding OpenClaw's runtime.
 
-> 官方协议：见 [docs/PROTOCOL.md](docs/PROTOCOL.md)（统一行为协议）。
-> 当前发布基线与边界以本文、`docs/` 协议和自动化质量门为准。
-> 开箱即用产品化路线与验收标准：见 [docs/PRODUCTIZATION-PLAN.md](docs/PRODUCTIZATION-PLAN.md)。
+## Architecture Freeze
 
-> **Design rule:** OpenClaw native runtime first. These skills must **not** create
-> parallel runtimes for memory, context, tasks, scheduling, events, agents or permissions.
-> Skills provide policy, reasoning procedures and workflows; OpenClaw owns the runtime.
+One Skill, four stable core capabilities:
 
-## Modules (11)
+- **Verification** — did reality satisfy the goal?
+- **Experience** — what reusable lesson follows from verified evidence?
+- **Evolution** — what future behavior should improve and why?
+- **Governance** — what may be learned, promoted or changed?
 
-| Module | Type | Purpose |
-|---|---|---|
-| `proactive` | adjusted | Decide whether something useful should happen after wakeup |
-| `task-manager` | adjusted | Goal/task semantics; OpenClaw owns task runtime |
-| `orchestrator` | adjusted | Decomposition/delegation/sequencing policy; OpenClaw remains runtime |
-| `ontology` | adjusted | Minimal semantic model of entities, relations, attributes, states |
-| `summarize` | adjusted | Transform large/noisy material into decision-useful information |
-| `self-evolution` | adjusted | Controlled, evidence-based improvement loop |
-| `memory-governance` | new | What becomes durable memory; promotion path |
-| `knowledge-governance` | new | Durable claims with provenance, freshness, uncertainty |
-| `context-orchestration` | new | Select minimum useful information for a task |
-| `verification-evaluation` | new | Prove task success vs. tool success; PASS/PARTIAL/FAIL/UNKNOWN |
-| `permission-security` | new | L0-L4 risk/authority policy above native policy/approval |
+OpenClaw owns agent runtime, sessions, workspaces, tasks/task flow, subagents/A2A, routing, tools, memory persistence/recall, context, automation, sandbox/approval and actual Workshop skill mutation.
 
-> **Multi-Agent 边界**：Multi-Agent 能力（委派/Sub-agent/编排）依赖 **OpenClaw 原生 Sub-agent / Task Flow 调度**；
-> Agent OS 只提供跨 Agent 的权限治理（L0-L4 + delegation scope）、身份/provenance 追溯（execution_record / identity）
-> 与隔离约束（agent_id 过滤、per-agent scope）。Agent OS **不实现 Agent Runtime / 自建多 Agent 编排**。
+## Multi-agent native
 
-## Architecture（Execution Model = 实际执行链）
+Agent OS does not orchestrate agents. It learns from OpenClaw's native work graph. It preserves agent/requester/parent/root/session/task/delegation provenance and isolates durable learning into `AGENT -> TEAM -> SHARED` scopes.
 
-> 粒度标注：本图是**实际执行链**（actual execution chain），含 Goal/Task、Fast/Full 分流。
-> 对比：下方 Control Plane 是**概念分层图**（conceptual layer map，仅表达分层归属，不含执行细节）。
+Ephemeral subagents can produce Evidence but do not become permanent learning identities by default.
 
-```
-                    Trigger (OpenClaw 提供: user / heartbeat / cron / hook / background)
-                                   │
-                                   ▼
-                              Context Orchestration
-                                   │
-                                   ▼
-                            Goal / Task Semantics  ← Mandatory（目标+成功条件）
-                                   │
-                        ┌──────────┴──────────┐
-                        ▼                     ▼
-                    Fast Path             Full Path
-              (简单/低风险/单能力)    (复杂/自主/多步/有副作用)
-                        │                     │
-               Direct Skill            Decision(仅自主) → Orchestrator
-                        │                     │
-                        └──────────┬──────────┘
-                                   ▼
-                           Permission Gate（永远存在; L0/L1 自动 ALLOW）
-                                   │
-                                   ▼
-                          OpenClaw Native Execution ───────┐
-                                   │                        │
-                                   ▼                        │
-                           Verification                  Execution Record
-                                   │                    （旁路审计层：谁执行谁创建；
-                                   ▼                      Full Path/L2+/Evolution Apply MUST）
-                            Evaluation → Progress Assessment?(条件) → Autonomy Decision
-                                   │              （仅 Full/自主/长任务；
-                                   │               PROGRESS/STALL/UNKNOWN 三态）
-                                   ▼
-                        Evolution Candidate（有证据才触发）
+## Core invariant
+
+`Tool success != Run success != Task success != Delegation success != User outcome success`
+
+Local PASS never proves global PASS.
+
+## Native-first
+
+Core protocols depend on stable capabilities, not OpenClaw version strings. Resolution order:
+
+1. OpenClaw native
+2. official OpenClaw plugin
+3. Agent OS adapter
+4. minimal Agent OS fallback
+
+When OpenClaw adds a FULL equivalent capability, the fallback is deprecated and removed after compatibility validation. **OpenClaw gets stronger; Agent OS gets thinner.**
+
+## v2 structure
+
+```text
+SKILL.md                         single skill entry
+protocols/                       Verification / Experience / Evolution / Governance / Multi-Agent / Native-first
+schemas/                         stable Evidence / Experience / Candidate / Identity contracts
+native/                          capability registry + adapter boundary
+docs/ARCHITECTURE-V2.md          frozen architecture
+docs/CONTRACTS-V2.md             contract specification
+docs/OPENCLAW-CAPABILITY-MATRIX-V2.md
+docs/V1.3-TO-V2-MIGRATION.md
+tests/acceptance-v2.md           architecture acceptance A1-A8
+scripts/validate_v2.py           dependency-free architecture gate
 ```
 
-> Execution Record 不是 Runtime、不是 Skill 节点，而是 **Protocol observability layer**（旁路审计线）：
-> 挂在 Execution 旁，回答“这次行为是否符合 Agent OS Protocol、从哪来到哪去”。
-
-**两个闭环**：
-1. **主任务闭环**：Trigger → Context → Goal/Task → (Fast|Full) → Permission → Execution → Verification → Evaluation → (Progress Assessment → Autonomy Decision，仅 Full/自主/长任务) → Writeback
-2. **Evolution 闭环**：Evidence → Discover+Classify → Candidate → Judge → Proposal → Governance → Apply → Regression → Observe → New Evidence
-   两环通过 **Verification/Evaluation → Evidence** 连接。
-
-连接点由 `skills/proactive/scripts/learning.py` 实现：验证后的结构化事件一次完成幂等
-Evidence 登记、阈值聚合和受治理写回；Heartbeat 再把已沉淀内容投影到可选 Obsidian Vault。
-
-**Task Semantics ≠ Task Manager**：所有任务必经的是 Goal/Task **Semantics**（目标+成功条件）；
-Task Manager **State Machine**（READY/RUNNING/BLOCKED/DONE）仅 Full Path / 长任务才用，简单任务不建任务对象。
-
-
-## Control Plane（概念分层图 = conceptual layer map）
-
-> 粒度标注：本图是**概念分层图**，只表达 Control Plane 分层与归属，不展开执行细节
-> （Goal/Task、Fast/Full 分流等执行细节见上方 Execution Model 图）。
-
-```
-OpenClaw Native Runtime (owner: OpenClaw)
-   │  agent loop / tool wiring / prompt assembly / session / workspace / skills
-   ▼
-┌────────────────────────────────────────────────────────────┐
-│ Agent OS Control Plane (policy / protocol / governance)      │
-│   Context → Decision → Permission → Action → Verification   │
-│   → Memory/Knowledge writeback → Evolution candidate         │
-├────────────────────────────────────────────────────────────┤
-│  Cognition        │  Action          │  Control             │
-│  memory-governance│  proactive       │  permission-security │
-│  knowledge-gov.   │  task-manager    │  verification-eval.  │
-│  ontology         │  orchestrator    │  self-evolution      │
-│  context-orch.    │  summarize       │                      │
-└────────────────────────────────────────────────────────────┘
-   ▼
-OpenClaw Tools / Sub-agents / Skills / Runtime
-```
-
-> **Trigger 边界：** Cron / Heartbeat / Hook / User Message / Background Tasks 都是
-> **外部 Trigger**（OpenClaw 提供）。Agent OS 不制造 Trigger、不建 Scheduler ——
-> proactive 是**主动决策能力**，不是定时器。
-
-## Core Protocol 文档
-
-所有 Skill（Agent OS 模块 + 业务 Skill）必须遵守统一行为协议：
-
-| 文档 | 内容 |
-|:--|:--|
-| [PROTOCOL.md](docs/PROTOCOL.md) | 总纲：统一执行链、分层模型、业务 Skill 接入协议 |
-| [DECISION-PROTOCOL.md](docs/DECISION-PROTOCOL.md) | 决策词汇表、输入/输出 schema、anti-loop |
-| [ACTION-PROTOCOL.md](docs/ACTION-PROTOCOL.md) | L0-L4 动作分级、Permission Gate、幂等 |
-| [VERIFICATION-PROTOCOL.md](docs/VERIFICATION-PROTOCOL.md) | V0-V4 验证分级、PASS/PARTIAL/FAIL/UNKNOWN |
-| [MEMORY-PROTOCOL.md](docs/MEMORY-PROTOCOL.md) | 写入判定、晋升路径、矛盾保留 |
-| [EVOLUTION-PROTOCOL.md](docs/EVOLUTION-PROTOCOL.md) | 进化证据、授权边界、禁止自行修改安全规则 |
-| [SKILL-INTEGRATION.md](docs/SKILL-INTEGRATION.md) | 业务 Skill 接入协议（x-agent-os 声明块） |
-| [HEARTBEAT-CRON-POLICY.md](docs/HEARTBEAT-CRON-POLICY.md) | Trigger 边界；Proactive 是决策层不是定时器 |
-| [PROTOCOL-CHECKLIST.md](docs/PROTOCOL-CHECKLIST.md) | 逐文件审计清单 |
-| [templates/](templates/) | 客户运行时模板：AGENTS.runtime.md + OpenClaw 2.0 Heartbeat prompt |
-
-## Design guardrails
-
-> **最高级 guardrail（永久）：OpenClaw Runtime + Agent OS Control Plane + Evidence-driven Evolution。**
-> OpenClaw 拥有 agent loop / tool wiring / prompt assembly / session / workspace / skills / tasks /
-> approvals / sandbox；Agent OS 只在其上提供协议、治理、验证与受控进化。**Agent OS 不造任何 Runtime。**
-
-- **不建并行 Runtime**：scheduler / event bus / task runtime / memory runtime /
-  context engine / agent runtime / permission runtime 全部禁止（永久）。
-- **Verification 独立**：tool success ≠ task success；必须检查实际结果 → PASS/PARTIAL/FAIL/UNKNOWN。
-- **Self-Evolution 受控**：权限/安全/凭证/外部副作用/Runtime 变更必须人工审批；Evolution 不得制造 Evidence。
-- **OpenClaw 原生优先**：重复造 OpenClaw 已有的机制 = 违反协议。
-- **v1.3 Freeze**：不再新增 Core Skill；只做协议收敛、Execution Record 追溯、Long-running 验证。
-
-## Explicitly do NOT build
-
-- scheduler runtime
-- event bus runtime
-- task database/runtime
-- memory database/runtime
-- context engine
-- agent runtime
-- parallel permission enforcement runtime
-
-## Install（默认 Active，零手工 Heartbeat/Cron 配置）
+Run the static gate with:
 
 ```bash
-# 安装 11 Core Skills + agent-os-vault + 共享 _lib + Runtime 模板，
-# 自动固定 OpenClaw 原生 Heartbeat=30m；不创建业务 Cron。
-./install.sh
+python scripts/validate_v2.py
 ```
 
-> 详细安装 + 三级等级（Basic/Active/Full）见 [docs/INSTALL.md](docs/INSTALL.md)；
-> 装完跑 5 项验收（装对了吗/协议生效了吗/权限生效了吗/主动生效了吗/进化生效了吗）
-> 见 [docs/QUICK-START.md](docs/QUICK-START.md)。
+## v1.3 migration
 
-```bash
-# 只安装基础对话能力、不修改 Heartbeat：
-./install.sh --profile basic
+The old 11-Skill control-plane model is not carried forward as 11 v2 Skills. Native-overlapping modules retire; useful semantics are absorbed into the four core protocols. See `docs/V1.3-TO-V2-MIGRATION.md`.
 
-# 自定义主动巡检周期：
-./install.sh --heartbeat-every 1h
+## Status
 
-# 多 Agent：共享一份 Skills，只让指定主 Agent 承担 Heartbeat
-./install.sh --heartbeat-agent main
-
-# 可选：启用 Obsidian 人工可读投影
-./install.sh --vault-dir "/absolute/path/to/Obsidian/Vault"
-```
-
-OpenClaw 2.0 单 Agent或有唯一默认 Agent 时，安装器会自动解析 owner；多 Agent 且没有
-唯一默认 owner 时会 fail-closed，要求显式传 `--heartbeat-agent`，不会擅自创建 `main`。
-
-**协议合规自检（#5 #6）**：
-
-```bash
-python3 docs/tests/scripts/compliance.py   # 全 PASS（26）+ 退出码 0 即可
-```
-
-Target baseline: OpenClaw 2026.8.1 or newer.
-
-## Docs
-
-客户使用入口（正常安装和运维只需阅读这些）：
-
-- `docs/QUICK-START.md` — 5 分钟安装 + 安装后验收
-- `docs/INSTALL.md` — Basic / Active / Full 安装说明
-- `docs/OPERATIONS.md` — 日常诊断、维护与故障处理
-
-维护者入口：`docs/ARCHITECTURE.md`、`docs/SKILL-MAP.md`、`docs/COMPATIBILITY.md`、
-`docs/schemas/` 和 `docs/tests/`。历史材料统一放在 `docs/archive/`，不属于当前产品配置。
-
-## License
-
-MIT
+`2.0.0-dev`: architecture/contracts/protocols/capability boundary frozen on this branch. Runtime integration must continue to use OpenClaw native facilities and pass A1-A8 before v1.3 is removed from the stable branch.
