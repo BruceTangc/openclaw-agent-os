@@ -20,4 +20,4 @@ agent_os:
   native_first: true
   capability_registry: native/capability-registry.json
   acceptance: tests/acceptance-v2.md
-  acceptance_scenarios: 30
+  acceptance_scenarios: 34
