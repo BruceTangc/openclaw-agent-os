@@ -25,7 +25,7 @@ Git installs are refreshed by reinstalling the Git source (OpenClaw's `skills up
 
 When OpenClaw selects Agent OS for substantive work, the current agent preserves the user's goal, executes through native OpenClaw, verifies the real outcome, derives only useful verified lessons, uses native memory/user-memory for durable writeback when available, and routes reusable improvement candidates through native self-learning/Skill Workshop when available.
 
-It stays quiet by default; it does not print an Agent OS report after every task.
+It stays quiet by default; it does not print an Agent OS report after every task. Automatic coverage is not omniscient: hidden events not exposed to the Skill are never claimed as observed.
 
 ## Multi-agent
 
@@ -41,4 +41,4 @@ OpenClaw owns runtime, sessions, tasks, routing, subagents, tools, memory, conte
 
 ## Status
 
-`2.0.0-rc.1` is packaged as an installable zero-configuration OpenClaw Skill. Repository static architecture gates cover contracts and packaging. Real behavior still depends on the native capabilities exposed by the user's OpenClaw version; when a capability is absent, Agent OS must degrade safely rather than fabricate persistence or bypass governance.
+`2.0.0-rc.3` is the current release candidate. The repository package has static architecture/schema/legacy-reference gates and A1-A30 acceptance specifications. Runtime-dependent acceptance still requires a real OpenClaw installation; absence of a native capability must degrade safely rather than fabricate persistence or bypass governance.
