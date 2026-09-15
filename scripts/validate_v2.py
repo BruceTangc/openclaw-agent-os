@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Static package/architecture/model/coverage/schema/legacy gate for Agent OS v2."""
+"""Fail-closed static package/architecture/schema/legacy gate for Agent OS v2."""
 from pathlib import Path
-import json, sys
+import ast, json, sys
 ROOT=Path(__file__).resolve().parents[1]
 SELF=Path(__file__).resolve()
 required=[
@@ -33,19 +33,79 @@ for p in ['SKILL.md','protocols/MULTI-AGENT.md','docs/ARCHITECTURE-V2.md']:
     pos=t.find('if agent_id == "main"')
     if pos >= 0 and 'Never' not in t[max(0,pos-160):pos]: errors.append(f'hard-coded main-agent ownership in {p}')
 retired_refs=['skills/proactive','skills/task-manager','skills/orchestrator','skills/self-evolution','skills/context-orchestration','skills/summarize','skills/memory-governance','skills/knowledge-governance','skills/verification-evaluation','skills/permission-security','skills/agent-os-vault']
+
+def norm(s): return s.replace('\\','/').replace('//','/').strip('./')
+def is_retired(s):
+    n=norm(s)
+    return any(r in n for r in retired_refs)
+def dotted(node):
+    if isinstance(node,ast.Name): return node.id
+    if isinstance(node,ast.Attribute):
+        b=dotted(node.value); return f'{b}.{node.attr}' if b else node.attr
+    return ''
+def const_text(node, env):
+    if isinstance(node,ast.Constant) and isinstance(node.value,str): return node.value
+    if isinstance(node,ast.Name): return env.get(node.id)
+    if isinstance(node,ast.BinOp) and isinstance(node.op,ast.Add):
+        a,b=const_text(node.left,env),const_text(node.right,env)
+        return a+b if a is not None and b is not None else None
+    if isinstance(node,ast.BinOp) and isinstance(node.op,ast.Div):
+        a,b=const_text(node.left,env),const_text(node.right,env)
+        return f'{a}/{b}' if a is not None and b is not None else None
+    if isinstance(node,ast.Call) and dotted(node.func) in {'os.path.join','posixpath.join','ntpath.join'}:
+        parts=[const_text(a,env) for a in node.args]
+        return '/'.join(p.strip('/\\') for p in parts) if parts and all(p is not None for p in parts) else None
+    if isinstance(node,ast.Call) and dotted(node.func) in {'Path','pathlib.Path','PurePath','pathlib.PurePath'}:
+        parts=[const_text(a,env) for a in node.args]
+        return '/'.join(p.strip('/\\') for p in parts) if parts and all(p is not None for p in parts) else None
+    if isinstance(node,ast.JoinedStr):
+        out=''
+        for v in node.values:
+            if isinstance(v,ast.Constant) and isinstance(v.value,str): out+=v.value
+            elif isinstance(v,ast.FormattedValue):
+                x=const_text(v.value,env)
+                if x is None: return None
+                out+=x
+            else: return None
+        return out
+    return None
+
+def scan_python(path,text):
+    try: tree=ast.parse(text,filename=str(path))
+    except SyntaxError as e:
+        errors.append(f'python parse failure: {path.relative_to(ROOT)}:{e.lineno}: {e.msg}')
+        return
+    env={}
+    # Conservative constant propagation for simple module/function assignments.
+    for node in ast.walk(tree):
+        if isinstance(node,(ast.Assign,ast.AnnAssign)):
+            value=node.value
+            v=const_text(value,env) if value is not None else None
+            targets=node.targets if isinstance(node,ast.Assign) else [node.target]
+            if v is not None:
+                for t in targets:
+                    if isinstance(t,ast.Name): env[t.id]=v
+    seen=set()
+    for node in ast.walk(tree):
+        v=const_text(node,env)
+        if v is not None and is_retired(v):
+            key=(getattr(node,'lineno',0),norm(v))
+            if key not in seen:
+                seen.add(key); errors.append(f'executable legacy reference: {path.relative_to(ROOT)}:{key[0]} -> {key[1]}')
+
 scan_roots=[ROOT/'scripts',ROOT/'tests',ROOT/'.github'/'workflows']
 text_ext={'.py','.sh','.ps1','.js','.mjs','.cjs','.ts','.tsx','.yml','.yaml'}
 for base in scan_roots:
     if not base.exists(): continue
     for path in base.rglob('*'):
-        if not path.is_file() or path.suffix.lower() not in text_ext: continue
-        # The gate contains the denylist by definition; scanning itself makes every run fail.
-        if path.resolve() == SELF: continue
+        if not path.is_file() or path.suffix.lower() not in text_ext or path.resolve()==SELF: continue
         try: text=path.read_text(encoding='utf-8')
-        except UnicodeDecodeError: continue
+        except UnicodeDecodeError:
+            errors.append(f'non-utf8 executable text: {path.relative_to(ROOT)}'); continue
+        # Exact textual form catches all runnable languages; Python additionally gets AST folding.
         for ref in retired_refs:
-            if ref in text: errors.append(f'executable legacy reference: {path.relative_to(ROOT)} -> {ref}')
-# Contract-shape sentinels for known RC3 drift regressions.
+            if ref in norm(text): errors.append(f'executable legacy reference: {path.relative_to(ROOT)} -> {ref}')
+        if path.suffix.lower()=='.py': scan_python(path,text)
 try:
     ai=json.loads((ROOT/'schemas/agent-identity.schema.json').read_text(encoding='utf-8'))
     if 'UNKNOWN' not in ai['properties']['kind']['enum'] or ai.get('additionalProperties') is not False: errors.append('agent identity schema is not frozen')
@@ -58,7 +118,7 @@ try:
 except Exception as e: errors.append(f'contract sentinel failed: {e}')
 if errors:
     print('Agent OS v2 gate: FAIL')
-    for e in errors: print('-',e)
+    for e in dict.fromkeys(errors): print('-',e)
     sys.exit(1)
 print('Agent OS v2 gate: PASS')
-print(f'checked {len(required)} canonical artifacts, A1-A30, frozen JSON contracts, declarative native boundary, and absence of v1.3 package artifacts')
+print(f'checked {len(required)} canonical artifacts, A1-A30, frozen JSON contracts, declarative native boundary, AST-aware legacy references, and absence of v1.3 package artifacts')
