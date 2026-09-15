@@ -1,0 +1,23 @@
+{
+  "schema_version": "2.0",
+  "policy": "native-first",
+  "capabilities": {
+    "runtime.agent": {"provider":"OPENCLAW_NATIVE","support":"FULL"},
+    "runtime.session": {"provider":"OPENCLAW_NATIVE","support":"FULL"},
+    "runtime.task": {"provider":"OPENCLAW_NATIVE","support":"FULL"},
+    "runtime.subagent": {"provider":"OPENCLAW_NATIVE","support":"FULL"},
+    "runtime.multi_agent": {"provider":"OPENCLAW_NATIVE","support":"FULL"},
+    "memory.persist": {"provider":"OPENCLAW_NATIVE","support":"FULL"},
+    "memory.recall": {"provider":"OPENCLAW_NATIVE","support":"FULL"},
+    "memory.user_model": {"provider":"OPENCLAW_NATIVE","support":"FULL"},
+    "skill.load": {"provider":"OPENCLAW_NATIVE","support":"FULL"},
+    "skill.learning": {"provider":"OPENCLAW_NATIVE","support":"FULL"},
+    "skill.apply": {"provider":"OPENCLAW_NATIVE","support":"FULL"},
+    "security.approval": {"provider":"OPENCLAW_NATIVE","support":"FULL"},
+    "security.sandbox": {"provider":"OPENCLAW_NATIVE","support":"FULL"},
+    "learning.verification": {"provider":"AGENT_OS","support":"FULL"},
+    "learning.experience": {"provider":"AGENT_OS","support":"FULL"},
+    "learning.evolution": {"provider":"AGENT_OS","support":"FULL"},
+    "learning.governance": {"provider":"AGENT_OS","support":"FULL"}
+  }
+}
