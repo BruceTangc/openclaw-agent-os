@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static package/architecture/model/coverage gate for Agent OS v2."""
+"""Static package/architecture/model/coverage/legacy-reference gate for Agent OS v2."""
 from pathlib import Path
 import json, sys
 ROOT=Path(__file__).resolve().parents[1]
@@ -30,9 +30,30 @@ for p in ['SKILL.md','protocols/MULTI-AGENT.md','docs/ARCHITECTURE-V2.md']:
     t=(ROOT/p).read_text(encoding='utf-8') if (ROOT/p).exists() else ''
     pos=t.find('if agent_id == "main"')
     if pos >= 0 and 'Never' not in t[max(0,pos-160):pos]: errors.append(f'hard-coded main-agent ownership in {p}')
+
+# Executable v2 assets must never depend on retired v1.3 modules. Historical/migration
+# prose may mention them, but runnable tests/scripts/workflows may not import/call them.
+retired_refs=[
+    'skills/proactive','skills/task-manager','skills/orchestrator','skills/self-evolution',
+    'skills/context-orchestration','skills/summarize','skills/memory-governance',
+    'skills/knowledge-governance','skills/verification-evaluation','skills/permission-security',
+    'skills/agent-os-vault'
+]
+scan_roots=[ROOT/'scripts', ROOT/'tests', ROOT/'docs'/'tests', ROOT/'.github'/'workflows']
+text_ext={'.py','.sh','.ps1','.js','.mjs','.cjs','.ts','.tsx','.yml','.yaml'}
+for base in scan_roots:
+    if not base.exists(): continue
+    for path in base.rglob('*'):
+        if not path.is_file() or path.suffix.lower() not in text_ext: continue
+        try: text=path.read_text(encoding='utf-8')
+        except UnicodeDecodeError: continue
+        for ref in retired_refs:
+            if ref in text:
+                errors.append(f'executable legacy reference: {path.relative_to(ROOT)} -> {ref}')
+
 if errors:
     print('Agent OS v2 gate: FAIL')
     for e in errors: print('-',e)
     sys.exit(1)
 print('Agent OS v2 gate: PASS')
-print(f'checked {len(required)} artifacts, zero-config packaging, model robustness, automatic coverage, A1-A30, and JSON contracts')
+print(f'checked {len(required)} artifacts, zero-config packaging, model robustness, automatic coverage, A1-A30, JSON contracts, and retired-module executable references')
