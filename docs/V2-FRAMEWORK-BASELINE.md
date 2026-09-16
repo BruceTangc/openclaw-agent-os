@@ -10,7 +10,7 @@ Agent OS is the cognitive control plane that makes OpenClaw improve through veri
 
 V2 ships and installs as exactly one OpenClaw Skill: `agent-os`. Perception, attention, context, goal/task semantics, proactive decision, ontology, summarization, verification, experience, evolution, and governance are internal semantic capabilities of this Skill, not separately installed Skills or cooperating runtimes.
 
-The Skill is multi-agent capable by consuming OpenClaw-native agent, session, task, delegation, and subagent provenance. OpenClaw creates and routes agents; Agent OS verifies child work, delegation integration, owning-agent integration, and final user outcome separately. Ephemeral subagents provide evidence by default and do not become durable learning identities. Durable scope remains AGENT, TEAM, or SHARED only through explicit provenance and governance.
+The Skill recognizes OpenClaw's native `main` agent as the default primary entry point and is multi-agent capable by consuming OpenClaw-native agent, session, task, delegation, and subagent provenance. OpenClaw creates and routes agents; Agent OS verifies child work, delegation integration, owning-agent integration, and final user outcome separately. Ephemeral subagents provide evidence by default and do not become durable learning identities. Durable scope remains AGENT, TEAM, or SHARED only through explicit provenance and governance.
 ## Fixed boundary
 
 OpenClaw owns agent loops, model/provider wiring, tools, skills, workspace, sessions, context assembly and compaction, task execution, subagents, background tasks, automation, heartbeat, hooks, memory storage/search, approvals, sandboxing, messaging, and Workshop application.

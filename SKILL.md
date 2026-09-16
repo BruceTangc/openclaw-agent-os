@@ -89,7 +89,7 @@ Shared, user-owned, security-sensitive, or risky changes follow native approval.
 
 OpenClaw orchestrates; Agent OS observes and learns. Verify child task, delegation integration, requester/root integration, and final user outcome separately. Local PASS does not imply global PASS.
 
-Permanent agents may own AGENT experience. Ephemeral subagents produce Evidence but do not become durable learning identities by default. Attribute durable lessons to the requester/owning permanent agent unless native provenance/governance supports another scope. Never infer semantic root solely from literal `agent_id == "main"`.
+Permanent agents may own AGENT experience. Ephemeral subagents produce Evidence but do not become durable learning identities by default. Attribute durable lessons to the requester/owning permanent agent unless native provenance/governance supports another scope. Use OpenClaw's native `main` agent as the default primary/requesting agent when the current context identifies it; in multi-agent work, resolve ownership and root from native provenance rather than assuming every agent is `main`.
 
 ## Zero configuration
 
