@@ -27,6 +27,23 @@ Verification -> Evidence -> Experience -> Evolution -> Governance
                                   Memory / Workshop / Approval
 ```
 
+## Cognitive integration with OpenClaw
+
+OpenClaw is the body and execution system; Agent OS is the cognitive and learning layer. Agent OS does not replace OpenClaw runtime components. It connects to the capabilities that the current turn actually exposes:
+
+- Perception: inspect the current tool, session, task, agent, memory, approval, and Workshop surfaces.
+- Attention: select the smallest native capability set that can advance the user goal.
+- Working memory: preserve the current goal, success criteria, constraints, evidence, and unfinished work in the active turn.
+- Episodic memory: use native session/task history and memory tools when exposed; do not create a second transcript store.
+- Semantic experience: distill verified, durable lessons and admit them to native memory/user-memory when available.
+- Prediction and feedback: recall relevant lessons before action, then compare predicted benefit with the observed user outcome and update or weaken the lesson.
+- Executive inhibition: stop unsafe, duplicate, stale, unauthorized, or weakly evidenced actions through native approval and sandbox controls.
+
+The runtime loop is therefore:
+
+`Native perception -> Attention/working memory -> Native execution -> Verification -> Experience admission -> Native recall -> Feedback -> Evolution/Governance`.
+
+A capability snapshot is valid only when the tool is exposed in the current turn and returns an observable result. The declarative capability registry is an ownership map, not a detector.
 ## Core ownership
 
 ### Verification

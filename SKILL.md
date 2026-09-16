@@ -108,6 +108,17 @@ OpenClaw owns runtime, sessions, workspaces, tasks, task flow, subagents/A2A, ro
 Agent OS owns only **Verification -> Experience -> Evolution -> Governance** semantics.
 
 Capability preference: OpenClaw Native -> official OpenClaw plugin -> thin Agent OS adapter -> minimal fallback only when unavoidable. Native FULL equivalents supersede Agent OS fallbacks.
+## Cognitive loop
+
+Treat OpenClaw as the execution body and this Skill as the cognitive layer. In each eligible turn, use exposed native context as perception, preserve the goal and criteria as working memory, use native sessions/memory for episodic recall, verify the real outcome, admit only durable lessons, and use the next recall plus user outcome as feedback. Use native approval and sandbox controls as executive inhibition. The loop is: `perceive -> attend -> execute -> verify -> remember -> recall -> learn`.
+## Native capability use — operational rule
+
+For every eligible substantive turn, first inspect the OpenClaw capabilities actually exposed in the current context and map the task to them before choosing a fallback:
+
+1. Use native tools for the work itself, native task and subagent facilities for delegation, native memory/user-memory for recall and durable writeback, and native approval/sandbox/Workshop facilities for governed changes when those tools are exposed.
+2. Treat a capability as available only after the current turn exposes it and a call succeeds with an observable result. The registry, Skill text, configuration, or tool name alone is not runtime evidence.
+3. Record which native facility was selected and verify its real outcome separately from tool success. If the native call is unavailable, fails, or its result cannot be observed, mark that operation UNKNOWN or use the smallest safe fallback; never recreate the facility as an Agent OS runtime.
+4. Do not perform duplicate Agent OS work when a native facility fully satisfies the semantic contract. Agent OS adds only the Verification, Experience, Evolution, or Governance decision around the native operation.
 
 ## Acceptance truth boundary
 
