@@ -56,6 +56,13 @@ At the beginning of an eligible turn, build a capability snapshot only from tool
 
 A registry or version number is not runtime evidence. If a capability is absent, failed, or unobservable, return UNKNOWN or use the smallest safe semantic fallback and record the capability gap.
 
+## OpenClaw-native surfaces covered by the baseline
+
+The baseline treats the current OpenClaw surfaces as replaceable providers behind the same semantic contracts: the native `main` session as the convergence point for direct messages, group notices, heartbeat wakes, and child announcements; session tools for history/search/send/spawn/yield; background-task records as an activity ledger; Heartbeat and Automation for wake/scheduling; Hooks for lifecycle events; built-in tools and Skills for execution; Context Engine and compaction for prompt assembly; Memory and active-memory for recall; Approval and sandbox policy for enforcement; and Skill Workshop/self-learning for governed application.
+
+Agent OS must not assume every surface is enabled. Tool profile, per-agent policy, channel policy, provider restrictions, sandbox mode, plugin availability, and session visibility can remove a tool after configuration. Capability use is therefore decided per turn and per operation from the actually exposed surface.
+
+The `main` session is the default cognitive convergence point, not a reason to collapse all agent identities. Child sessions remain separately attributable, and multi-agent verification must follow native requester, parent, child, integration, and user-outcome provenance.
 ## Future-proofing rules
 
 1. Contracts are semantic: Goal, Evidence, VerificationResult, Experience, EvolutionCandidate, GovernanceDecision, DelegationTrace and CapabilityObservation remain stable.
