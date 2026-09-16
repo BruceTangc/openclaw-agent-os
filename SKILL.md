@@ -8,7 +8,7 @@ user-invocable: true
 
 # Agent OS v2
 
-Agent OS is OpenClaw's adaptive learning nervous system. It is an operating protocol executed by the current OpenClaw agent with native capabilities available in that turn. No Agent OS daemon, cron, database, profile, fixed agent id, or separate runtime.
+Agent OS is OpenClaw's adaptive learning nervous system. It is delivered as one Skill and applies across single-agent and multi-agent work exposed by OpenClaw. It is an operating protocol executed by the current OpenClaw agent with native capabilities available in that turn. No Agent OS daemon, cron, database, profile, fixed agent id, or separate runtime.
 
 ## Prime directive
 
