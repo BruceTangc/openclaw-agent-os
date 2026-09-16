@@ -12,6 +12,8 @@ openclaw skills install git:BruceTangc/openclaw-agent-os@agent-os-v2
 
 That is the complete Agent OS setup. Git Skill installation expects `SKILL.md` at the repository root, which this branch provides. No Agent OS config file, Python runtime, heartbeat, cron, database, agent id, memory path, or post-install script is required.
 
+If Git Skill installation is unavailable, download or unzip this repository and copy the directory containing SKILL.md to the OpenClaw managed skills directory. On Ubuntu, copy it to the configured managed skills path. On Windows PowerShell: set $target to $env:OPENCLAW_HOME/.openclaw/skills/agent-os, create it, then copy SKILL.md, protocols, and schemas into it. Run openclaw skills info agent-os afterward.
+
 Check it with:
 
 ```bash
@@ -39,6 +41,6 @@ Agent OS does not orchestrate agents. OpenClaw does. Agent OS learns from native
 
 OpenClaw owns runtime, sessions, tasks, routing, subagents, tools, memory, context, automation, approvals and Workshop application. Agent OS owns the learning semantics only. If OpenClaw gets a stronger native equivalent, Agent OS delegates to it and gets thinner.
 
-## Status
+Framework baseline: see [docs/V2-FRAMEWORK-BASELINE.md](docs/V2-FRAMEWORK-BASELINE.md) for the stable V1.3-to-V2 semantic boundary and future OpenClaw capability replacement rules.\n\n## Status
 
 `2.0.0-rc.3` is the current release candidate. The repository package has static architecture/schema/legacy-reference gates and A1-A30 acceptance specifications. Runtime-dependent acceptance still requires a real OpenClaw installation; absence of a native capability must degrade safely rather than fabricate persistence or bypass governance.
