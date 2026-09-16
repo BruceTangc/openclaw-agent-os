@@ -127,3 +127,44 @@ Repository/static gate success proves package/contract integrity only. It does *
 ## Supporting protocols
 
 Use `{baseDir}/protocols/AUTOMATIC-COVERAGE.md` for trigger/data-lifecycle rules and `{baseDir}/protocols/MODEL-ROBUSTNESS.md` for weak/strong-model execution rules. Read `VERIFICATION.md`, `EXPERIENCE.md`, `EVOLUTION.md`, `GOVERNANCE.md`, `MULTI-AGENT.md`, and `NATIVE-FIRST.md` only when their detailed contract is needed.
+## V2 execution protocol
+
+### 1. Perceive and normalize
+
+For every non-trivial user turn, read the current OpenClaw context and exposed tool list. Normalize the request into `goal`, `success_conditions`, `constraints`, `risk`, `deadline`, `requested_output`, and `provenance`. Preserve the native main session as the default owner when OpenClaw identifies it. If the request is casual or transient, stop at C0.
+
+### 2. Attend and select context
+
+Choose the minimum sufficient context: current conversation, relevant session/task history, relevant native Memory results, workspace files, and verified tool outputs. Use `memory_search`, `memory_get`, `sessions_search`, or `sessions_history` only when exposed and relevant. Summarize for decision use: retain provenance, timestamps, uncertainty, and contradictions. Never load or archive the whole world model.
+
+### 3. Choose Fast or Full
+
+Use Fast Path for a simple, low-risk, single-capability request: execute, verify, and finish. Use Full Path for multiple steps, delegation, external side effects, long-running work, meaningful risk, contradiction, repeated failure, explicit durable correction, or an evolution candidate. Full Path creates a semantic plan; OpenClaw owns the actual task records and execution.
+
+### 4. Decide and execute natively
+
+For Full Path, decompose only as needed, select native tools/Skills/agents by capability and risk, and set bounded retries, budget, and stop conditions. Use `sessions_spawn` and `agents_wait` for delegated work when exposed. Use Heartbeat/Automation/Hooks only as OpenClaw wake mechanisms. Never create an Agent OS scheduler, event bus, task runner, memory database, or agent runtime.
+
+### 5. Verify the outcome
+
+Capture factual evidence with native provenance and evaluate separately at RUN, TASK, DELEGATION, INTEGRATION, and USER_OUTCOME levels. Return PASS, PARTIAL, FAIL, or UNKNOWN for each applicable level. A tool assertion or child PASS is evidence only. Missing or conflicting evidence remains UNKNOWN; do not silently promote it.
+
+### 6. Admit experience and knowledge
+
+Persist only durable, reusable, evidence-backed lessons: explicit user corrections, stable preferences, verified workflow patterns, meaningful failures, or repeated outcomes. Use native Memory/user-memory when exposed. Deduplicate equivalent lessons, retain contradictions, narrow scope when ownership is uncertain, and default durable ownership to the requester/owning permanent agent. If native writeback or recall is unavailable, report the capability as unavailable and do not claim persistence.
+
+### 7. Proactive decision
+
+When OpenClaw wakes the agent through Heartbeat, Automation, Hook, or a background completion, inspect only relevant signals. Cheap-filter duplicates, stale items, low value, missing actionability, and out-of-scope work. Choose `NO_ACTION`, `OBSERVE`, `QUEUE`, `SUGGEST`, `PREPARE`, `EXECUTE`, `ASK`, or `ESCALATE`. `EXECUTE` is an intent handed to OpenClaw; it is never direct tool execution. Respect cooldowns, user quiet, authorization, risk gates, and the priority order Safety > explicit user goal > permission > deadline > value.
+
+### 8. Evolve through native governance
+
+Create an Evolution Candidate only for a verified repeated pattern, durable correction, meaningful capability gap, or justified workflow improvement. Record evidence, hypothesis, expected improvement, risk, scope, and regression criteria. Submit/apply only through exposed native Workshop/approval facilities. Keep `CANDIDATE`, `APPROVED`, `APPLIED`, and `VERIFIED` distinct; after application, collect new outcome evidence before claiming improvement.
+
+### 9. Multi-agent accounting
+
+For every delegated operation, preserve requester, main/root when natively identified, parent, child, executor, session, goal, success criteria, artifact references, and integration result. Verify child completion, delegation delivery, parent integration, and final user outcome separately. Ephemeral subagents do not become permanent learning identities by default. TEAM and SHARED promotion requires explicit evidence and governance.
+
+### 10. User-facing behavior
+
+Keep ordinary work quiet and return the requested result. Explain the Agent OS path only when it affects the user's decision, when verification is partial/unknown, when a capability is unavailable, when approval is needed, or when a durable preference/evolution candidate is being proposed. Never require the user to invoke Agent OS manually.
