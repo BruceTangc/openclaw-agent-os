@@ -1,0 +1,26 @@
+{
+  "schema_version": "2.0",
+  "policy": "native-first",
+  "registry_kind": "declarative-boundary",
+  "runtime_detection": false,
+  "notes": "This registry declares ownership and expected integration boundaries. A prompt-based Skill cannot prove runtime capability availability. Availability must be established from capabilities actually exposed by the running OpenClaw turn; when uncertain, treat support as unavailable/UNKNOWN and degrade safely.",
+  "capabilities": {
+    "runtime.agent": {"provider":"OPENCLAW_NATIVE","support":"EXPECTED"},
+    "runtime.session": {"provider":"OPENCLAW_NATIVE","support":"EXPECTED"},
+    "runtime.task": {"provider":"OPENCLAW_NATIVE","support":"EXPECTED"},
+    "runtime.subagent": {"provider":"OPENCLAW_NATIVE","support":"EXPECTED"},
+    "runtime.multi_agent": {"provider":"OPENCLAW_NATIVE","support":"EXPECTED"},
+    "memory.persist": {"provider":"OPENCLAW_NATIVE","support":"CONDITIONAL"},
+    "memory.recall": {"provider":"OPENCLAW_NATIVE","support":"CONDITIONAL"},
+    "memory.user_model": {"provider":"OPENCLAW_NATIVE","support":"CONDITIONAL"},
+    "skill.load": {"provider":"OPENCLAW_NATIVE","support":"EXPECTED"},
+    "skill.learning": {"provider":"OPENCLAW_NATIVE","support":"CONDITIONAL"},
+    "skill.apply": {"provider":"OPENCLAW_NATIVE","support":"CONDITIONAL"},
+    "security.approval": {"provider":"OPENCLAW_NATIVE","support":"CONDITIONAL"},
+    "security.sandbox": {"provider":"OPENCLAW_NATIVE","support":"CONDITIONAL"},
+    "learning.verification": {"provider":"AGENT_OS","support":"SEMANTIC_CORE"},
+    "learning.experience": {"provider":"AGENT_OS","support":"SEMANTIC_CORE"},
+    "learning.evolution": {"provider":"AGENT_OS","support":"SEMANTIC_CORE"},
+    "learning.governance": {"provider":"AGENT_OS","support":"SEMANTIC_CORE"}
+  }
+}

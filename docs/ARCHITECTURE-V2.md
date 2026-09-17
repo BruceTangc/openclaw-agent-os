@@ -1,0 +1,128 @@
+# Agent OS v2 Architecture Freeze
+
+Status: **Architecture Freeze**
+
+## Positioning
+
+Agent OS is OpenClaw's **Adaptive Nervous System**. It is a learning layer over OpenClaw Native, not a second runtime or control plane.
+
+OpenClaw is the working organism: agent runtime, main/root sessions, permanent agents, subagents, task flow, tools, skills, memory, automation and enforcement. Agent OS observes outcomes and converts trustworthy evidence into governed learning.
+
+## Architecture
+
+```text
+USER
+  |
+OpenClaw root/owning agent + native runtime
+  |-- permanent/specialist agents
+  |-- ephemeral subagent tree
+  |-- background tasks/task flow
+  |
+  v
+Verification -> Evidence -> Experience -> Evolution -> Governance
+                                              |
+                                   Native Capability Adapter
+                                              |
+                                      OpenClaw Native
+                                  Memory / Workshop / Approval
+```
+
+## Cognitive integration with OpenClaw
+
+OpenClaw is the body and execution system; Agent OS is the cognitive and learning layer. Agent OS does not replace OpenClaw runtime components. It connects to the capabilities that the current turn actually exposes:
+
+- Perception: inspect the current tool, session, task, agent, memory, approval, and Workshop surfaces.
+- Attention: select the smallest native capability set that can advance the user goal.
+- Working memory: preserve the current goal, success criteria, constraints, evidence, and unfinished work in the active turn.
+- Episodic memory: use native session/task history and memory tools when exposed; do not create a second transcript store.
+- Semantic experience: distill verified, durable lessons and admit them to native memory/user-memory when available.
+- Prediction and feedback: recall relevant lessons before action, then compare predicted benefit with the observed user outcome and update or weaken the lesson.
+- Executive inhibition: stop unsafe, duplicate, stale, unauthorized, or weakly evidenced actions through native approval and sandbox controls.
+
+The runtime loop is therefore:
+
+`Native perception -> Attention/working memory -> Native execution -> Verification -> Experience admission -> Native recall -> Feedback -> Evolution/Governance`.
+
+A capability snapshot is valid only when the tool is exposed in the current turn and returns an observable result. The declarative capability registry is an ownership map, not a detector.
+## Core ownership
+
+### Verification
+Owns outcome semantics. Inputs include original goal, success criteria, native execution results, environment evidence and user feedback. Outputs PASS/PARTIAL/FAIL/UNKNOWN plus evidence.
+
+### Experience
+Owns lesson extraction, not storage. It converts verified Situation/Action/Outcome/Feedback into reusable lessons. Persistence/recall is delegated to OpenClaw native memory/user/knowledge facilities.
+
+### Evolution
+Owns pattern detection, hypothesis formation and improvement-candidate generation. It does not directly mutate skills or runtime configuration.
+
+### Governance
+Owns learning/change decisions: evidence sufficiency, scope promotion, confidence, risk and approval requirements. Runtime enforcement remains OpenClaw-owned.
+
+## Multi-agent model
+
+Agent OS consumes OpenClaw-native identities and provenance. It never creates a second Agent registry or communication bus.
+
+Permanent configured agents can own durable AGENT-scoped experience. Ephemeral subagents contribute evidence to the requester/owning permanent agent by default.
+
+Root ownership is resolved from native provenance; the literal id `main` is never a semantic requirement.
+
+### Evidence scopes
+
+- RUN
+- SESSION
+- TASK
+- DELEGATION
+
+### Durable learning scopes
+
+- AGENT
+- TEAM
+- SHARED
+
+Scope promotion is governed and explicit. No implicit global learning.
+
+## Verification invariant
+
+```text
+Tool result
+  -> Run verification
+  -> Task verification
+  -> Delegation verification
+  -> Root integration
+  -> User-outcome verification
+```
+
+A lower-level PASS never proves a higher-level PASS.
+
+## Stable contracts
+
+- Evidence
+- VerificationResult
+- Experience
+- EvolutionCandidate
+- AgentIdentity
+- DelegationTrace
+- Capability
+
+These contracts are version-stable relative to OpenClaw implementation details.
+
+## Native adaptation
+
+Core modules call semantic capabilities, never version-specific OpenClaw internals. `Capability Registry` discovers providers and `Native Adapter` maps stable contracts to the current OpenClaw mechanisms.
+
+Provider precedence:
+
+1. OPENCLAW_NATIVE
+2. OPENCLAW_OFFICIAL_PLUGIN
+3. AGENT_OS_ADAPTER
+4. AGENT_OS_FALLBACK
+
+When a native capability fully supersedes a fallback, mark the fallback deprecated and remove it after one compatibility window.
+
+## Non-goals
+
+Agent OS does not own: Agent Runtime, multi-agent orchestration, task manager/runtime, scheduler, session manager, context engine, memory DB, user-profile DB, tool runtime, permission enforcement, agent communication, skill editing/application runtime.
+
+## Upgrade invariant
+
+**OpenClaw gets stronger -> Agent OS implementation gets thinner; Agent OS semantic contracts remain stable.**

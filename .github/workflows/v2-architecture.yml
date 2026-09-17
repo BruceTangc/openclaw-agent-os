@@ -1,0 +1,27 @@
+name: Agent OS v2 Gate
+on:
+  push:
+    branches: [agent-os-v2]
+  pull_request:
+    paths:
+      - 'SKILL.md'
+      - 'VERSION'
+      - 'MANIFEST.yml'
+      - 'protocols/**'
+      - 'schemas/**'
+      - 'native/**'
+      - 'docs/**'
+      - 'scripts/**'
+      - 'tests/**'
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Static v2 release gate
+        run: python scripts/validate_v2.py
+      - name: Release-gate mutation tests
+        run: python scripts/test_validate_v2.py
